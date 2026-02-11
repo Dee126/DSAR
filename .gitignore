@@ -1,0 +1,17 @@
+node_modules/
+.next/
+dist/
+out/
+.env
+.env.local
+.env.production
+*.log
+npm-debug.log*
+uploads/
+.DS_Store
+coverage/
+test-results/
+playwright-report/
+blob-report/
+*.tsbuildinfo
+next-env.d.ts
