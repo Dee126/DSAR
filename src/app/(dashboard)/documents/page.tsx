@@ -48,6 +48,7 @@ interface DocumentItem {
 export default function DocumentsPage() {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchDocuments() {
@@ -65,6 +66,25 @@ export default function DocumentsPage() {
     }
     fetchDocuments();
   }, []);
+
+  async function handleDelete(doc: DocumentItem) {
+    if (!confirm(`Are you sure you want to delete "${doc.filename}"?`)) return;
+
+    setDeletingId(doc.id);
+    try {
+      const res = await fetch(`/api/documents/${doc.id}`, { method: "DELETE" });
+      if (res.ok) {
+        setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+      } else {
+        const json = await res.json();
+        alert(json.error || "Failed to delete document");
+      }
+    } catch {
+      alert("Failed to delete document");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -177,13 +197,22 @@ export default function DocumentsPage() {
                       {new Date(doc.uploadedAt).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4">
-                      <a
-                        href={`/api/documents/${doc.id}/download`}
-                        download={doc.filename}
-                        className="text-sm font-medium text-brand-600 hover:text-brand-700"
-                      >
-                        Download
-                      </a>
+                      <div className="flex items-center gap-3">
+                        <a
+                          href={`/api/documents/${doc.id}/download`}
+                          download={doc.filename}
+                          className="text-sm font-medium text-brand-600 hover:text-brand-700"
+                        >
+                          Download
+                        </a>
+                        <button
+                          onClick={() => handleDelete(doc)}
+                          disabled={deletingId === doc.id}
+                          className="text-sm font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+                        >
+                          {deletingId === doc.id ? "Deleting..." : "Delete"}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
