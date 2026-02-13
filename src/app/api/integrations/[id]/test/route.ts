@@ -5,6 +5,7 @@ import { checkPermission } from "@/lib/rbac";
 import { logAudit, getClientInfo } from "@/lib/audit";
 import { ApiError, handleApiError } from "@/lib/errors";
 import { getConnector } from "@/lib/connectors/registry";
+import { checkRateLimit, TEST_CONNECTION_LIMIT } from "@/lib/rate-limit";
 
 interface RouteParams {
   params: { id: string };
@@ -14,6 +15,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const user = await requireAuth();
     checkPermission(user.role, "integrations", "update");
+
+    // Rate limit
+    const rl = checkRateLimit(`test:${params.id}`, TEST_CONNECTION_LIMIT);
+    if (!rl.allowed) {
+      throw new ApiError(
+        429,
+        `Rate limit exceeded. Try again in ${Math.ceil((rl.retryAfterMs ?? 60000) / 1000)}s.`
+      );
+    }
 
     const integration = await prisma.integration.findFirst({
       where: { id: params.id, tenantId: user.tenantId },

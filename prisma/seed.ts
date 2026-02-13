@@ -159,22 +159,38 @@ async function main() {
     return d;
   };
 
-  // Create integrations
+  // Create integrations — Phase 1 (Microsoft)
   const m365Integration = await prisma.integration.create({
     data: {
       tenantId: tenant.id,
       provider: "M365",
-      name: "Acme Corp Microsoft 365",
+      name: "Acme Entra ID / User Directory",
       status: "ENABLED",
       config: {
         tenantId: "acme-corp-tenant-id",
         clientId: "acme-m365-client-id",
-        allowedScopes: "Mail.Read, User.Read.All, MailboxSettings.Read",
-        allowedMailboxes: "",
       },
       healthStatus: "HEALTHY",
       lastHealthCheckAt: new Date(),
       lastSuccessAt: new Date(),
+      ownerUserId: admin.id,
+    },
+  });
+
+  const exchangeIntegration = await prisma.integration.create({
+    data: {
+      tenantId: tenant.id,
+      provider: "EXCHANGE_ONLINE",
+      name: "Acme Exchange Online",
+      status: "ENABLED",
+      config: {
+        tenantId: "acme-corp-tenant-id",
+        clientId: "acme-exo-client-id",
+        allowedMailboxes: "",
+      },
+      healthStatus: "HEALTHY",
+      lastHealthCheckAt: new Date(),
+      lastSuccessAt: daysAgo(1),
       ownerUserId: admin.id,
     },
   });
@@ -197,6 +213,24 @@ async function main() {
     },
   });
 
+  const onedriveIntegration = await prisma.integration.create({
+    data: {
+      tenantId: tenant.id,
+      provider: "ONEDRIVE",
+      name: "Acme OneDrive for Business",
+      status: "ENABLED",
+      config: {
+        tenantId: "acme-corp-tenant-id",
+        clientId: "acme-od-client-id",
+      },
+      healthStatus: "HEALTHY",
+      lastHealthCheckAt: new Date(),
+      lastSuccessAt: daysAgo(2),
+      ownerUserId: admin.id,
+    },
+  });
+
+  // Phase 2 stub
   const sfIntegration = await prisma.integration.create({
     data: {
       tenantId: tenant.id,
@@ -212,7 +246,7 @@ async function main() {
     },
   });
 
-  console.log("Created 3 integrations");
+  console.log("Created 5 integrations (4 Phase 1, 1 Phase 2 stub)");
 
   // Create data subjects
   const subject1 = await prisma.dataSubject.create({
@@ -634,15 +668,21 @@ async function main() {
 
   console.log("Created communication logs");
 
-  // ── Data Collection Items ───────────────────────────────────────────
+  // ── Data Collection Items (standardised QuerySpec format) ────────────
 
   await prisma.dataCollectionItem.createMany({
     data: [
+      // Case 1 — manual system collection
       {
         tenantId: tenant.id,
         caseId: case1.id,
         systemId: crmSystem.id,
-        querySpec: { type: "sql", query: "SELECT * FROM contacts WHERE email = 'john.smith@example.com'" },
+        querySpec: {
+          subjectIdentifiers: { primary: { type: "email", value: "john.smith@example.com" }, alternatives: [] },
+          providerScope: {},
+          outputOptions: { mode: "metadata_only", maxItems: 500, includeAttachments: false },
+          legal: { purpose: "DSAR", dataMinimization: true },
+        },
         status: "IN_PROGRESS",
         findingsSummary: "Customer record found with purchase history and support tickets",
         recordsFound: 47,
@@ -653,71 +693,154 @@ async function main() {
         tenantId: tenant.id,
         caseId: case1.id,
         systemId: hrSystem.id,
-        querySpec: { type: "search", query: "Search by name and email in employee directory" },
+        querySpec: {
+          subjectIdentifiers: { primary: { type: "email", value: "john.smith@example.com" }, alternatives: [{ type: "name", value: "John Smith" }] },
+          providerScope: {},
+          outputOptions: { mode: "metadata_only", maxItems: 500, includeAttachments: false },
+          legal: { purpose: "DSAR", dataMinimization: true },
+        },
         status: "COMPLETED",
         findingsSummary: "No employee records found for this data subject",
         recordsFound: 0,
         completedAt: daysAgo(5),
         assignedToUserId: caseManager.id,
       },
+      // Case 1 — Exchange mailbox search via integration
       {
         tenantId: tenant.id,
         caseId: case1.id,
-        integrationId: m365Integration.id,
-        systemLabel: "M365 - Mailbox Search",
-        querySpec: { templateId: "mailbox_search", mailbox: "john.smith@example.com", searchTerms: "" },
+        integrationId: exchangeIntegration.id,
+        systemLabel: "Exchange Online - Mailbox Search",
+        querySpec: {
+          subjectIdentifiers: { primary: { type: "email", value: "john.smith@example.com" }, alternatives: [] },
+          searchTerms: { terms: ["john smith", "john.smith"], matchType: "contains" },
+          providerScope: { mailboxes: ["john.smith@example.com"], folderScope: "all", includeAttachments: false },
+          outputOptions: { mode: "metadata_only", maxItems: 500, includeAttachments: false },
+          legal: { purpose: "DSAR", dataMinimization: true },
+          templateId: "exchange_mailbox_search",
+        },
         status: "PENDING",
         assignedToUserId: contributor.id,
       },
+      // Case 1 — manual email marketing
       {
         tenantId: tenant.id,
         caseId: case1.id,
         systemId: emailSystem.id,
-        querySpec: { type: "search", query: "Lookup subscriber lists and campaign interactions for john.smith@example.com" },
+        querySpec: {
+          subjectIdentifiers: { primary: { type: "email", value: "john.smith@example.com" }, alternatives: [] },
+          providerScope: {},
+          outputOptions: { mode: "metadata_only", maxItems: 500, includeAttachments: false },
+          legal: { purpose: "DSAR", dataMinimization: true },
+        },
         status: "PENDING",
         assignedToUserId: contributor.id,
       },
+      // Case 2 — CRM completed
       {
         tenantId: tenant.id,
         caseId: case2.id,
         systemId: crmSystem.id,
-        querySpec: { type: "search", query: "Identify all records for jane.doe@example.com" },
+        querySpec: {
+          subjectIdentifiers: { primary: { type: "email", value: "jane.doe@example.com" }, alternatives: [] },
+          providerScope: {},
+          outputOptions: { mode: "metadata_only", maxItems: 500, includeAttachments: false },
+          legal: { purpose: "DSAR", dataMinimization: true },
+        },
         status: "COMPLETED",
         findingsSummary: "Found 23 CRM records including contact info, purchase history, and support interactions",
         recordsFound: 23,
         completedAt: daysAgo(12),
         assignedToUserId: contributor.id,
       },
+      // Case 2 — Entra ID user lookup completed
       {
         tenantId: tenant.id,
         caseId: case2.id,
         integrationId: m365Integration.id,
-        systemLabel: "M365 - User Profile Lookup",
-        querySpec: { templateId: "user_lookup", userIdentifier: "jane.doe@example.com" },
+        systemLabel: "Entra ID - User Profile",
+        querySpec: {
+          subjectIdentifiers: { primary: { type: "email", value: "jane.doe@example.com" }, alternatives: [] },
+          providerScope: { lookupType: "user_profile" },
+          outputOptions: { mode: "metadata_only", maxItems: 500, includeAttachments: false },
+          legal: { purpose: "DSAR", dataMinimization: true },
+          templateId: "m365_user_lookup",
+        },
         status: "COMPLETED",
-        findingsSummary: "User profile found in Azure AD with department and contact info",
+        findingsSummary: "User profile found in Entra ID with department and contact info",
         recordsFound: 1,
         completedAt: daysAgo(11),
-        resultMetadata: { userIdentifier: "jane.doe@example.com", found: true, fields: ["displayName", "mail", "department"] },
+        resultMetadata: {
+          provider: "M365", workload: "entra_id",
+          counts: { matched: 1, exported: 1, attachments: 0, skipped: 0 },
+          artifacts: [],
+          runInfo: { startedAt: daysAgo(11).toISOString(), completedAt: daysAgo(11).toISOString(), status: "success", durationMs: 1200 },
+          notes: "metadata only; displayName, mail, department, jobTitle exported",
+        },
         assignedToUserId: contributor.id,
       },
+      // Case 2 — SharePoint site search completed
       {
         tenantId: tenant.id,
         caseId: case2.id,
         integrationId: spIntegration.id,
         systemLabel: "SharePoint - Finance Site",
-        querySpec: { templateId: "site_search", siteId: "finance-site", searchTerms: "jane doe" },
+        querySpec: {
+          subjectIdentifiers: { primary: { type: "email", value: "jane.doe@example.com" }, alternatives: [{ type: "name", value: "Jane Doe" }] },
+          searchTerms: { terms: ["jane doe"], matchType: "contains" },
+          providerScope: { siteIds: ["finance-site"], fileTypes: ["docx", "pdf", "xlsx"] },
+          outputOptions: { mode: "metadata_only", maxItems: 500, includeAttachments: false },
+          legal: { purpose: "DSAR", dataMinimization: true },
+          templateId: "sharepoint_site_search",
+        },
         status: "COMPLETED",
         findingsSummary: "Found 3 documents referencing data subject on Finance SharePoint site",
         recordsFound: 3,
         completedAt: daysAgo(11),
+        resultMetadata: {
+          provider: "SHAREPOINT", workload: "site_search",
+          counts: { matched: 3, exported: 3, attachments: 0, skipped: 0 },
+          artifacts: [{ type: "index_csv", filename: "sharepoint-finance-index.csv", description: "Index of matched files" }],
+          runInfo: { startedAt: daysAgo(11).toISOString(), completedAt: daysAgo(11).toISOString(), status: "success", durationMs: 3400 },
+        },
         assignedToUserId: caseManager.id,
       },
+      // Case 2 — OneDrive search completed
+      {
+        tenantId: tenant.id,
+        caseId: case2.id,
+        integrationId: onedriveIntegration.id,
+        systemLabel: "OneDrive - User Drive",
+        querySpec: {
+          subjectIdentifiers: { primary: { type: "email", value: "jane.doe@example.com" }, alternatives: [] },
+          providerScope: { userDrive: true },
+          outputOptions: { mode: "metadata_only", maxItems: 500, includeAttachments: false },
+          legal: { purpose: "DSAR", dataMinimization: true },
+          templateId: "onedrive_user_drive",
+        },
+        status: "COMPLETED",
+        findingsSummary: "5 personal files found in user's OneDrive",
+        recordsFound: 5,
+        completedAt: daysAgo(11),
+        resultMetadata: {
+          provider: "ONEDRIVE", workload: "user_drive",
+          counts: { matched: 5, exported: 5, attachments: 0, skipped: 0 },
+          artifacts: [{ type: "index_csv", filename: "onedrive-jane-index.csv", description: "Index of user drive files" }],
+          runInfo: { startedAt: daysAgo(11).toISOString(), completedAt: daysAgo(11).toISOString(), status: "success", durationMs: 2100 },
+        },
+        assignedToUserId: contributor.id,
+      },
+      // Case 2 — email marketing completed
       {
         tenantId: tenant.id,
         caseId: case2.id,
         systemId: emailSystem.id,
-        querySpec: { type: "search", query: "Find all email marketing data for jane.doe@example.com" },
+        querySpec: {
+          subjectIdentifiers: { primary: { type: "email", value: "jane.doe@example.com" }, alternatives: [] },
+          providerScope: {},
+          outputOptions: { mode: "metadata_only", maxItems: 500, includeAttachments: false },
+          legal: { purpose: "DSAR", dataMinimization: true },
+        },
         status: "COMPLETED",
         findingsSummary: "Subscribed to 3 mailing lists, 12 campaigns delivered",
         recordsFound: 15,
@@ -832,7 +955,7 @@ async function main() {
         action: "INTEGRATION_CREATED",
         entityType: "Integration",
         entityId: m365Integration.id,
-        details: { provider: "M365", name: "Acme Corp Microsoft 365" },
+        details: { provider: "M365", name: "Acme Entra ID / User Directory" },
       },
       {
         tenantId: tenant.id,
@@ -855,8 +978,40 @@ async function main() {
         actorUserId: admin.id,
         action: "INTEGRATION_CREATED",
         entityType: "Integration",
+        entityId: exchangeIntegration.id,
+        details: { provider: "EXCHANGE_ONLINE", name: "Acme Exchange Online" },
+      },
+      {
+        tenantId: tenant.id,
+        actorUserId: admin.id,
+        action: "INTEGRATION_ENABLED",
+        entityType: "Integration",
+        entityId: exchangeIntegration.id,
+        details: { provider: "EXCHANGE_ONLINE" },
+      },
+      {
+        tenantId: tenant.id,
+        actorUserId: admin.id,
+        action: "INTEGRATION_CREATED",
+        entityType: "Integration",
         entityId: spIntegration.id,
         details: { provider: "SHAREPOINT", name: "Acme SharePoint Online" },
+      },
+      {
+        tenantId: tenant.id,
+        actorUserId: admin.id,
+        action: "INTEGRATION_CREATED",
+        entityType: "Integration",
+        entityId: onedriveIntegration.id,
+        details: { provider: "ONEDRIVE", name: "Acme OneDrive for Business" },
+      },
+      {
+        tenantId: tenant.id,
+        actorUserId: admin.id,
+        action: "INTEGRATION_ENABLED",
+        entityType: "Integration",
+        entityId: onedriveIntegration.id,
+        details: { provider: "ONEDRIVE" },
       },
     ],
   });
@@ -874,9 +1029,9 @@ async function main() {
   console.log("  viewer@acme-corp.com   (READ_ONLY) - password: admin123456");
   console.log(`Cases: 5 (various statuses)`);
   console.log(`Systems: 4`);
-  console.log(`Integrations: 3 (M365 + SharePoint enabled, Salesforce disabled)`);
+  console.log(`Integrations: 5 (M365/Exchange/SharePoint/OneDrive enabled, Salesforce disabled)`);
   console.log(`Communication Logs: 7`);
-  console.log(`Data Collection Items: 8`);
+  console.log(`Data Collection Items: 9`);
   console.log(`Legal Reviews: 3`);
 }
 

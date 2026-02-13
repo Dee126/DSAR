@@ -21,7 +21,9 @@ interface QueryTemplate {
   id: string;
   name: string;
   description: string;
-  fields: ConfigField[];
+  scopeFields?: ConfigField[];
+  defaultScope?: Record<string, unknown>;
+  fields?: ConfigField[]; // legacy compat
 }
 
 interface AuditEvent {
@@ -733,9 +735,14 @@ export default function IntegrationDetailPage() {
                       >
                         <p className="text-sm font-medium text-gray-900">{template.name}</p>
                         <p className="mt-0.5 text-xs text-gray-500">{template.description}</p>
-                        {template.fields.length > 0 && (
+                        {(template.scopeFields ?? template.fields ?? []).length > 0 && (
                           <p className="mt-1 text-xs text-gray-400">
-                            Fields: {template.fields.map((f) => f.label).join(", ")}
+                            Scope fields: {(template.scopeFields ?? template.fields ?? []).map((f) => f.label).join(", ")}
+                          </p>
+                        )}
+                        {template.defaultScope && Object.keys(template.defaultScope).length > 0 && (
+                          <p className="mt-1 text-xs text-gray-400">
+                            Default scope: {Object.entries(template.defaultScope).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(", ")}
                           </p>
                         )}
                       </div>

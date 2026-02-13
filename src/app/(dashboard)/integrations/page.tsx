@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-/* ── Types ────────────────────────────────────────────────────────────── */
+/* -- Types ----------------------------------------------------------------- */
 
 interface IntegrationItem {
   id: string;
@@ -27,19 +27,37 @@ interface ProviderInfo {
   description: string;
   available: boolean;
   comingSoon?: boolean;
+  phase: number;
 }
 
-/* ── Provider icon config ─────────────────────────────────────────────── */
+/* -- Phase configuration --------------------------------------------------- */
+
+const PHASE_HEADERS: Record<number, { title: string; badge?: string }> = {
+  1: { title: "Microsoft (Production Ready)" },
+  2: { title: "Business Applications (Coming Soon)", badge: "Coming Soon" },
+  3: { title: "Collaboration & HR (Planned)", badge: "Planned" },
+  4: { title: "Cloud Infrastructure (Planned)", badge: "Planned" },
+};
+
+/* -- Provider icon config -------------------------------------------------- */
 
 const PROVIDER_ICON_MAP: Record<string, { label: string; bg: string; text: string }> = {
-  M365:         { label: "M365", bg: "bg-orange-500",  text: "text-white" },
-  SHAREPOINT:   { label: "SP",   bg: "bg-teal-600",    text: "text-white" },
-  GOOGLE:       { label: "GW",   bg: "bg-blue-500",    text: "text-white" },
-  SALESFORCE:   { label: "SF",   bg: "bg-sky-500",     text: "text-white" },
-  SERVICENOW:   { label: "SN",   bg: "bg-green-600",   text: "text-white" },
-  AWS:          { label: "AWS",  bg: "bg-yellow-500",  text: "text-gray-900" },
-  AZURE:        { label: "AZ",   bg: "bg-blue-600",    text: "text-white" },
-  GCP:          { label: "GCP",  bg: "bg-red-500",     text: "text-white" },
+  M365:                  { label: "M365", bg: "bg-orange-500",  text: "text-white" },
+  SHAREPOINT:            { label: "SP",   bg: "bg-teal-600",    text: "text-white" },
+  EXCHANGE_ONLINE:       { label: "EXO",  bg: "bg-blue-500",    text: "text-white" },
+  ONEDRIVE:              { label: "OD",   bg: "bg-blue-400",    text: "text-white" },
+  GOOGLE_WORKSPACE:      { label: "GW",   bg: "bg-red-400",     text: "text-white" },
+  GOOGLE:                { label: "GW",   bg: "bg-blue-500",    text: "text-white" },
+  SALESFORCE:            { label: "SF",   bg: "bg-sky-500",     text: "text-white" },
+  SERVICENOW:            { label: "SN",   bg: "bg-green-600",   text: "text-white" },
+  ATLASSIAN_JIRA:        { label: "JRA",  bg: "bg-blue-600",    text: "text-white" },
+  ATLASSIAN_CONFLUENCE:  { label: "CFN",  bg: "bg-blue-500",    text: "text-white" },
+  WORKDAY:               { label: "WD",   bg: "bg-orange-600",  text: "text-white" },
+  SAP_SUCCESSFACTORS:    { label: "SAP",  bg: "bg-blue-800",    text: "text-white" },
+  OKTA:                  { label: "OKT",  bg: "bg-indigo-500",  text: "text-white" },
+  AWS:                   { label: "AWS",  bg: "bg-yellow-500",  text: "text-gray-900" },
+  AZURE:                 { label: "AZ",   bg: "bg-blue-600",    text: "text-white" },
+  GCP:                   { label: "GCP",  bg: "bg-red-500",     text: "text-white" },
 };
 
 function getProviderIcon(provider: string) {
@@ -51,7 +69,31 @@ function getProviderIcon(provider: string) {
   return config;
 }
 
-/* ── Status / health helpers ──────────────────────────────────────────── */
+/* -- Fallback providers (all 15, grouped by phase) ------------------------- */
+
+const FALLBACK_PROVIDERS: ProviderInfo[] = [
+  // Phase 1 - Microsoft (Production Ready)
+  { provider: "M365",              name: "Microsoft 365",        description: "Exchange, OneDrive, Teams",    available: true,  phase: 1 },
+  { provider: "SHAREPOINT",        name: "SharePoint",           description: "Sites, document libraries",    available: true,  phase: 1 },
+  { provider: "EXCHANGE_ONLINE",   name: "Exchange Online",      description: "Mailboxes, calendars",         available: true,  phase: 1 },
+  { provider: "ONEDRIVE",          name: "OneDrive",             description: "Personal cloud storage",       available: true,  phase: 1 },
+  // Phase 2 - Business Applications (Coming Soon)
+  { provider: "SALESFORCE",        name: "Salesforce",           description: "CRM data, contacts",           available: false, comingSoon: true, phase: 2 },
+  { provider: "SERVICENOW",        name: "ServiceNow",           description: "ITSM, CMDB records",          available: false, comingSoon: true, phase: 2 },
+  { provider: "GOOGLE_WORKSPACE",  name: "Google Workspace",     description: "Gmail, Drive, Calendar",       available: false, comingSoon: true, phase: 2 },
+  // Phase 3 - Collaboration & HR (Planned)
+  { provider: "ATLASSIAN_JIRA",       name: "Atlassian Jira",       description: "Issues, projects, boards",     available: false, comingSoon: true, phase: 3 },
+  { provider: "ATLASSIAN_CONFLUENCE", name: "Atlassian Confluence", description: "Pages, spaces, wikis",         available: false, comingSoon: true, phase: 3 },
+  { provider: "WORKDAY",              name: "Workday",              description: "HR, payroll, talent",           available: false, comingSoon: true, phase: 3 },
+  { provider: "SAP_SUCCESSFACTORS",   name: "SAP SuccessFactors",   description: "HR, employee records",         available: false, comingSoon: true, phase: 3 },
+  { provider: "OKTA",                 name: "Okta",                 description: "Identity, SSO, directory",     available: false, comingSoon: true, phase: 3 },
+  // Phase 4 - Cloud Infrastructure (Planned)
+  { provider: "AWS",   name: "AWS",   description: "S3, DynamoDB, RDS",        available: false, comingSoon: true, phase: 4 },
+  { provider: "AZURE", name: "Azure", description: "Blob Storage, SQL, AD",    available: false, comingSoon: true, phase: 4 },
+  { provider: "GCP",   name: "GCP",   description: "Cloud Storage, BigQuery",  available: false, comingSoon: true, phase: 4 },
+];
+
+/* -- Status / health helpers ----------------------------------------------- */
 
 const HEALTH_COLORS: Record<string, string> = {
   HEALTHY:        "bg-green-100 text-green-800",
@@ -72,7 +114,19 @@ const STATUS_COLORS: Record<string, string> = {
   DISABLED: "bg-gray-100 text-gray-600",
 };
 
-/* ── Component ────────────────────────────────────────────────────────── */
+/* -- Helper: group providers by phase -------------------------------------- */
+
+function groupByPhase(list: ProviderInfo[]): Record<number, ProviderInfo[]> {
+  const grouped: Record<number, ProviderInfo[]> = {};
+  for (const p of list) {
+    const phase = p.phase ?? 1;
+    if (!grouped[phase]) grouped[phase] = [];
+    grouped[phase].push(p);
+  }
+  return grouped;
+}
+
+/* -- Component ------------------------------------------------------------- */
 
 export default function IntegrationsPage() {
   const router = useRouter();
@@ -96,7 +150,7 @@ export default function IntegrationsPage() {
   // Toggle loading tracker (by integration id)
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  /* ── Fetch integrations ─────────────────────────────────────────────── */
+  /* -- Fetch integrations -------------------------------------------------- */
 
   const fetchIntegrations = useCallback(async () => {
     setLoading(true);
@@ -122,7 +176,7 @@ export default function IntegrationsPage() {
     fetchIntegrations();
   }, [fetchIntegrations]);
 
-  /* ── Add integration ────────────────────────────────────────────────── */
+  /* -- Add integration ----------------------------------------------------- */
 
   function openAddModal() {
     setShowAddModal(true);
@@ -187,7 +241,7 @@ export default function IntegrationsPage() {
     }
   }
 
-  /* ── Toggle enable/disable ──────────────────────────────────────────── */
+  /* -- Toggle enable/disable ----------------------------------------------- */
 
   async function handleToggleStatus(integration: IntegrationItem) {
     const newStatus = integration.status === "ENABLED" ? "DISABLED" : "ENABLED";
@@ -214,7 +268,7 @@ export default function IntegrationsPage() {
     }
   }
 
-  /* ── Helpers ────────────────────────────────────────────────────────── */
+  /* -- Helpers ------------------------------------------------------------- */
 
   function formatTimestamp(ts: string | null): string {
     if (!ts) return "--";
@@ -231,13 +285,24 @@ export default function IntegrationsPage() {
   function getProviderDisplayName(provider: string): string {
     const found = providers.find((p) => p.provider === provider);
     if (found) return found.name;
-    // Fallback
+    // Check fallback list
+    const fallback = FALLBACK_PROVIDERS.find((p) => p.provider === provider);
+    if (fallback) return fallback.name;
+    // Last-resort fallback
     const names: Record<string, string> = {
       M365: "Microsoft 365",
       SHAREPOINT: "SharePoint",
+      EXCHANGE_ONLINE: "Exchange Online",
+      ONEDRIVE: "OneDrive",
       GOOGLE: "Google Workspace",
+      GOOGLE_WORKSPACE: "Google Workspace",
       SALESFORCE: "Salesforce",
       SERVICENOW: "ServiceNow",
+      ATLASSIAN_JIRA: "Atlassian Jira",
+      ATLASSIAN_CONFLUENCE: "Atlassian Confluence",
+      WORKDAY: "Workday",
+      SAP_SUCCESSFACTORS: "SAP SuccessFactors",
+      OKTA: "Okta",
       AWS: "AWS",
       AZURE: "Azure",
       GCP: "GCP",
@@ -245,7 +310,112 @@ export default function IntegrationsPage() {
     return names[provider] ?? provider;
   }
 
-  /* ── Render ─────────────────────────────────────────────────────────── */
+  /* -- Render: Phase-grouped provider selection for modal step 1 ----------- */
+
+  function renderPhaseGroupedProviders() {
+    const providerList = providers.length > 0 ? providers : FALLBACK_PROVIDERS;
+    const grouped = groupByPhase(providerList);
+    const sortedPhases = Object.keys(grouped)
+      .map(Number)
+      .sort((a, b) => a - b);
+
+    return (
+      <div className="space-y-6">
+        {sortedPhases.map((phase) => {
+          const phaseConfig = PHASE_HEADERS[phase] ?? {
+            title: `Phase ${phase}`,
+          };
+          const phaseProviders = grouped[phase];
+          const isDimmed = phase >= 2;
+
+          return (
+            <div key={phase}>
+              {/* Phase section header */}
+              <div className="mb-3 flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-gray-700">
+                  {phaseConfig.title}
+                </h3>
+                {phaseConfig.badge && (
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      phaseConfig.badge === "Coming Soon"
+                        ? "bg-yellow-100 text-yellow-700"
+                        : "bg-gray-100 text-gray-500"
+                    }`}
+                  >
+                    {phaseConfig.badge}
+                  </span>
+                )}
+              </div>
+
+              {/* Provider cards grid */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {phaseProviders.map((p) => {
+                  const icon = getProviderIcon(p.provider);
+                  const isAvailable = p.available && phase === 1;
+                  const badgeText =
+                    phase === 2
+                      ? "Coming Soon"
+                      : phase >= 3
+                      ? "Planned"
+                      : null;
+
+                  return (
+                    <button
+                      key={p.provider}
+                      type="button"
+                      onClick={() => {
+                        if (isAvailable) handleSelectProvider(p.provider);
+                      }}
+                      disabled={!isAvailable}
+                      className={`group relative flex flex-col items-center gap-2 rounded-lg border p-4 text-center transition-all ${
+                        isAvailable
+                          ? "border-gray-200 hover:border-brand-300 hover:bg-brand-50 hover:shadow-sm cursor-pointer"
+                          : "border-gray-150 cursor-not-allowed"
+                      } ${isDimmed ? "opacity-60" : ""}`}
+                    >
+                      {badgeText && (
+                        <span
+                          className={`absolute -right-1 -top-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            badgeText === "Coming Soon"
+                              ? "bg-yellow-100 text-yellow-700"
+                              : "bg-gray-100 text-gray-500"
+                          }`}
+                        >
+                          {badgeText}
+                        </span>
+                      )}
+                      <div
+                        className={`flex h-10 w-10 items-center justify-center rounded-full ${icon.bg} ${icon.text} text-xs font-bold ${
+                          isAvailable
+                            ? "transition-transform group-hover:scale-110"
+                            : ""
+                        }`}
+                      >
+                        {icon.label}
+                      </div>
+                      <span
+                        className={`text-sm font-medium ${
+                          isAvailable ? "text-gray-900" : "text-gray-500"
+                        }`}
+                      >
+                        {p.name}
+                      </span>
+                      <span className="text-xs text-gray-500 line-clamp-2">
+                        {p.description}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  /* -- Render -------------------------------------------------------------- */
 
   return (
     <div className="space-y-6">
@@ -499,7 +669,7 @@ export default function IntegrationsPage() {
         )}
       </div>
 
-      {/* ── Add Integration Modal ─────────────────────────────────────────── */}
+      {/* -- Add Integration Modal ------------------------------------------ */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           {/* Backdrop */}
@@ -598,54 +768,8 @@ export default function IntegrationsPage() {
             </div>
 
             {/* Modal body */}
-            <div className="px-6 py-5">
-              {addStep === 1 && (
-                <div>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    {(providers.length > 0
-                      ? providers
-                      : /* Fallback providers if API hasn't returned them */
-                        [
-                          { provider: "M365", name: "Microsoft 365", description: "Exchange, OneDrive, Teams", available: true },
-                          { provider: "SHAREPOINT", name: "SharePoint", description: "Sites, document libraries", available: true },
-                          { provider: "GOOGLE", name: "Google Workspace", description: "Gmail, Drive, Calendar", available: true },
-                          { provider: "SALESFORCE", name: "Salesforce", description: "CRM data, contacts", available: true },
-                          { provider: "SERVICENOW", name: "ServiceNow", description: "ITSM, CMDB records", available: true },
-                          { provider: "AWS", name: "AWS", description: "S3, DynamoDB, RDS", available: true },
-                          { provider: "AZURE", name: "Azure", description: "Blob Storage, SQL, AD", available: true },
-                          { provider: "GCP", name: "GCP", description: "Cloud Storage, BigQuery", available: true },
-                        ]
-                    ).map((p) => {
-                      const icon = getProviderIcon(p.provider);
-                      return (
-                        <button
-                          key={p.provider}
-                          type="button"
-                          onClick={() => handleSelectProvider(p.provider)}
-                          className="group relative flex flex-col items-center gap-2 rounded-lg border border-gray-200 p-4 text-center transition-all hover:border-brand-300 hover:bg-brand-50 hover:shadow-sm"
-                        >
-                          {p.comingSoon && (
-                            <span className="absolute -right-1 -top-1 rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-semibold text-yellow-700">
-                              Coming Soon
-                            </span>
-                          )}
-                          <div
-                            className={`flex h-10 w-10 items-center justify-center rounded-full ${icon.bg} ${icon.text} text-xs font-bold transition-transform group-hover:scale-110`}
-                          >
-                            {icon.label}
-                          </div>
-                          <span className="text-sm font-medium text-gray-900">
-                            {p.name}
-                          </span>
-                          <span className="text-xs text-gray-500 line-clamp-2">
-                            {p.description}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+            <div className="max-h-[60vh] overflow-y-auto px-6 py-5">
+              {addStep === 1 && renderPhaseGroupedProviders()}
 
               {addStep === 2 && (
                 <div>

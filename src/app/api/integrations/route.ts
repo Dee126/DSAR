@@ -10,7 +10,12 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 const createIntegrationSchema = z.object({
-  provider: z.enum(["M365", "SHAREPOINT", "GOOGLE_WORKSPACE", "SALESFORCE", "SERVICENOW", "AWS", "AZURE", "GCP"]),
+  provider: z.enum([
+    "M365", "EXCHANGE_ONLINE", "SHAREPOINT", "ONEDRIVE",
+    "GOOGLE_WORKSPACE", "SALESFORCE", "SERVICENOW",
+    "ATLASSIAN_JIRA", "ATLASSIAN_CONFLUENCE", "WORKDAY", "SAP_SUCCESSFACTORS", "OKTA",
+    "AWS", "AZURE", "GCP",
+  ]),
   name: z.string().min(1).max(200),
   config: z.record(z.unknown()).optional(),
   secrets: z.record(z.string()).optional(),

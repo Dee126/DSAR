@@ -90,11 +90,22 @@ enum LegalReviewStatus {
 }
 
 enum IntegrationProvider {
-  M365
-  SHAREPOINT
+  // Phase 1 — Microsoft (all via Graph API)
+  M365              // Entra ID / User Directory
+  EXCHANGE_ONLINE   // Exchange Online mailbox search
+  SHAREPOINT        // SharePoint Online sites/drives
+  ONEDRIVE          // OneDrive for Business
+  // Phase 2 — High business value
   GOOGLE_WORKSPACE
   SALESFORCE
   SERVICENOW
+  // Phase 3 — Customer-dependent
+  ATLASSIAN_JIRA
+  ATLASSIAN_CONFLUENCE
+  WORKDAY
+  SAP_SUCCESSFACTORS
+  OKTA
+  // Phase 4 — Cloud providers (DSAR-relevant only if PII in storage/logs)
   AWS
   AZURE
   GCP
