@@ -12,7 +12,11 @@ type Resource =
   | "systems"
   | "export"
   | "integrations"
-  | "copilot";
+  | "copilot"
+  | "copilot_governance"
+  | "legal_hold"
+  | "redaction"
+  | "governance_report";
 
 type Action = "create" | "read" | "update" | "delete" | "manage";
 
@@ -29,6 +33,10 @@ const PERMISSIONS: Record<UserRole, Partial<Record<Resource, Action[]>>> = {
     export: ["read"],
     integrations: ["create", "read", "update", "delete", "manage"],
     copilot: ["create", "read", "update", "delete", "manage"],
+    copilot_governance: ["read", "update", "manage"],
+    legal_hold: ["create", "read", "update", "delete"],
+    redaction: ["create", "read", "update"],
+    governance_report: ["read"],
   },
   TENANT_ADMIN: {
     cases: ["create", "read", "update", "delete"],
@@ -42,6 +50,10 @@ const PERMISSIONS: Record<UserRole, Partial<Record<Resource, Action[]>>> = {
     export: ["read"],
     integrations: ["create", "read", "update", "delete", "manage"],
     copilot: ["create", "read", "update", "manage"],
+    copilot_governance: ["read", "update", "manage"],
+    legal_hold: ["create", "read", "update", "delete"],
+    redaction: ["create", "read", "update"],
+    governance_report: ["read"],
   },
   DPO: {
     cases: ["create", "read", "update"],
@@ -55,6 +67,10 @@ const PERMISSIONS: Record<UserRole, Partial<Record<Resource, Action[]>>> = {
     export: ["read"],
     integrations: ["create", "read", "update", "delete"],
     copilot: ["create", "read", "update", "manage"],
+    copilot_governance: ["read", "update", "manage"],
+    legal_hold: ["create", "read", "update", "delete"],
+    redaction: ["create", "read", "update"],
+    governance_report: ["read"],
   },
   CASE_MANAGER: {
     cases: ["create", "read", "update"],
@@ -66,6 +82,9 @@ const PERMISSIONS: Record<UserRole, Partial<Record<Resource, Action[]>>> = {
     export: ["read"],
     integrations: ["read"],
     copilot: ["create", "read"],
+    copilot_governance: ["read"],
+    legal_hold: ["read"],
+    redaction: ["read"],
   },
   CONTRIBUTOR: {
     cases: ["read"],
@@ -129,4 +148,20 @@ export function canUseCopilot(role: UserRole): boolean {
 
 export function canReadCopilot(role: UserRole): boolean {
   return hasPermission(role, "copilot", "read");
+}
+
+export function canManageGovernance(role: UserRole): boolean {
+  return hasPermission(role, "copilot_governance", "manage");
+}
+
+export function canViewGovernanceReport(role: UserRole): boolean {
+  return hasPermission(role, "governance_report", "read");
+}
+
+export function canManageLegalHold(role: UserRole): boolean {
+  return hasPermission(role, "legal_hold", "create");
+}
+
+export function canReviewRedaction(role: UserRole): boolean {
+  return hasPermission(role, "redaction", "update");
 }

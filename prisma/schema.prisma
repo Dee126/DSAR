@@ -260,6 +260,11 @@ model Tenant {
   detectorResults    DetectorResult[]
   copilotSummaries   CopilotSummary[]
   exportArtifacts    ExportArtifact[]
+  governanceSettings CopilotGovernanceSettings?
+  legalHolds         LegalHold[]
+  redactionSuggestions RedactionSuggestion[]
+  breakGlassEvents   BreakGlassEvent[]
+  exportApprovals    ExportApproval[]
 
   @@map("tenants")
 }
@@ -290,6 +295,12 @@ model User {
   copilotRunApprovals   CopilotRun[]        @relation("CopilotRunLegalApprover")
   copilotSummaries      CopilotSummary[]    @relation("CopilotSummaryCreatedBy")
   exportArtifacts       ExportArtifact[]    @relation("ExportArtifactCreatedBy")
+  legalHoldsEnabled     LegalHold[]         @relation("LegalHoldEnabledBy")
+  legalHoldsDisabled    LegalHold[]         @relation("LegalHoldDisabledBy")
+  redactionReviews      RedactionSuggestion[] @relation("RedactionReviewedBy")
+  breakGlassEventsActor BreakGlassEvent[]   @relation("BreakGlassActor")
+  breakGlassEventsAck   BreakGlassEvent[]   @relation("BreakGlassAcknowledgedBy")
+  exportApprovals       ExportApproval[]    @relation("ExportApprovalApprover")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -356,6 +367,7 @@ model DSARCase {
   legalReviews        LegalReview[]
   copilotRuns         CopilotRun[]
   identityProfiles    IdentityProfile[]
+  legalHolds          LegalHold[]
 
   @@unique([tenantId, caseNumber])
   @@index([tenantId])
@@ -620,8 +632,9 @@ model CopilotRun {
   queries         CopilotQuery[]
   evidenceItems   EvidenceItem[]
   findings        Finding[]
-  summaries       CopilotSummary[]
-  exports         ExportArtifact[]
+  summaries              CopilotSummary[]
+  exports                ExportArtifact[]
+  redactionSuggestions   RedactionSuggestion[]
 
   @@index([tenantId, caseId])
   @@index([tenantId, status])
@@ -789,10 +802,141 @@ model ExportArtifact {
   createdByUserId String
   createdAt       DateTime              @default(now())
 
-  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  run       CopilotRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-  createdBy User       @relation("ExportArtifactCreatedBy", fields: [createdByUserId], references: [id])
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  run       CopilotRun      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  createdBy User            @relation("ExportArtifactCreatedBy", fields: [createdByUserId], references: [id])
+  approvals ExportApproval[]
 
   @@index([tenantId, runId])
   @@map("export_artifacts")
+}
+
+// ─── Governance & Safety Models ─────────────────────────────────────────────
+
+enum RedactionStatus {
+  SUGGESTED
+  APPROVED
+  REJECTED
+}
+
+enum BreakGlassEventType {
+  RATE_LIMIT_EXCEEDED
+  ANOMALY_MANY_RUNS
+  ANOMALY_MANY_SUBJECTS
+  ANOMALY_PERMISSION_DENIED
+  MANUAL_OVERRIDE
+}
+
+model CopilotGovernanceSettings {
+  id                          String   @id @default(uuid())
+  tenantId                    String   @unique
+  copilotEnabled              Boolean  @default(true)
+  allowedProviderPhases       Json     @default("[1]")      // Array of phases [1,2,3,4]
+  defaultExecutionMode        String   @default("METADATA_ONLY")
+  allowContentScanning        Boolean  @default(false)
+  allowOcr                    Boolean  @default(false)
+  allowLlmSummaries           Boolean  @default(false)
+  maxRunsPerDayTenant         Int      @default(100)
+  maxRunsPerDayUser           Int      @default(20)
+  maxEvidenceItemsPerRun      Int      @default(10000)
+  maxContentScanBytes         Int      @default(512000)
+  maxConcurrentRuns           Int      @default(3)
+  dueSoonWindowDays           Int      @default(7)
+  artifactRetentionDays       Int      @default(90)
+  twoPersonApprovalForExport  Boolean  @default(false)
+  requireJustification        Boolean  @default(true)
+  requireConfirmation         Boolean  @default(true)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("copilot_governance_settings")
+}
+
+model LegalHold {
+  id            String    @id @default(uuid())
+  tenantId      String
+  caseId        String
+  enabled       Boolean   @default(true)
+  reason        String
+  enabledByUserId  String
+  enabledAt     DateTime  @default(now())
+  disabledByUserId String?
+  disabledAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case      DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  enabledBy User     @relation("LegalHoldEnabledBy", fields: [enabledByUserId], references: [id])
+  disabledBy User?   @relation("LegalHoldDisabledBy", fields: [disabledByUserId], references: [id])
+
+  @@index([tenantId, caseId])
+  @@map("legal_holds")
+}
+
+model RedactionSuggestion {
+  id                String           @id @default(uuid())
+  tenantId          String
+  caseId            String
+  runId             String
+  evidenceItemId    String?
+  elementType       String           // e.g. "EMAIL_ADDRESS", "NAME_FULL"
+  originalSnippet   String           // Masked version of the PII found
+  suggestedRedaction String          // Proposed redaction text
+  reason            String?          // Why this redaction is suggested
+  status            RedactionStatus  @default(SUGGESTED)
+  reviewedByUserId  String?
+  reviewedAt        DateTime?
+  reviewNote        String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  run        CopilotRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  reviewedBy User?      @relation("RedactionReviewedBy", fields: [reviewedByUserId], references: [id])
+
+  @@index([tenantId, runId])
+  @@index([tenantId, caseId])
+  @@map("redaction_suggestions")
+}
+
+model BreakGlassEvent {
+  id            String                @id @default(uuid())
+  tenantId      String
+  actorUserId   String?
+  eventType     BreakGlassEventType
+  description   String
+  metadata      Json?
+  caseId        String?
+  acknowledged  Boolean               @default(false)
+  acknowledgedByUserId String?
+  acknowledgedAt DateTime?
+  createdAt     DateTime              @default(now())
+
+  tenant        Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actor         User?  @relation("BreakGlassActor", fields: [actorUserId], references: [id])
+  acknowledgedBy User? @relation("BreakGlassAcknowledgedBy", fields: [acknowledgedByUserId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, eventType])
+  @@map("break_glass_events")
+}
+
+model ExportApproval {
+  id                String    @id @default(uuid())
+  tenantId          String
+  exportArtifactId  String
+  approverUserId    String
+  approved          Boolean
+  note              String?
+  createdAt         DateTime  @default(now())
+
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  export    ExportArtifact @relation(fields: [exportArtifactId], references: [id], onDelete: Cascade)
+  approver  User           @relation("ExportApprovalApprover", fields: [approverUserId], references: [id])
+
+  @@index([tenantId, exportArtifactId])
+  @@map("export_approvals")
 }
