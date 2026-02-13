@@ -29,6 +29,7 @@ async function main() {
 
   // Create users
   const passwordHash = await hash("admin123456", 12);
+  const danielPasswordHash = await hash("admin123", 12);
 
   const admin = await prisma.user.create({
     data: {
@@ -80,7 +81,17 @@ async function main() {
     },
   });
 
-  console.log("Created 5 users (password: admin123456 for all)");
+  const daniel = await prisma.user.create({
+    data: {
+      tenantId: tenant.id,
+      email: "daniel.schormann@gmail.com",
+      name: "Daniel Schormann",
+      passwordHash: danielPasswordHash,
+      role: UserRole.TENANT_ADMIN,
+    },
+  });
+
+  console.log("Created 6 users");
 
   // Create systems (processor map)
   const crmSystem = await prisma.system.create({
@@ -512,12 +523,13 @@ async function main() {
 
   console.log("\n--- Seed Complete ---");
   console.log("Tenant: Acme Corp");
-  console.log("Users (all password: admin123456):");
-  console.log("  admin@acme-corp.com    (TENANT_ADMIN)");
-  console.log("  dpo@acme-corp.com      (DPO)");
-  console.log("  manager@acme-corp.com  (CASE_MANAGER)");
-  console.log("  contributor@acme-corp.com (CONTRIBUTOR)");
-  console.log("  viewer@acme-corp.com   (READ_ONLY)");
+  console.log("Users:");
+  console.log("  daniel.schormann@gmail.com (TENANT_ADMIN) - password: admin123");
+  console.log("  admin@acme-corp.com    (TENANT_ADMIN) - password: admin123456");
+  console.log("  dpo@acme-corp.com      (DPO) - password: admin123456");
+  console.log("  manager@acme-corp.com  (CASE_MANAGER) - password: admin123456");
+  console.log("  contributor@acme-corp.com (CONTRIBUTOR) - password: admin123456");
+  console.log("  viewer@acme-corp.com   (READ_ONLY) - password: admin123456");
   console.log(`Cases: ${5} (various statuses)`);
   console.log(`Systems: ${3}`);
 }
