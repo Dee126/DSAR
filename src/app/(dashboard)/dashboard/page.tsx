@@ -79,6 +79,23 @@ export default function DashboardPage() {
     issues: number;
     lastSuccessAt: string | null;
   } | null>(null);
+  const [copilotStats, setCopilotStats] = useState<{
+    totalRuns: number;
+    completedRuns: number;
+    art9Runs: number;
+    totalFindings: number;
+    recentRuns: Array<{
+      id: string;
+      status: string;
+      totalFindings: number;
+      art9Flagged: boolean;
+      art9ReviewStatus: string | null;
+      createdAt: string;
+      completedAt: string | null;
+      case: { id: string; caseNumber: string; dataSubject: { fullName: string } };
+      createdBy: { name: string };
+    }>;
+  } | null>(null);
 
   useEffect(() => {
     async function fetchCases() {
@@ -109,6 +126,20 @@ export default function DashboardPage() {
       }
     }
     fetchIntegrationHealth();
+  }, []);
+
+  useEffect(() => {
+    async function fetchCopilotStats() {
+      try {
+        const res = await fetch("/api/copilot/stats");
+        if (res.ok) {
+          setCopilotStats(await res.json());
+        }
+      } catch {
+        /* silently fail */
+      }
+    }
+    fetchCopilotStats();
   }, []);
 
   const CLOSED_STATUSES = ["CLOSED", "REJECTED"];
@@ -266,6 +297,68 @@ export default function DashboardPage() {
               Manage Integrations
             </Link>
           </div>
+        </div>
+      )}
+
+      {/* Privacy Copilot Widget */}
+      {copilotStats && copilotStats.totalRuns > 0 && (
+        <div className="card">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100">
+                <svg className="h-5 w-5 text-violet-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Privacy Copilot</h3>
+                <div className="mt-0.5 flex items-center gap-4 text-xs text-gray-500">
+                  <span>
+                    <span className="font-medium text-gray-700">{copilotStats.completedRuns}</span>/{copilotStats.totalRuns} runs completed
+                  </span>
+                  <span>
+                    <span className="font-medium text-gray-700">{copilotStats.totalFindings}</span> findings
+                  </span>
+                  {copilotStats.art9Runs > 0 && (
+                    <span className="font-medium text-red-600">
+                      {copilotStats.art9Runs} Art.&nbsp;9 flagged
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Recent Copilot Runs */}
+          {copilotStats.recentRuns.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {copilotStats.recentRuns.slice(0, 3).map((run) => (
+                <Link
+                  key={run.id}
+                  href={`/cases/${run.case.id}?tab=copilot`}
+                  className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 transition-colors hover:bg-gray-50"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                      run.status === "COMPLETED" ? "bg-green-100 text-green-700" :
+                      run.status === "RUNNING" ? "bg-yellow-100 text-yellow-700" :
+                      run.status === "FAILED" ? "bg-red-100 text-red-700" :
+                      "bg-gray-100 text-gray-700"
+                    }`}>
+                      {run.status}
+                    </span>
+                    <span className="text-sm font-medium text-gray-900">{run.case.caseNumber}</span>
+                    <span className="text-sm text-gray-500">{run.case.dataSubject.fullName}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-gray-400">
+                    <span>{run.totalFindings} findings</span>
+                    {run.art9Flagged && <span className="font-medium text-red-500">Art. 9</span>}
+                    <span>{new Date(run.createdAt).toLocaleDateString()}</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
