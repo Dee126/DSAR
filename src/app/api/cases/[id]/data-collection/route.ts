@@ -11,8 +11,12 @@ interface RouteParams {
 }
 
 const createDataCollectionSchema = z.object({
-  systemId: z.string().uuid(),
-  querySpec: z.string().optional(),
+  systemId: z.string().uuid().optional(),
+  integrationId: z.string().uuid().optional(),
+  systemLabel: z.string().optional(),
+  querySpec: z.any().optional(),
+  assignedToUserId: z.string().uuid().optional(),
+  dueDate: z.string().datetime().optional(),
 });
 
 const updateDataCollectionSchema = z.object({
@@ -20,6 +24,8 @@ const updateDataCollectionSchema = z.object({
   status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETED", "FAILED", "NOT_APPLICABLE"]).optional(),
   findingsSummary: z.string().optional(),
   recordsFound: z.number().int().min(0).optional(),
+  resultMetadata: z.any().optional(),
+  assignedToUserId: z.string().uuid().optional().nullable(),
 });
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
@@ -40,6 +46,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       include: {
         system: {
           select: { id: true, name: true, description: true, owner: true },
+        },
+        integration: {
+          select: { id: true, name: true, provider: true, status: true, healthStatus: true },
+        },
+        assignedTo: {
+          select: { id: true, name: true, email: true },
         },
       },
       orderBy: { createdAt: "asc" },
@@ -67,25 +79,53 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const body = await request.json();
     const data = createDataCollectionSchema.parse(body);
 
-    // Verify system exists in tenant
-    const system = await prisma.system.findFirst({
-      where: { id: data.systemId, tenantId: user.tenantId },
-    });
+    if (!data.systemId && !data.integrationId) {
+      throw new ApiError(400, "Either systemId or integrationId is required");
+    }
 
-    if (!system) {
-      throw new ApiError(404, "System not found");
+    // Verify system exists in tenant if provided
+    if (data.systemId) {
+      const system = await prisma.system.findFirst({
+        where: { id: data.systemId, tenantId: user.tenantId },
+      });
+      if (!system) {
+        throw new ApiError(404, "System not found");
+      }
+    }
+
+    // Verify integration exists in tenant if provided
+    let integrationLabel = data.systemLabel;
+    if (data.integrationId) {
+      const integration = await prisma.integration.findFirst({
+        where: { id: data.integrationId, tenantId: user.tenantId },
+      });
+      if (!integration) {
+        throw new ApiError(404, "Integration not found");
+      }
+      if (!integrationLabel) {
+        integrationLabel = integration.name;
+      }
     }
 
     const item = await prisma.dataCollectionItem.create({
       data: {
         tenantId: user.tenantId,
         caseId: params.id,
-        systemId: data.systemId,
-        querySpec: data.querySpec,
+        systemId: data.systemId ?? null,
+        integrationId: data.integrationId ?? null,
+        systemLabel: integrationLabel ?? null,
+        querySpec: data.querySpec ?? undefined,
+        assignedToUserId: data.assignedToUserId ?? null,
       },
       include: {
         system: {
           select: { id: true, name: true, description: true, owner: true },
+        },
+        integration: {
+          select: { id: true, name: true, provider: true, status: true, healthStatus: true },
+        },
+        assignedTo: {
+          select: { id: true, name: true, email: true },
         },
       },
     });
@@ -99,7 +139,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       entityId: item.id,
       ip: clientInfo.ip,
       userAgent: clientInfo.userAgent,
-      details: { caseId: params.id, systemId: data.systemId },
+      details: {
+        caseId: params.id,
+        systemId: data.systemId,
+        integrationId: data.integrationId,
+      },
     });
 
     return NextResponse.json(item, { status: 201 });
@@ -135,14 +179,23 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const item = await prisma.dataCollectionItem.update({
       where: { id: data.itemId },
       data: {
-        status: data.status as any,
-        findingsSummary: data.findingsSummary,
-        recordsFound: data.recordsFound,
-        completedAt: data.status === "COMPLETED" ? new Date() : undefined,
+        ...(data.status !== undefined && { status: data.status as any }),
+        ...(data.findingsSummary !== undefined && { findingsSummary: data.findingsSummary }),
+        ...(data.recordsFound !== undefined && { recordsFound: data.recordsFound }),
+        ...(data.resultMetadata !== undefined && { resultMetadata: data.resultMetadata }),
+        ...(data.assignedToUserId !== undefined && { assignedToUserId: data.assignedToUserId }),
+        ...(data.status === "IN_PROGRESS" && !existingItem.startedAt && { startedAt: new Date() }),
+        ...(data.status === "COMPLETED" && { completedAt: new Date() }),
       },
       include: {
         system: {
           select: { id: true, name: true, description: true, owner: true },
+        },
+        integration: {
+          select: { id: true, name: true, provider: true, status: true, healthStatus: true },
+        },
+        assignedTo: {
+          select: { id: true, name: true, email: true },
         },
       },
     });

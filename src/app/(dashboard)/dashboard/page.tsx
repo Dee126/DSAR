@@ -73,6 +73,12 @@ export default function DashboardPage() {
   const { data: session } = useSession();
   const [cases, setCases] = useState<DSARCase[]>([]);
   const [loading, setLoading] = useState(true);
+  const [integrationHealth, setIntegrationHealth] = useState<{
+    total: number;
+    connected: number;
+    issues: number;
+    lastSuccessAt: string | null;
+  } | null>(null);
 
   useEffect(() => {
     async function fetchCases() {
@@ -89,6 +95,20 @@ export default function DashboardPage() {
       }
     }
     fetchCases();
+  }, []);
+
+  useEffect(() => {
+    async function fetchIntegrationHealth() {
+      try {
+        const res = await fetch("/api/integrations/health");
+        if (res.ok) {
+          setIntegrationHealth(await res.json());
+        }
+      } catch {
+        /* silently fail */
+      }
+    }
+    fetchIntegrationHealth();
   }, []);
 
   const CLOSED_STATUSES = ["CLOSED", "REJECTED"];
@@ -205,6 +225,47 @@ export default function DashboardPage() {
               </p>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Integration Health Widget */}
+      {integrationHealth && integrationHealth.total > 0 && (
+        <div className="card">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${
+                integrationHealth.issues > 0 ? "bg-red-100" : "bg-green-100"
+              }`}>
+                <svg className={`h-5 w-5 ${integrationHealth.issues > 0 ? "text-red-600" : "text-green-600"}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Integration Health</h3>
+                <div className="mt-0.5 flex items-center gap-4 text-xs text-gray-500">
+                  <span>
+                    <span className="font-medium text-gray-700">{integrationHealth.connected}</span>/{integrationHealth.total} connected
+                  </span>
+                  {integrationHealth.issues > 0 && (
+                    <span className="font-medium text-red-600">
+                      {integrationHealth.issues} issue{integrationHealth.issues !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                  {integrationHealth.lastSuccessAt && (
+                    <span>
+                      Last sync: {new Date(integrationHealth.lastSuccessAt).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <Link
+              href="/integrations"
+              className="text-sm font-medium text-brand-600 hover:text-brand-700"
+            >
+              Manage Integrations
+            </Link>
+          </div>
         </div>
       )}
 

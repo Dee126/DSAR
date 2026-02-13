@@ -89,6 +89,29 @@ enum LegalReviewStatus {
   CHANGES_REQUESTED
 }
 
+enum IntegrationProvider {
+  M365
+  SHAREPOINT
+  GOOGLE_WORKSPACE
+  SALESFORCE
+  SERVICENOW
+  AWS
+  AZURE
+  GCP
+}
+
+enum IntegrationStatus {
+  ENABLED
+  DISABLED
+}
+
+enum IntegrationHealthStatus {
+  HEALTHY
+  DEGRADED
+  FAILED
+  NOT_CONFIGURED
+}
+
 // ─── Models ─────────────────────────────────────────────────────────────────
 
 model Tenant {
@@ -112,6 +135,7 @@ model Tenant {
   communicationLogs  CommunicationLog[]
   dataCollectionItems DataCollectionItem[]
   legalReviews       LegalReview[]
+  integrations       Integration[]
 
   @@map("tenants")
 }
@@ -136,6 +160,8 @@ model User {
   auditLogs          AuditLog[]
   stateTransitions   DSARStateTransition[]
   legalReviews       LegalReview[]       @relation("LegalReviewReviewer")
+  ownedIntegrations  Integration[]       @relation("IntegrationOwner")
+  assignedCollections DataCollectionItem[] @relation("DataCollectionAssignee")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -355,21 +381,28 @@ model CommunicationLog {
 }
 
 model DataCollectionItem {
-  id              String               @id @default(uuid())
-  tenantId        String
-  caseId          String
-  systemId        String
-  querySpec       String?
-  status          DataCollectionStatus @default(PENDING)
-  findingsSummary String?
-  recordsFound    Int?
-  completedAt     DateTime?
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
+  id                String               @id @default(uuid())
+  tenantId          String
+  caseId            String
+  systemId          String?
+  integrationId     String?
+  systemLabel       String?
+  querySpec         Json?
+  status            DataCollectionStatus @default(PENDING)
+  findingsSummary   String?
+  recordsFound      Int?
+  resultMetadata    Json?
+  assignedToUserId  String?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
-  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  case   DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  system System   @relation(fields: [systemId], references: [id])
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case        DSARCase     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  system      System?      @relation(fields: [systemId], references: [id])
+  integration Integration? @relation(fields: [integrationId], references: [id])
+  assignedTo  User?        @relation("DataCollectionAssignee", fields: [assignedToUserId], references: [id])
 
   @@index([tenantId, caseId])
   @@map("data_collection_items")
@@ -395,4 +428,29 @@ model LegalReview {
 
   @@index([tenantId, caseId])
   @@map("legal_reviews")
+}
+
+model Integration {
+  id                 String                  @id @default(uuid())
+  tenantId           String
+  provider           IntegrationProvider
+  name               String
+  status             IntegrationStatus       @default(DISABLED)
+  config             Json?
+  secretRef          String?
+  healthStatus       IntegrationHealthStatus @default(NOT_CONFIGURED)
+  lastHealthCheckAt  DateTime?
+  lastSuccessAt      DateTime?
+  lastError          String?
+  ownerUserId        String?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner               User?                @relation("IntegrationOwner", fields: [ownerUserId], references: [id])
+  dataCollectionItems DataCollectionItem[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("integrations")
 }

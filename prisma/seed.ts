@@ -10,6 +10,7 @@ async function main() {
   await prisma.auditLog.deleteMany();
   await prisma.legalReview.deleteMany();
   await prisma.dataCollectionItem.deleteMany();
+  await prisma.integration.deleteMany();
   await prisma.communicationLog.deleteMany();
   await prisma.comment.deleteMany();
   await prisma.document.deleteMany();
@@ -145,6 +146,74 @@ async function main() {
 
   console.log("Created 4 systems");
 
+  // Helper for due dates
+  const daysFromNow = (days: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return d;
+  };
+
+  const daysAgo = (days: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - days);
+    return d;
+  };
+
+  // Create integrations
+  const m365Integration = await prisma.integration.create({
+    data: {
+      tenantId: tenant.id,
+      provider: "M365",
+      name: "Acme Corp Microsoft 365",
+      status: "ENABLED",
+      config: {
+        tenantId: "acme-corp-tenant-id",
+        clientId: "acme-m365-client-id",
+        allowedScopes: "Mail.Read, User.Read.All, MailboxSettings.Read",
+        allowedMailboxes: "",
+      },
+      healthStatus: "HEALTHY",
+      lastHealthCheckAt: new Date(),
+      lastSuccessAt: new Date(),
+      ownerUserId: admin.id,
+    },
+  });
+
+  const spIntegration = await prisma.integration.create({
+    data: {
+      tenantId: tenant.id,
+      provider: "SHAREPOINT",
+      name: "Acme SharePoint Online",
+      status: "ENABLED",
+      config: {
+        tenantId: "acme-corp-tenant-id",
+        clientId: "acme-sp-client-id",
+        allowedSiteIds: "finance-site,hr-site",
+      },
+      healthStatus: "HEALTHY",
+      lastHealthCheckAt: new Date(),
+      lastSuccessAt: daysAgo(1),
+      ownerUserId: admin.id,
+    },
+  });
+
+  const sfIntegration = await prisma.integration.create({
+    data: {
+      tenantId: tenant.id,
+      provider: "SALESFORCE",
+      name: "Acme Salesforce CRM",
+      status: "DISABLED",
+      config: {
+        instanceUrl: "https://acme-corp.salesforce.com",
+        clientId: "acme-sf-consumer-key",
+      },
+      healthStatus: "NOT_CONFIGURED",
+      ownerUserId: admin.id,
+    },
+  });
+
+  console.log("Created 3 integrations");
+
   // Create data subjects
   const subject1 = await prisma.dataSubject.create({
     data: {
@@ -189,19 +258,6 @@ async function main() {
   });
 
   console.log("Created 4 data subjects");
-
-  // Helper for due dates
-  const daysFromNow = (days: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    return d;
-  };
-
-  const daysAgo = (days: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() - days);
-    return d;
-  };
 
   // Create DSAR cases
   const case1 = await prisma.dSARCase.create({
@@ -586,60 +642,82 @@ async function main() {
         tenantId: tenant.id,
         caseId: case1.id,
         systemId: crmSystem.id,
-        querySpec: "SELECT * FROM contacts WHERE email = 'john.smith@example.com'",
+        querySpec: { type: "sql", query: "SELECT * FROM contacts WHERE email = 'john.smith@example.com'" },
         status: "IN_PROGRESS",
         findingsSummary: "Customer record found with purchase history and support tickets",
         recordsFound: 47,
+        assignedToUserId: contributor.id,
+        startedAt: daysAgo(8),
       },
       {
         tenantId: tenant.id,
         caseId: case1.id,
         systemId: hrSystem.id,
-        querySpec: "Search by name and email in employee directory",
+        querySpec: { type: "search", query: "Search by name and email in employee directory" },
         status: "COMPLETED",
         findingsSummary: "No employee records found for this data subject",
         recordsFound: 0,
         completedAt: daysAgo(5),
+        assignedToUserId: caseManager.id,
       },
       {
         tenantId: tenant.id,
         caseId: case1.id,
-        systemId: analyticsSystem.id,
-        querySpec: "Export user profile and event data for user ID matching john.smith@example.com",
+        integrationId: m365Integration.id,
+        systemLabel: "M365 - Mailbox Search",
+        querySpec: { templateId: "mailbox_search", mailbox: "john.smith@example.com", searchTerms: "" },
         status: "PENDING",
+        assignedToUserId: contributor.id,
       },
       {
         tenantId: tenant.id,
         caseId: case1.id,
         systemId: emailSystem.id,
-        querySpec: "Lookup subscriber lists and campaign interactions for john.smith@example.com",
+        querySpec: { type: "search", query: "Lookup subscriber lists and campaign interactions for john.smith@example.com" },
         status: "PENDING",
+        assignedToUserId: contributor.id,
       },
       {
         tenantId: tenant.id,
         caseId: case2.id,
         systemId: crmSystem.id,
-        querySpec: "Identify all records for jane.doe@example.com",
+        querySpec: { type: "search", query: "Identify all records for jane.doe@example.com" },
         status: "COMPLETED",
         findingsSummary: "Found 23 CRM records including contact info, purchase history, and support interactions",
         recordsFound: 23,
         completedAt: daysAgo(12),
+        assignedToUserId: contributor.id,
       },
       {
         tenantId: tenant.id,
         caseId: case2.id,
-        systemId: analyticsSystem.id,
-        querySpec: "Export all event/session data for jane.doe@example.com",
+        integrationId: m365Integration.id,
+        systemLabel: "M365 - User Profile Lookup",
+        querySpec: { templateId: "user_lookup", userIdentifier: "jane.doe@example.com" },
         status: "COMPLETED",
-        findingsSummary: "Found 156 analytics events spanning 8 months of activity",
-        recordsFound: 156,
+        findingsSummary: "User profile found in Azure AD with department and contact info",
+        recordsFound: 1,
         completedAt: daysAgo(11),
+        resultMetadata: { userIdentifier: "jane.doe@example.com", found: true, fields: ["displayName", "mail", "department"] },
+        assignedToUserId: contributor.id,
+      },
+      {
+        tenantId: tenant.id,
+        caseId: case2.id,
+        integrationId: spIntegration.id,
+        systemLabel: "SharePoint - Finance Site",
+        querySpec: { templateId: "site_search", siteId: "finance-site", searchTerms: "jane doe" },
+        status: "COMPLETED",
+        findingsSummary: "Found 3 documents referencing data subject on Finance SharePoint site",
+        recordsFound: 3,
+        completedAt: daysAgo(11),
+        assignedToUserId: caseManager.id,
       },
       {
         tenantId: tenant.id,
         caseId: case2.id,
         systemId: emailSystem.id,
-        querySpec: "Find all email marketing data for jane.doe@example.com",
+        querySpec: { type: "search", query: "Find all email marketing data for jane.doe@example.com" },
         status: "COMPLETED",
         findingsSummary: "Subscribed to 3 mailing lists, 12 campaigns delivered",
         recordsFound: 15,
@@ -748,6 +826,38 @@ async function main() {
         entityId: case1.id,
         details: { system: "CRM System", status: "IN_PROGRESS" },
       },
+      {
+        tenantId: tenant.id,
+        actorUserId: admin.id,
+        action: "INTEGRATION_CREATED",
+        entityType: "Integration",
+        entityId: m365Integration.id,
+        details: { provider: "M365", name: "Acme Corp Microsoft 365" },
+      },
+      {
+        tenantId: tenant.id,
+        actorUserId: admin.id,
+        action: "INTEGRATION_ENABLED",
+        entityType: "Integration",
+        entityId: m365Integration.id,
+        details: { provider: "M365" },
+      },
+      {
+        tenantId: tenant.id,
+        actorUserId: admin.id,
+        action: "INTEGRATION_TESTED",
+        entityType: "Integration",
+        entityId: m365Integration.id,
+        details: { provider: "M365", healthy: true, message: "Connected successfully" },
+      },
+      {
+        tenantId: tenant.id,
+        actorUserId: admin.id,
+        action: "INTEGRATION_CREATED",
+        entityType: "Integration",
+        entityId: spIntegration.id,
+        details: { provider: "SHAREPOINT", name: "Acme SharePoint Online" },
+      },
     ],
   });
 
@@ -764,8 +874,9 @@ async function main() {
   console.log("  viewer@acme-corp.com   (READ_ONLY) - password: admin123456");
   console.log(`Cases: 5 (various statuses)`);
   console.log(`Systems: 4`);
+  console.log(`Integrations: 3 (M365 + SharePoint enabled, Salesforce disabled)`);
   console.log(`Communication Logs: 7`);
-  console.log(`Data Collection Items: 7`);
+  console.log(`Data Collection Items: 8`);
   console.log(`Legal Reviews: 3`);
 }
 

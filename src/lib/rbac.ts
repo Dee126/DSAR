@@ -10,7 +10,8 @@ type Resource =
   | "settings"
   | "audit_logs"
   | "systems"
-  | "export";
+  | "export"
+  | "integrations";
 
 type Action = "create" | "read" | "update" | "delete" | "manage";
 
@@ -25,6 +26,7 @@ const PERMISSIONS: Record<UserRole, Partial<Record<Resource, Action[]>>> = {
     audit_logs: ["read"],
     systems: ["create", "read", "update", "delete"],
     export: ["read"],
+    integrations: ["create", "read", "update", "delete", "manage"],
   },
   TENANT_ADMIN: {
     cases: ["create", "read", "update", "delete"],
@@ -36,6 +38,7 @@ const PERMISSIONS: Record<UserRole, Partial<Record<Resource, Action[]>>> = {
     audit_logs: ["read"],
     systems: ["create", "read", "update", "delete"],
     export: ["read"],
+    integrations: ["create", "read", "update", "delete", "manage"],
   },
   DPO: {
     cases: ["create", "read", "update"],
@@ -47,6 +50,7 @@ const PERMISSIONS: Record<UserRole, Partial<Record<Resource, Action[]>>> = {
     audit_logs: ["read"],
     systems: ["read"],
     export: ["read"],
+    integrations: ["create", "read", "update", "delete"],
   },
   CASE_MANAGER: {
     cases: ["create", "read", "update"],
@@ -56,6 +60,7 @@ const PERMISSIONS: Record<UserRole, Partial<Record<Resource, Action[]>>> = {
     users: ["read"],
     systems: ["read"],
     export: ["read"],
+    integrations: ["read"],
   },
   CONTRIBUTOR: {
     cases: ["read"],
@@ -63,12 +68,14 @@ const PERMISSIONS: Record<UserRole, Partial<Record<Resource, Action[]>>> = {
     documents: ["create", "read"],
     comments: ["create", "read"],
     systems: ["read"],
+    integrations: ["read"],
   },
   READ_ONLY: {
     cases: ["read"],
     tasks: ["read"],
     documents: ["read"],
     comments: ["read"],
+    integrations: ["read"],
   },
 };
 
@@ -104,4 +111,8 @@ export function canAccessSettings(role: UserRole): boolean {
 
 export function canExport(role: UserRole): boolean {
   return hasPermission(role, "export", "read");
+}
+
+export function canManageIntegrations(role: UserRole): boolean {
+  return hasPermission(role, "integrations", "create");
 }
