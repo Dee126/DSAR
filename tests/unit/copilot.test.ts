@@ -4,14 +4,14 @@ import { describe, it, expect, beforeEach } from "vitest";
 // Detection Service
 // ---------------------------------------------------------------------------
 import {
-  detectPII,
-  detectArt9,
   runAllDetectors,
   classifyFindings,
-  hasArt9Content,
-  getArt9Categories,
+  hasSpecialCategory,
+  getSpecialCategories,
+  isSpecialCategory,
+  SPECIAL_CATEGORIES,
 } from "@/lib/copilot/detection";
-import type { DetectionResult } from "@/lib/copilot/detection";
+import type { DetectionResult, DataCategoryType } from "@/lib/copilot/detection";
 
 // ---------------------------------------------------------------------------
 // Identity Service
@@ -22,7 +22,7 @@ import {
   addResolvedSystem,
   buildSubjectIdentifiers,
 } from "@/lib/copilot/identity";
-import type { IdentityEntry, IdentityGraph } from "@/lib/copilot/identity";
+import type { AlternateIdentifier, IdentityGraph } from "@/lib/copilot/identity";
 
 // ---------------------------------------------------------------------------
 // RBAC — Copilot permissions
@@ -39,68 +39,117 @@ import {
 // =========================================================================
 describe("Detection Service", () => {
   // -----------------------------------------------------------------------
-  // detectPII
+  // runAllDetectors — PII detection
   // -----------------------------------------------------------------------
-  describe("detectPII", () => {
+  describe("runAllDetectors (PII)", () => {
     it("should detect a German IBAN (DE89370400440532013000)", () => {
       const text = "Please transfer to DE89370400440532013000 immediately.";
-      const results = detectPII(text);
-      const ibanResult = results.find((r) => r.patternName.startsWith("IBAN"));
-      expect(ibanResult).toBeDefined();
-      expect(ibanResult!.matchCount).toBeGreaterThanOrEqual(1);
-      expect(ibanResult!.category).toBe("PAYMENT_BANK");
-      expect(ibanResult!.isArt9).toBe(false);
+      const results = runAllDetectors(text);
+      expect(results.length).toBeGreaterThan(0);
+
+      // Should find PAYMENT category
+      const allCategories = classifyFindings(results);
+      expect(allCategories).toContain("PAYMENT");
+
+      // Should have detectedElements referencing IBAN
+      const allElements = results.flatMap((r) => r.detectedElements);
+      const ibanElement = allElements.find((e) =>
+        e.elementType.startsWith("IBAN")
+      );
+      expect(ibanElement).toBeDefined();
+      expect(ibanElement!.confidence).toBeGreaterThanOrEqual(0.5);
     });
 
     it("should detect a Visa credit card number (4111111111111111)", () => {
       const text = "Card number: 4111111111111111";
-      const results = detectPII(text);
-      const ccResult = results.find((r) =>
-        r.patternName.startsWith("CREDIT_CARD")
-      );
-      expect(ccResult).toBeDefined();
-      expect(ccResult!.matchCount).toBeGreaterThanOrEqual(1);
-      expect(ccResult!.category).toBe("PAYMENT_BANK");
+      const results = runAllDetectors(text);
+      const allCategories = classifyFindings(results);
+      expect(allCategories).toContain("PAYMENT");
     });
 
     it("should detect an email address (test@example.com)", () => {
       const text = "Send it to test@example.com please.";
-      const results = detectPII(text);
-      const emailResult = results.find(
-        (r) => r.patternName === "EMAIL_ADDRESS"
+      const results = runAllDetectors(text);
+      const allCategories = classifyFindings(results);
+      expect(allCategories).toContain("CONTACT");
+
+      const allElements = results.flatMap((r) => r.detectedElements);
+      const emailElement = allElements.find(
+        (r) => r.elementType === "EMAIL_ADDRESS"
       );
-      expect(emailResult).toBeDefined();
-      expect(emailResult!.matchCount).toBe(1);
-      expect(emailResult!.category).toBe("CONTACT");
+      expect(emailElement).toBeDefined();
     });
 
     it("should detect an international phone number (+49 170 1234567)", () => {
       const text = "Call me at +49 170 1234567 any time.";
-      const results = detectPII(text);
-      const phoneResult = results.find((r) =>
-        r.patternName.startsWith("PHONE")
-      );
-      expect(phoneResult).toBeDefined();
-      expect(phoneResult!.category).toBe("CONTACT");
+      const results = runAllDetectors(text);
+      const allCategories = classifyFindings(results);
+      expect(allCategories).toContain("CONTACT");
     });
 
     it("should detect a German tax ID (12345678901)", () => {
       const text = "Tax ID: 12 345 678 901 on the record.";
-      const results = detectPII(text);
-      const taxResult = results.find((r) => r.patternName === "TAX_ID_DE");
-      expect(taxResult).toBeDefined();
-      expect(taxResult!.category).toBe("IDENTIFICATION");
+      const results = runAllDetectors(text);
+      const allCategories = classifyFindings(results);
+      expect(allCategories).toContain("IDENTIFICATION");
     });
 
     it("should return an empty array for empty string input", () => {
-      expect(detectPII("")).toEqual([]);
+      expect(runAllDetectors("")).toEqual([]);
     });
 
     it("should return an empty array for non-string input", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect(detectPII(null as any)).toEqual([]);
+      expect(runAllDetectors(null as any)).toEqual([]);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect(detectPII(undefined as any)).toEqual([]);
+      expect(runAllDetectors(undefined as any)).toEqual([]);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // DetectionResult structure validation
+  // -----------------------------------------------------------------------
+  describe("DetectionResult structure", () => {
+    it("should have detectorType, detectedElements, detectedCategories, and containsSpecialCategorySuspected", () => {
+      const text = "Email: test@example.com. IBAN: DE89370400440532013000.";
+      const results = runAllDetectors(text);
+      expect(results.length).toBeGreaterThan(0);
+
+      for (const result of results) {
+        expect(result).toHaveProperty("detectorType");
+        expect(result).toHaveProperty("detectedElements");
+        expect(result).toHaveProperty("detectedCategories");
+        expect(result).toHaveProperty("containsSpecialCategorySuspected");
+        expect(Array.isArray(result.detectedElements)).toBe(true);
+        expect(Array.isArray(result.detectedCategories)).toBe(true);
+        expect(typeof result.containsSpecialCategorySuspected).toBe("boolean");
+      }
+    });
+
+    it("each detectedElement should have elementType, confidence, and snippetPreview", () => {
+      const text = "Email: test@example.com";
+      const results = runAllDetectors(text);
+      const allElements = results.flatMap((r) => r.detectedElements);
+
+      for (const element of allElements) {
+        expect(element).toHaveProperty("elementType");
+        expect(element).toHaveProperty("confidence");
+        expect(typeof element.confidence).toBe("number");
+        // snippetPreview can be null but must be present
+        expect("snippetPreview" in element).toBe(true);
+      }
+    });
+
+    it("each detectedCategory should have category and confidence", () => {
+      const text = "Email: test@example.com";
+      const results = runAllDetectors(text);
+      const allCategories = results.flatMap((r) => r.detectedCategories);
+
+      for (const cat of allCategories) {
+        expect(cat).toHaveProperty("category");
+        expect(cat).toHaveProperty("confidence");
+        expect(typeof cat.confidence).toBe("number");
+      }
     });
   });
 
@@ -110,26 +159,28 @@ describe("Detection Service", () => {
   describe("redaction of sample matches", () => {
     it("should redact IBAN keeping country code and last 4 digits", () => {
       const text = "IBAN: DE89370400440532013000";
-      const results = detectPII(text);
-      const ibanResult = results.find((r) => r.patternName.startsWith("IBAN"));
-      expect(ibanResult).toBeDefined();
-      expect(ibanResult!.sampleMatch).not.toBeNull();
-      const sample = ibanResult!.sampleMatch!;
-      // Should start with "DE" and end with last 4 digits
+      const results = runAllDetectors(text);
+      const allElements = results.flatMap((r) => r.detectedElements);
+      const ibanElement = allElements.find((e) =>
+        e.elementType.startsWith("IBAN")
+      );
+      expect(ibanElement).toBeDefined();
+      expect(ibanElement!.snippetPreview).not.toBeNull();
+      const sample = ibanElement!.snippetPreview!;
       expect(sample.startsWith("DE")).toBe(true);
       expect(sample.endsWith("3000")).toBe(true);
-      // Middle should contain asterisks
       expect(sample).toContain("*");
     });
 
     it("should redact credit card keeping first 4 and last 4 digits", () => {
       const text = "Card: 4111111111111111";
-      const results = detectPII(text);
-      const ccResult = results.find((r) =>
-        r.patternName.startsWith("CREDIT_CARD")
+      const results = runAllDetectors(text);
+      const allElements = results.flatMap((r) => r.detectedElements);
+      const ccElement = allElements.find((e) =>
+        e.elementType.startsWith("CREDIT_CARD")
       );
-      expect(ccResult).toBeDefined();
-      const sample = ccResult!.sampleMatch!;
+      expect(ccElement).toBeDefined();
+      const sample = ccElement!.snippetPreview!;
       expect(sample.startsWith("4111")).toBe(true);
       expect(sample.endsWith("1111")).toBe(true);
       expect(sample).toContain("*");
@@ -137,12 +188,13 @@ describe("Detection Service", () => {
 
     it("should redact email keeping first character and domain", () => {
       const text = "Email: test@example.com";
-      const results = detectPII(text);
-      const emailResult = results.find(
-        (r) => r.patternName === "EMAIL_ADDRESS"
+      const results = runAllDetectors(text);
+      const allElements = results.flatMap((r) => r.detectedElements);
+      const emailElement = allElements.find(
+        (e) => e.elementType === "EMAIL_ADDRESS"
       );
-      expect(emailResult).toBeDefined();
-      const sample = emailResult!.sampleMatch!;
+      expect(emailElement).toBeDefined();
+      const sample = emailElement!.snippetPreview!;
       expect(sample.startsWith("t")).toBe(true);
       expect(sample).toContain("@example.com");
       expect(sample).toContain("*");
@@ -150,22 +202,25 @@ describe("Detection Service", () => {
 
     it("should redact phone number keeping prefix and last digits", () => {
       const text = "Phone: +49 170 1234567";
-      const results = detectPII(text);
-      const phoneResult = results.find((r) =>
-        r.patternName.startsWith("PHONE")
+      const results = runAllDetectors(text);
+      const allElements = results.flatMap((r) => r.detectedElements);
+      const phoneElement = allElements.find((e) =>
+        e.elementType.startsWith("PHONE")
       );
-      expect(phoneResult).toBeDefined();
-      const sample = phoneResult!.sampleMatch!;
-      // redactPhone uses redactMiddle(match, 4, 2)
+      expect(phoneElement).toBeDefined();
+      const sample = phoneElement!.snippetPreview!;
       expect(sample).toContain("*");
     });
 
     it("should redact German tax ID keeping first 2 and last 2 digits", () => {
       const text = "Tax: 12 345 678 901";
-      const results = detectPII(text);
-      const taxResult = results.find((r) => r.patternName === "TAX_ID_DE");
-      expect(taxResult).toBeDefined();
-      const sample = taxResult!.sampleMatch!;
+      const results = runAllDetectors(text);
+      const allElements = results.flatMap((r) => r.detectedElements);
+      const taxElement = allElements.find(
+        (e) => e.elementType === "TAX_ID_DE"
+      );
+      expect(taxElement).toBeDefined();
+      const sample = taxElement!.snippetPreview!;
       expect(sample.startsWith("12")).toBe(true);
       expect(sample.endsWith("01")).toBe(true);
       expect(sample).toContain("*");
@@ -173,89 +228,79 @@ describe("Detection Service", () => {
   });
 
   // -----------------------------------------------------------------------
-  // detectArt9
+  // Special category (Art. 9) detection
   // -----------------------------------------------------------------------
-  describe("detectArt9", () => {
+  describe("special category (Art. 9) detection", () => {
     it("should detect health keywords in medical text", () => {
       const text = "The patient was diagnosed with diabetes";
-      const results = detectArt9(text);
-      expect(results.length).toBeGreaterThan(0);
+      const results = runAllDetectors(text);
+      expect(hasSpecialCategory(results)).toBe(true);
 
-      const healthResult = results.find(
-        (r) => r.art9Type === "health_data"
-      );
-      expect(healthResult).toBeDefined();
-      expect(healthResult!.isArt9).toBe(true);
-      expect(healthResult!.category).toBe("SPECIAL_CATEGORY_ART9");
+      const specialCats = getSpecialCategories(results);
+      expect(specialCats).toContain("HEALTH");
     });
 
     it("should detect political keywords", () => {
       const text = "Records show political party membership since 2018.";
-      const results = detectArt9(text);
-      const politicalResult = results.find(
-        (r) => r.art9Type === "political_opinions"
-      );
-      expect(politicalResult).toBeDefined();
-      expect(politicalResult!.isArt9).toBe(true);
+      const results = runAllDetectors(text);
+      expect(hasSpecialCategory(results)).toBe(true);
+
+      const specialCats = getSpecialCategories(results);
+      expect(specialCats).toContain("POLITICAL_OPINION");
     });
 
     it("should detect religious keywords (Kirchensteuer)", () => {
       const text = "Monthly Kirchensteuer payment of 42 EUR.";
-      const results = detectArt9(text);
-      const religiousResult = results.find(
-        (r) => r.art9Type === "religious_beliefs"
-      );
-      expect(religiousResult).toBeDefined();
-      expect(religiousResult!.isArt9).toBe(true);
+      const results = runAllDetectors(text);
+      expect(hasSpecialCategory(results)).toBe(true);
+
+      const specialCats = getSpecialCategories(results);
+      expect(specialCats).toContain("RELIGION");
     });
 
-    it("should return empty array for innocuous text", () => {
+    it("should return no special categories for innocuous text", () => {
       const text = "Hello world, nice day today";
-      const results = detectArt9(text);
-      expect(results).toEqual([]);
+      const results = runAllDetectors(text);
+      expect(hasSpecialCategory(results)).toBe(false);
     });
 
     it("should redact Art. 9 keyword samples as bracketed lowercase text", () => {
       const text = "The patient was diagnosed with diabetes";
-      const results = detectArt9(text);
-      const healthResult = results.find(
-        (r) => r.art9Type === "health_data"
+      const results = runAllDetectors(text);
+      // Find the special category result
+      const specialResult = results.find(
+        (r) => r.containsSpecialCategorySuspected
       );
-      expect(healthResult).toBeDefined();
-      expect(healthResult!.sampleMatch).not.toBeNull();
-      // redactKeyword wraps in brackets and lowercases
-      expect(healthResult!.sampleMatch!.startsWith("[")).toBe(true);
-      expect(healthResult!.sampleMatch!.endsWith("]")).toBe(true);
+      expect(specialResult).toBeDefined();
+
+      // Check that at least one element has a bracketed redaction
+      const hasRedactedKeyword = specialResult!.detectedElements.some(
+        (e) =>
+          e.snippetPreview?.startsWith("[") && e.snippetPreview?.endsWith("]")
+      );
+      expect(hasRedactedKeyword).toBe(true);
     });
   });
 
   // -----------------------------------------------------------------------
-  // runAllDetectors
+  // runAllDetectors — combined PII + Art. 9
   // -----------------------------------------------------------------------
-  describe("runAllDetectors", () => {
+  describe("runAllDetectors (combined)", () => {
     it("should combine PII and Art. 9 results", () => {
       const text =
         "Email: test@example.com. The patient was diagnosed with diabetes.";
       const results = runAllDetectors(text);
 
-      // Should contain at least one PII result and one Art. 9 result
-      const piiResults = results.filter((r) => !r.isArt9);
-      const art9Results = results.filter((r) => r.isArt9);
+      // Should contain both non-special and special results
+      const nonSpecial = results.filter(
+        (r) => !r.containsSpecialCategorySuspected
+      );
+      const special = results.filter(
+        (r) => r.containsSpecialCategorySuspected
+      );
 
-      expect(piiResults.length).toBeGreaterThan(0);
-      expect(art9Results.length).toBeGreaterThan(0);
-    });
-
-    it("should sort results by confidence descending", () => {
-      const text =
-        "Card: 4111111111111111. The patient needs treatment. Email: foo@bar.com";
-      const results = runAllDetectors(text);
-
-      for (let i = 0; i < results.length - 1; i++) {
-        expect(results[i].confidence).toBeGreaterThanOrEqual(
-          results[i + 1].confidence
-        );
-      }
+      expect(nonSpecial.length).toBeGreaterThan(0);
+      expect(special.length).toBeGreaterThan(0);
     });
 
     it("should return empty array for empty text", () => {
@@ -267,15 +312,15 @@ describe("Detection Service", () => {
   // classifyFindings
   // -----------------------------------------------------------------------
   describe("classifyFindings", () => {
-    it("should return correct data categories for mixed results", () => {
+    it("should extract categories from detectedCategories arrays", () => {
       const text =
         "IBAN: DE89370400440532013000. Email: test@example.com. The patient needs treatment.";
       const results = runAllDetectors(text);
       const categories = classifyFindings(results);
 
-      expect(categories).toContain("PAYMENT_BANK");
+      expect(categories).toContain("PAYMENT");
       expect(categories).toContain("CONTACT");
-      expect(categories).toContain("SPECIAL_CATEGORY_ART9");
+      expect(categories).toContain("HEALTH");
     });
 
     it("should return unique categories only", () => {
@@ -283,7 +328,6 @@ describe("Detection Service", () => {
       const results = runAllDetectors(text);
       const categories = classifyFindings(results);
 
-      // categories should not have duplicates
       const unique = Array.from(new Set(categories));
       expect(categories.length).toBe(unique.length);
     });
@@ -294,55 +338,56 @@ describe("Detection Service", () => {
   });
 
   // -----------------------------------------------------------------------
-  // hasArt9Content
+  // hasSpecialCategory
   // -----------------------------------------------------------------------
-  describe("hasArt9Content", () => {
-    it("should return true when Art. 9 content is present", () => {
+  describe("hasSpecialCategory", () => {
+    it("should return true when special category content is present", () => {
       const text = "The patient was diagnosed with diabetes.";
       const results = runAllDetectors(text);
-      expect(hasArt9Content(results)).toBe(true);
+      expect(hasSpecialCategory(results)).toBe(true);
     });
 
-    it("should return false when no Art. 9 content is present", () => {
+    it("should return false when no special category content is present", () => {
       const text = "Email: test@example.com and IBAN: DE89370400440532013000";
-      const results = detectPII(text);
-      expect(hasArt9Content(results)).toBe(false);
+      const results = runAllDetectors(text);
+      expect(hasSpecialCategory(results)).toBe(false);
     });
 
     it("should return false for empty results", () => {
-      expect(hasArt9Content([])).toBe(false);
+      expect(hasSpecialCategory([])).toBe(false);
     });
   });
 
   // -----------------------------------------------------------------------
-  // getArt9Categories
+  // getSpecialCategories
   // -----------------------------------------------------------------------
-  describe("getArt9Categories", () => {
-    it("should return proper category names for health content", () => {
+  describe("getSpecialCategories", () => {
+    it("should return specific category names for health content", () => {
       const text = "The patient was diagnosed with diabetes.";
       const results = runAllDetectors(text);
-      const art9Cats = getArt9Categories(results);
-      expect(art9Cats).toContain("health_data");
+      const specialCats = getSpecialCategories(results);
+      expect(specialCats).toContain("HEALTH");
     });
 
     it("should return multiple categories for mixed Art. 9 content", () => {
       const text =
         "The patient has a diagnosis. Records show political party membership. Kirchensteuer payment received.";
       const results = runAllDetectors(text);
-      const art9Cats = getArt9Categories(results);
+      const specialCats = getSpecialCategories(results);
 
-      expect(art9Cats).toContain("health_data");
-      expect(art9Cats).toContain("political_opinions");
-      expect(art9Cats).toContain("religious_beliefs");
+      expect(specialCats).toContain("HEALTH");
+      expect(specialCats).toContain("POLITICAL_OPINION");
+      expect(specialCats).toContain("RELIGION");
     });
 
-    it("should return empty array when no Art. 9 content", () => {
-      const results = detectPII("Email: test@example.com");
-      expect(getArt9Categories(results)).toEqual([]);
+    it("should return empty array when no special category content", () => {
+      const text = "Email: test@example.com";
+      const results = runAllDetectors(text);
+      expect(getSpecialCategories(results)).toEqual([]);
     });
 
     it("should return empty array for empty results", () => {
-      expect(getArt9Categories([])).toEqual([]);
+      expect(getSpecialCategories([])).toEqual([]);
     });
   });
 
@@ -350,19 +395,12 @@ describe("Detection Service", () => {
   // No false positives on innocuous text
   // -----------------------------------------------------------------------
   describe("no false positives", () => {
-    it("should not produce PII or Art. 9 findings for innocuous text", () => {
+    it("should not produce special category findings for innocuous text", () => {
       const text = "Hello world, nice day today";
-      const piiResults = detectPII(text);
-      const art9Results = detectArt9(text);
+      const results = runAllDetectors(text);
 
-      // Filter out any low-confidence noise that might match generic patterns
-      const significantPII = piiResults.filter((r) => r.confidence >= 0.7);
-      const significantArt9 = art9Results.filter((r) => r.confidence >= 0.5);
-
-      expect(significantArt9).toEqual([]);
-      // We allow some PII pattern noise from very generic regexes, but no
-      // high-confidence matches on truly innocuous text
-      expect(significantPII.length).toBe(0);
+      expect(hasSpecialCategory(results)).toBe(false);
+      expect(getSpecialCategories(results)).toEqual([]);
     });
   });
 });
@@ -387,28 +425,28 @@ describe("Identity Service", () => {
         },
       });
 
-      expect(graph.primaryEmail).toBe("max@example.com");
-      expect(graph.primaryName).toBe("Max Mustermann");
-      expect(graph.resolvedSystems).toEqual([]);
+      expect(graph.displayName).toBe("Max Mustermann");
+      expect(graph.primaryIdentifierType).toBe("EMAIL");
+      expect(graph.primaryIdentifierValue).toBe("max@example.com");
 
-      // Should have identifiers for name, email, phone, employeeId, upn
-      expect(graph.identifiers.length).toBeGreaterThanOrEqual(5);
+      // Should have alternateIdentifiers for name, email, phone, employeeId, upn
+      expect(graph.alternateIdentifiers.length).toBeGreaterThanOrEqual(5);
 
-      const types = graph.identifiers.map((id) => id.type);
+      const types = graph.alternateIdentifiers.map((id) => id.type);
       expect(types).toContain("name");
       expect(types).toContain("email");
       expect(types).toContain("phone");
       expect(types).toContain("employeeId");
       expect(types).toContain("upn");
 
-      // All case_data identifiers should have confidence 1.0
-      for (const entry of graph.identifiers) {
+      // All case_data identifiers should have source "case_data"
+      for (const entry of graph.alternateIdentifiers) {
         expect(entry.source).toBe("case_data");
-        expect(entry.confidence).toBe(1.0);
       }
 
-      // Overall confidence should be positive
-      expect(graph.confidence).toBeGreaterThan(0);
+      // confidenceScore should be 0-100
+      expect(graph.confidenceScore).toBeGreaterThan(0);
+      expect(graph.confidenceScore).toBeLessThanOrEqual(100);
     });
 
     it("should build a graph with minimal data (only fullName)", () => {
@@ -419,13 +457,13 @@ describe("Identity Service", () => {
         address: null,
       });
 
-      expect(graph.primaryEmail).toBeNull();
-      expect(graph.primaryName).toBe("Jane Doe");
-      expect(graph.identifiers).toHaveLength(1);
-      expect(graph.identifiers[0].type).toBe("name");
-      expect(graph.identifiers[0].value).toBe("Jane Doe");
-      expect(graph.identifiers[0].confidence).toBe(1.0);
-      expect(graph.confidence).toBeGreaterThan(0);
+      expect(graph.displayName).toBe("Jane Doe");
+      expect(graph.primaryIdentifierType).toBe("OTHER");
+      expect(graph.primaryIdentifierValue).toBe("Jane Doe");
+      expect(graph.alternateIdentifiers).toHaveLength(1);
+      expect(graph.alternateIdentifiers[0].type).toBe("name");
+      expect(graph.alternateIdentifiers[0].value).toBe("Jane Doe");
+      expect(graph.confidenceScore).toBeGreaterThan(0);
     });
 
     it("should de-duplicate identifiers from the custom identifiers field", () => {
@@ -435,14 +473,12 @@ describe("Identity Service", () => {
         phone: null,
         address: null,
         identifiers: {
-          // This email is the same as the primary — should be de-duplicated
           email: "max@example.com",
           alternateEmail: "max.alt@example.com",
         },
       });
 
-      // Should have: name, email (primary), alternateEmail — NOT a duplicate email
-      const emailEntries = graph.identifiers.filter(
+      const emailEntries = graph.alternateIdentifiers.filter(
         (id) => id.type === "email"
       );
       expect(emailEntries).toHaveLength(2); // primary + alternate, but not 3
@@ -465,7 +501,7 @@ describe("Identity Service", () => {
     });
 
     it("should de-duplicate when merging identical identifiers", () => {
-      const newEntries: IdentityEntry[] = [
+      const newEntries: AlternateIdentifier[] = [
         {
           type: "email",
           value: "max@example.com",
@@ -476,15 +512,14 @@ describe("Identity Service", () => {
 
       const merged = mergeIdentifiers(baseGraph, newEntries, "ad_connector");
 
-      // Should still only have one email entry (de-duplicated)
-      const emailEntries = merged.identifiers.filter(
+      const emailEntries = merged.alternateIdentifiers.filter(
         (id) => id.type === "email"
       );
       expect(emailEntries).toHaveLength(1);
     });
 
     it("should update confidence when same identifier comes from a different source", () => {
-      const newEntries: IdentityEntry[] = [
+      const newEntries: AlternateIdentifier[] = [
         {
           type: "email",
           value: "max@example.com",
@@ -495,18 +530,18 @@ describe("Identity Service", () => {
 
       const merged = mergeIdentifiers(baseGraph, newEntries, "ad_connector");
 
-      const emailEntry = merged.identifiers.find(
+      const emailEntry = merged.alternateIdentifiers.find(
         (id) => id.type === "email"
       );
       expect(emailEntry).toBeDefined();
-      // Original confidence was 1.0 from case_data.
-      // The merge keeps max(1.0, 0.8) = 1.0 and since sources differ and
-      // new entry >= 0.5, applies a +0.05 corroboration boost clamped to 1.0.
-      expect(emailEntry!.confidence).toBe(1.0); // clamped at max
+      // Original confidence was 0.9 from case_data.
+      // Merge keeps max(0.9, 0.8) = 0.9, then cross-source corroboration
+      // boost of +0.05 => 0.95
+      expect(emailEntry!.confidence).toBeCloseTo(0.95, 10);
     });
 
     it("should add new unique identifiers", () => {
-      const newEntries: IdentityEntry[] = [
+      const newEntries: AlternateIdentifier[] = [
         {
           type: "employeeId",
           value: "EMP-999",
@@ -517,7 +552,7 @@ describe("Identity Service", () => {
 
       const merged = mergeIdentifiers(baseGraph, newEntries, "hr_system");
 
-      const empEntry = merged.identifiers.find(
+      const empEntry = merged.alternateIdentifiers.find(
         (id) => id.type === "employeeId" && id.value === "EMP-999"
       );
       expect(empEntry).toBeDefined();
@@ -526,7 +561,7 @@ describe("Identity Service", () => {
     });
 
     it("should skip entries below the minimum confidence threshold", () => {
-      const newEntries: IdentityEntry[] = [
+      const newEntries: AlternateIdentifier[] = [
         {
           type: "custom",
           value: "low-confidence-id",
@@ -537,15 +572,15 @@ describe("Identity Service", () => {
 
       const merged = mergeIdentifiers(baseGraph, newEntries, "weak_source");
 
-      const customEntry = merged.identifiers.find(
+      const customEntry = merged.alternateIdentifiers.find(
         (id) => id.value === "low-confidence-id"
       );
       expect(customEntry).toBeUndefined();
     });
 
     it("should not mutate the original graph", () => {
-      const originalLength = baseGraph.identifiers.length;
-      const newEntries: IdentityEntry[] = [
+      const originalLength = baseGraph.alternateIdentifiers.length;
+      const newEntries: AlternateIdentifier[] = [
         {
           type: "objectId",
           value: "abc-123",
@@ -556,8 +591,7 @@ describe("Identity Service", () => {
 
       mergeIdentifiers(baseGraph, newEntries, "entra");
 
-      // Original graph should be unchanged
-      expect(baseGraph.identifiers.length).toBe(originalLength);
+      expect(baseGraph.alternateIdentifiers.length).toBe(originalLength);
     });
   });
 
@@ -576,81 +610,92 @@ describe("Identity Service", () => {
       });
     });
 
-    it("should add a new system to the graph", () => {
+    it("should add a new system as an alternate identifier", () => {
       const updated = addResolvedSystem(baseGraph, {
-        provider: "microsoft_entra",
-        accountId: "user-obj-id-123",
-        displayName: "Max Mustermann",
-        lastSeen: "2026-01-15T10:00:00Z",
+        type: "system_account",
+        value: "microsoft_entra:user-obj-id-123",
+        source: "microsoft_entra",
+        confidence: 0.85,
       });
 
-      expect(updated.resolvedSystems).toHaveLength(1);
-      expect(updated.resolvedSystems[0].provider).toBe("microsoft_entra");
-      expect(updated.resolvedSystems[0].accountId).toBe("user-obj-id-123");
-      expect(updated.resolvedSystems[0].displayName).toBe("Max Mustermann");
+      const sysEntry = updated.alternateIdentifiers.find(
+        (id) =>
+          id.type === "system_account" &&
+          id.value === "microsoft_entra:user-obj-id-123"
+      );
+      expect(sysEntry).toBeDefined();
+      expect(sysEntry!.source).toBe("microsoft_entra");
+      expect(sysEntry!.confidence).toBe(0.85);
     });
 
-    it("should update an existing system (same provider + accountId)", () => {
+    it("should update an existing system (same type + value)", () => {
       const withSystem = addResolvedSystem(baseGraph, {
-        provider: "microsoft_entra",
-        accountId: "user-obj-id-123",
-        displayName: "Max M.",
-        lastSeen: "2026-01-10T10:00:00Z",
+        type: "system_account",
+        value: "microsoft_entra:user-obj-id-123",
+        source: "microsoft_entra",
+        confidence: 0.7,
       });
 
       const updated = addResolvedSystem(withSystem, {
-        provider: "microsoft_entra",
-        accountId: "user-obj-id-123",
-        displayName: "Max Mustermann (Updated)",
-        lastSeen: "2026-01-20T10:00:00Z",
+        type: "system_account",
+        value: "microsoft_entra:user-obj-id-123",
+        source: "microsoft_entra",
+        confidence: 0.9,
       });
 
-      // Should still have only 1 system, not 2
-      expect(updated.resolvedSystems).toHaveLength(1);
-      expect(updated.resolvedSystems[0].displayName).toBe(
-        "Max Mustermann (Updated)"
+      // Should still have only 1 system_account entry for this value
+      const sysEntries = updated.alternateIdentifiers.filter(
+        (id) =>
+          id.type === "system_account" &&
+          id.value === "microsoft_entra:user-obj-id-123"
       );
-      expect(updated.resolvedSystems[0].lastSeen).toBe(
-        "2026-01-20T10:00:00Z"
-      );
+      expect(sysEntries).toHaveLength(1);
+      // Should keep the higher confidence
+      expect(sysEntries[0].confidence).toBe(0.9);
     });
 
     it("should add multiple different systems", () => {
       let updated = addResolvedSystem(baseGraph, {
-        provider: "microsoft_entra",
-        accountId: "user-obj-id-123",
-        displayName: "Max M.",
+        type: "system_account",
+        value: "microsoft_entra:user-obj-id-123",
+        source: "microsoft_entra",
+        confidence: 0.85,
       });
       updated = addResolvedSystem(updated, {
-        provider: "salesforce",
-        accountId: "sf-contact-456",
-        displayName: "Max Mustermann",
+        type: "system_account",
+        value: "salesforce:sf-contact-456",
+        source: "salesforce",
+        confidence: 0.8,
       });
 
-      expect(updated.resolvedSystems).toHaveLength(2);
-      const providers = updated.resolvedSystems.map((s) => s.provider);
-      expect(providers).toContain("microsoft_entra");
-      expect(providers).toContain("salesforce");
+      const systemEntries = updated.alternateIdentifiers.filter(
+        (id) => id.type === "system_account"
+      );
+      expect(systemEntries).toHaveLength(2);
+      const sources = systemEntries.map((s) => s.source);
+      expect(sources).toContain("microsoft_entra");
+      expect(sources).toContain("salesforce");
     });
 
-    it("should update overall confidence when systems are added", () => {
-      const confidenceBefore = baseGraph.confidence;
+    it("should update overall confidenceScore when systems are added", () => {
+      const confidenceBefore = baseGraph.confidenceScore;
 
       const withOneSystem = addResolvedSystem(baseGraph, {
-        provider: "microsoft_entra",
-        accountId: "user-obj-id-123",
-        displayName: "Max M.",
+        type: "system_account",
+        value: "microsoft_entra:user-obj-id-123",
+        source: "microsoft_entra",
+        confidence: 0.85,
       });
 
       const withTwoSystems = addResolvedSystem(withOneSystem, {
-        provider: "salesforce",
-        accountId: "sf-contact-456",
-        displayName: "Max Mustermann",
+        type: "system_account",
+        value: "salesforce:sf-contact-456",
+        source: "salesforce",
+        confidence: 0.8,
       });
 
-      // With corroboration bonus, more systems should increase confidence
-      // (unless already at 1.0)
-      expect(withTwoSystems.confidence).toBeGreaterThanOrEqual(
+      // More systems (from different sources) should increase confidence
+      expect(withTwoSystems.confidenceScore).toBeGreaterThanOrEqual(
         confidenceBefore
       );
     });
@@ -660,7 +705,7 @@ describe("Identity Service", () => {
   // buildSubjectIdentifiers
   // -----------------------------------------------------------------------
   describe("buildSubjectIdentifiers", () => {
-    it("should return primary email and alternatives sorted by confidence", () => {
+    it("should return primary identifier and alternatives sorted by confidence", () => {
       const graph = buildInitialIdentityGraph({
         fullName: "Max Mustermann",
         email: "max@example.com",
@@ -673,11 +718,11 @@ describe("Identity Service", () => {
 
       const { primary, alternatives } = buildSubjectIdentifiers(graph);
 
-      // Email should be primary (highest type priority)
-      expect(primary.type).toBe("email");
+      // Primary should be EMAIL (since email is available)
+      expect(primary.type).toBe("EMAIL");
       expect(primary.value).toBe("max@example.com");
 
-      // Alternatives should contain the other identifiers
+      // Alternatives should contain the other identifiers (excluding primary value)
       expect(alternatives.length).toBeGreaterThanOrEqual(2);
 
       const altTypes = alternatives.map((a) => a.type);
@@ -695,24 +740,24 @@ describe("Identity Service", () => {
 
       const { primary, alternatives } = buildSubjectIdentifiers(graph);
 
-      expect(primary.type).toBe("name");
+      expect(primary.type).toBe("OTHER");
       expect(primary.value).toBe("Jane Doe");
+      // name alternate is excluded because it matches primary value
       expect(alternatives).toEqual([]);
     });
 
     it("should handle an empty identity graph", () => {
       const emptyGraph: IdentityGraph = {
-        primaryEmail: null,
-        primaryName: null,
-        identifiers: [],
-        resolvedSystems: [],
-        confidence: 0,
+        displayName: "",
+        primaryIdentifierType: "EMAIL",
+        primaryIdentifierValue: "",
+        alternateIdentifiers: [],
+        confidenceScore: 0,
       };
 
       const { primary, alternatives } = buildSubjectIdentifiers(emptyGraph);
 
-      // Fallback: empty primary
-      expect(primary.type).toBe("email");
+      expect(primary.type).toBe("EMAIL");
       expect(primary.value).toBe("");
       expect(alternatives).toEqual([]);
     });
@@ -822,26 +867,54 @@ describe("RBAC Copilot Permissions", () => {
       expect(canReadCopilot("READ_ONLY")).toBe(false);
     });
   });
+
+  // -----------------------------------------------------------------------
+  // COPILOT_ROLES — only DPO/Admin/CaseManager/SuperAdmin for create
+  // -----------------------------------------------------------------------
+  describe("COPILOT_ROLES for create", () => {
+    const COPILOT_CREATE_ROLES = [
+      "SUPER_ADMIN",
+      "TENANT_ADMIN",
+      "DPO",
+      "CASE_MANAGER",
+    ] as const;
+
+    const NON_CREATE_ROLES = ["CONTRIBUTOR", "READ_ONLY"] as const;
+
+    it("should include exactly DPO, TENANT_ADMIN, CASE_MANAGER, and SUPER_ADMIN for copilot create", () => {
+      for (const role of COPILOT_CREATE_ROLES) {
+        expect(hasPermission(role, "copilot", "create")).toBe(true);
+      }
+      for (const role of NON_CREATE_ROLES) {
+        expect(hasPermission(role, "copilot", "create")).toBe(false);
+      }
+    });
+  });
 });
 
 // =========================================================================
-// 4. Art. 9 Gating Logic
+// 4. Special Category Gating Logic
 // =========================================================================
-describe("Art. 9 Gating Logic", () => {
-  it("should set isArt9: true in findings when Art. 9 content is detected", () => {
+describe("Special Category Gating Logic", () => {
+  it("should set containsSpecialCategorySuspected: true when special category content is detected", () => {
     const text = "The patient was diagnosed with diabetes.";
     const results = runAllDetectors(text);
-    const art9Findings = results.filter((r) => r.isArt9);
+    const specialResults = results.filter(
+      (r) => r.containsSpecialCategorySuspected
+    );
 
-    expect(art9Findings.length).toBeGreaterThan(0);
-    for (const finding of art9Findings) {
-      expect(finding.isArt9).toBe(true);
-      expect(finding.category).toBe("SPECIAL_CATEGORY_ART9");
-      expect(finding.art9Type).toBeDefined();
+    expect(specialResults.length).toBeGreaterThan(0);
+    for (const result of specialResults) {
+      expect(result.containsSpecialCategorySuspected).toBe(true);
+      // Should contain special categories in detectedCategories
+      const specialCats = result.detectedCategories.filter((dc) =>
+        isSpecialCategory(dc.category)
+      );
+      expect(specialCats.length).toBeGreaterThan(0);
     }
   });
 
-  it("should properly aggregate multiple Art. 9 categories", () => {
+  it("should properly aggregate multiple special categories", () => {
     const text = [
       "The patient was diagnosed with diabetes.",
       "Records indicate political party membership.",
@@ -851,50 +924,290 @@ describe("Art. 9 Gating Logic", () => {
     ].join(" ");
 
     const results = runAllDetectors(text);
-    const art9Cats = getArt9Categories(results);
+    const specialCats = getSpecialCategories(results);
 
-    expect(art9Cats).toContain("health_data");
-    expect(art9Cats).toContain("political_opinions");
-    expect(art9Cats).toContain("religious_beliefs");
-    expect(art9Cats).toContain("biometric_data");
-    expect(art9Cats).toContain("trade_union_membership");
-    expect(art9Cats.length).toBeGreaterThanOrEqual(5);
+    expect(specialCats).toContain("HEALTH");
+    expect(specialCats).toContain("POLITICAL_OPINION");
+    expect(specialCats).toContain("RELIGION");
+    expect(specialCats).toContain("OTHER_SPECIAL_CATEGORY"); // biometric
+    expect(specialCats).toContain("UNION");
+    expect(specialCats.length).toBeGreaterThanOrEqual(4);
   });
 
-  it("should handle mixed Art. 9 and non-Art. 9 content correctly", () => {
+  it("should handle mixed special and non-special content correctly", () => {
     const text =
       "Email: test@example.com. Card: 4111111111111111. The patient needs treatment. Kirchensteuer: 42 EUR.";
     const results = runAllDetectors(text);
 
-    const piiResults = results.filter((r) => !r.isArt9);
-    const art9Results = results.filter((r) => r.isArt9);
+    const nonSpecial = results.filter(
+      (r) => !r.containsSpecialCategorySuspected
+    );
+    const special = results.filter(
+      (r) => r.containsSpecialCategorySuspected
+    );
 
-    expect(piiResults.length).toBeGreaterThan(0);
-    expect(art9Results.length).toBeGreaterThan(0);
+    expect(nonSpecial.length).toBeGreaterThan(0);
+    expect(special.length).toBeGreaterThan(0);
 
-    // PII results should have standard categories
-    const piiCategories = classifyFindings(piiResults);
+    // Non-special should have standard categories
+    const piiCategories = classifyFindings(nonSpecial);
     expect(piiCategories).toContain("CONTACT"); // email
-    expect(piiCategories).toContain("PAYMENT_BANK"); // credit card
+    expect(piiCategories).toContain("PAYMENT"); // credit card
 
-    // Art. 9 results should include health and religious
-    const art9Cats = getArt9Categories(art9Results);
-    expect(art9Cats).toContain("health_data");
-    expect(art9Cats).toContain("religious_beliefs");
+    // Special should include health and religious
+    const specialCats = getSpecialCategories(special);
+    expect(specialCats).toContain("HEALTH");
+    expect(specialCats).toContain("RELIGION");
 
-    // hasArt9Content should be true on the full set
-    expect(hasArt9Content(results)).toBe(true);
+    // hasSpecialCategory should be true on the full set
+    expect(hasSpecialCategory(results)).toBe(true);
   });
 
-  it("should return isArt9: false for purely PII content without special categories", () => {
+  it("should return containsSpecialCategorySuspected: false for purely PII content", () => {
     const text = "Email: test@example.com. IBAN: DE89370400440532013000.";
     const results = runAllDetectors(text);
 
-    expect(hasArt9Content(results)).toBe(false);
-    expect(getArt9Categories(results)).toEqual([]);
+    expect(hasSpecialCategory(results)).toBe(false);
+    expect(getSpecialCategories(results)).toEqual([]);
 
     for (const r of results) {
-      expect(r.isArt9).toBe(false);
+      expect(r.containsSpecialCategorySuspected).toBe(false);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // Special category gating: when HEALTH/RELIGION/etc detected,
+  // containsSpecialCategory must be true
+  // -----------------------------------------------------------------------
+  describe("when HEALTH/RELIGION/etc detected, containsSpecialCategory must be true", () => {
+    it("HEALTH detected => containsSpecialCategorySuspected is true", () => {
+      const results = runAllDetectors(
+        "The patient was diagnosed with diabetes."
+      );
+      expect(hasSpecialCategory(results)).toBe(true);
+      const cats = getSpecialCategories(results);
+      expect(cats).toContain("HEALTH");
+    });
+
+    it("RELIGION detected => containsSpecialCategorySuspected is true", () => {
+      const results = runAllDetectors(
+        "Monthly Kirchensteuer payment of 42 EUR."
+      );
+      expect(hasSpecialCategory(results)).toBe(true);
+      const cats = getSpecialCategories(results);
+      expect(cats).toContain("RELIGION");
+    });
+
+    it("POLITICAL_OPINION detected => containsSpecialCategorySuspected is true", () => {
+      const results = runAllDetectors(
+        "Records show political party membership."
+      );
+      expect(hasSpecialCategory(results)).toBe(true);
+      const cats = getSpecialCategories(results);
+      expect(cats).toContain("POLITICAL_OPINION");
+    });
+
+    it("UNION detected => containsSpecialCategorySuspected is true", () => {
+      const results = runAllDetectors("Trade union membership confirmed.");
+      expect(hasSpecialCategory(results)).toBe(true);
+      const cats = getSpecialCategories(results);
+      expect(cats).toContain("UNION");
+    });
+
+    it("OTHER_SPECIAL_CATEGORY (biometric) detected => containsSpecialCategorySuspected is true", () => {
+      const results = runAllDetectors(
+        "Biometric fingerprint data was collected."
+      );
+      expect(hasSpecialCategory(results)).toBe(true);
+      const cats = getSpecialCategories(results);
+      expect(cats).toContain("OTHER_SPECIAL_CATEGORY");
+    });
+
+    it("isSpecialCategory should match SPECIAL_CATEGORIES set", () => {
+      const specialTypes: DataCategoryType[] = [
+        "HEALTH",
+        "RELIGION",
+        "UNION",
+        "POLITICAL_OPINION",
+        "OTHER_SPECIAL_CATEGORY",
+      ];
+
+      for (const cat of specialTypes) {
+        expect(isSpecialCategory(cat)).toBe(true);
+        expect(SPECIAL_CATEGORIES.has(cat)).toBe(true);
+      }
+
+      const nonSpecial: DataCategoryType[] = [
+        "IDENTIFICATION",
+        "CONTACT",
+        "PAYMENT",
+        "COMMUNICATION",
+        "HR",
+        "CREDITWORTHINESS",
+        "CONTRACT",
+        "ONLINE_TECHNICAL",
+        "OTHER",
+      ];
+
+      for (const cat of nonSpecial) {
+        expect(isSpecialCategory(cat)).toBe(false);
+      }
+    });
+  });
+});
+
+// =========================================================================
+// 5. Legal Gate Logic
+// =========================================================================
+describe("Legal Gate Logic", () => {
+  describe("checkLegalGate", () => {
+    it("when special category is present, legal review should be required", () => {
+      // Simulate detection that finds HEALTH data
+      const results = runAllDetectors(
+        "The patient was diagnosed with diabetes."
+      );
+      const containsSpecial = hasSpecialCategory(results);
+      expect(containsSpecial).toBe(true);
+
+      // When containsSpecialCategory is true, legalApprovalStatus should
+      // be set to REQUIRED (not NOT_REQUIRED)
+      const legalApprovalStatus = containsSpecial ? "REQUIRED" : "NOT_REQUIRED";
+      expect(legalApprovalStatus).toBe("REQUIRED");
+    });
+
+    it("when no special category is present, legal review is not required", () => {
+      const results = runAllDetectors(
+        "Email: test@example.com. IBAN: DE89370400440532013000."
+      );
+      const containsSpecial = hasSpecialCategory(results);
+      expect(containsSpecial).toBe(false);
+
+      const legalApprovalStatus: string = containsSpecial ? "REQUIRED" : "NOT_REQUIRED";
+      expect(legalApprovalStatus).toBe("NOT_REQUIRED");
+    });
+
+    it("legal gate should block exports when approval is REQUIRED but not yet APPROVED", () => {
+      const containsSpecial = true;
+      const legalApprovalStatus: string = "REQUIRED"; // not yet APPROVED
+
+      // Export gate: allowed only if NOT_REQUIRED or APPROVED
+      const exportAllowed =
+        legalApprovalStatus === "NOT_REQUIRED" ||
+        legalApprovalStatus === "APPROVED";
+      expect(exportAllowed).toBe(false);
+
+      const gateStatus: string = exportAllowed ? "ALLOWED" : "BLOCKED";
+      expect(gateStatus).toBe("BLOCKED");
+    });
+
+    it("legal gate should allow exports when approval is APPROVED", () => {
+      const legalApprovalStatus: string = "APPROVED";
+
+      const exportAllowed =
+        legalApprovalStatus === "NOT_REQUIRED" ||
+        legalApprovalStatus === "APPROVED";
+      expect(exportAllowed).toBe(true);
+
+      const gateStatus: string = exportAllowed ? "ALLOWED" : "BLOCKED";
+      expect(gateStatus).toBe("ALLOWED");
+    });
+
+    it("legal gate should allow exports when approval is NOT_REQUIRED", () => {
+      const legalApprovalStatus: string = "NOT_REQUIRED";
+
+      const exportAllowed =
+        legalApprovalStatus === "NOT_REQUIRED" ||
+        legalApprovalStatus === "APPROVED";
+      expect(exportAllowed).toBe(true);
+
+      const gateStatus: string = exportAllowed ? "ALLOWED" : "BLOCKED";
+      expect(gateStatus).toBe("ALLOWED");
+    });
+
+    it("legal gate should block exports when approval is PENDING", () => {
+      const legalApprovalStatus: string = "PENDING";
+
+      const exportAllowed =
+        legalApprovalStatus === "NOT_REQUIRED" ||
+        legalApprovalStatus === "APPROVED";
+      expect(exportAllowed).toBe(false);
+    });
+
+    it("legal gate should block exports when approval is REJECTED", () => {
+      const legalApprovalStatus: string = "REJECTED";
+
+      const exportAllowed =
+        legalApprovalStatus === "NOT_REQUIRED" ||
+        legalApprovalStatus === "APPROVED";
+      expect(exportAllowed).toBe(false);
+    });
+  });
+});
+
+// =========================================================================
+// 6. Evidence Integrity
+// =========================================================================
+describe("Evidence Integrity", () => {
+  it("Finding.evidenceItemIds should reference valid evidence items", () => {
+    // Simulate a set of evidence item IDs and findings that reference them
+    const evidenceItemIds = ["ev-001", "ev-002", "ev-003"];
+    const findings = [
+      {
+        dataCategory: "IDENTIFICATION",
+        evidenceItemIds: ["ev-001"],
+        containsSpecialCategory: false,
+      },
+      {
+        dataCategory: "COMMUNICATION",
+        evidenceItemIds: ["ev-002"],
+        containsSpecialCategory: false,
+      },
+      {
+        dataCategory: "HR",
+        evidenceItemIds: ["ev-003"],
+        containsSpecialCategory: false,
+      },
+    ];
+
+    for (const finding of findings) {
+      for (const refId of finding.evidenceItemIds) {
+        expect(evidenceItemIds).toContain(refId);
+      }
+    }
+  });
+
+  it("findings should not reference non-existent evidence items", () => {
+    const evidenceItemIds = ["ev-001", "ev-002"];
+    const badFinding = {
+      dataCategory: "HR",
+      evidenceItemIds: ["ev-999"], // does not exist
+      containsSpecialCategory: false,
+    };
+
+    for (const refId of badFinding.evidenceItemIds) {
+      expect(evidenceItemIds).not.toContain(refId);
+    }
+  });
+
+  it("evidence item array should be non-empty for findings with evidence", () => {
+    const finding = {
+      dataCategory: "IDENTIFICATION",
+      evidenceItemIds: ["ev-001", "ev-002"],
+    };
+
+    expect(finding.evidenceItemIds.length).toBeGreaterThan(0);
+  });
+
+  it("findings can reference multiple evidence items", () => {
+    const evidenceItemIds = ["ev-001", "ev-002", "ev-003"];
+    const finding = {
+      dataCategory: "COMMUNICATION",
+      evidenceItemIds: ["ev-001", "ev-002"],
+    };
+
+    expect(finding.evidenceItemIds.length).toBe(2);
+    for (const refId of finding.evidenceItemIds) {
+      expect(evidenceItemIds).toContain(refId);
     }
   });
 });

@@ -82,14 +82,14 @@ export default function DashboardPage() {
   const [copilotStats, setCopilotStats] = useState<{
     totalRuns: number;
     completedRuns: number;
-    art9Runs: number;
+    specialCategoryRuns: number;
     totalFindings: number;
     recentRuns: Array<{
       id: string;
       status: string;
       totalFindings: number;
-      art9Flagged: boolean;
-      art9ReviewStatus: string | null;
+      containsSpecialCategory: boolean;
+      legalApprovalStatus: string;
       createdAt: string;
       completedAt: string | null;
       case: { id: string; caseNumber: string; dataSubject: { fullName: string } };
@@ -319,9 +319,9 @@ export default function DashboardPage() {
                   <span>
                     <span className="font-medium text-gray-700">{copilotStats.totalFindings}</span> findings
                   </span>
-                  {copilotStats.art9Runs > 0 && (
+                  {copilotStats.specialCategoryRuns > 0 && (
                     <span className="font-medium text-red-600">
-                      {copilotStats.art9Runs} Art.&nbsp;9 flagged
+                      {copilotStats.specialCategoryRuns} Art.&nbsp;9 flagged
                     </span>
                   )}
                 </div>
@@ -352,7 +352,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex items-center gap-3 text-xs text-gray-400">
                     <span>{run.totalFindings} findings</span>
-                    {run.art9Flagged && <span className="font-medium text-red-500">Art. 9</span>}
+                    {run.containsSpecialCategory && <span className="font-medium text-red-500">Art. 9</span>}
                     <span>{new Date(run.createdAt).toLocaleDateString()}</span>
                   </div>
                 </Link>

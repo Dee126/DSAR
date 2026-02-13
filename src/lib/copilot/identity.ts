@@ -6,44 +6,55 @@
  * accounts discovered during connector queries.
  *
  * The graph tracks all known identifiers (emails, phone numbers, employee
- * IDs, etc.), their sources, and confidence scores. It also records which
- * systems the subject has been found in so connectors can target the
- * correct accounts.
+ * IDs, etc.), their sources, and confidence scores. Resolved systems are
+ * now tracked as alternateIdentifiers with a source field rather than as
+ * a separate resolvedSystems array.
+ *
+ * Updated to match the expanded IdentityProfile Prisma model which uses
+ * displayName, primaryIdentifierType, primaryIdentifierValue, and
+ * alternateIdentifiers instead of the previous primaryEmail/primaryName/
+ * identifiers/resolvedSystems structure.
  */
 
 /* ── Types ────────────────────────────────────────────────────────────── */
 
-export interface IdentityEntry {
+export type PrimaryIdentifierType =
+  | "EMAIL"
+  | "UPN"
+  | "OBJECT_ID"
+  | "CUSTOMER_ID"
+  | "EMPLOYEE_ID"
+  | "PHONE"
+  | "IBAN"
+  | "OTHER";
+
+export interface AlternateIdentifier {
   type: string; // "email" | "upn" | "objectId" | "employeeId" | "phone" | "name" | "custom"
   value: string;
+  confidence: number; // 0-1 (note: stored as 0-100 in DB)
   source: string; // Provider name or "case_data"
-  confidence: number; // 0-1
-}
-
-export interface ResolvedSystem {
-  provider: string;
-  accountId: string;
-  displayName: string;
-  lastSeen?: string;
 }
 
 export interface IdentityGraph {
-  primaryEmail: string | null;
-  primaryName: string | null;
-  identifiers: IdentityEntry[];
-  resolvedSystems: ResolvedSystem[];
-  confidence: number; // overall confidence
+  displayName: string;
+  primaryIdentifierType: PrimaryIdentifierType;
+  primaryIdentifierValue: string;
+  alternateIdentifiers: AlternateIdentifier[];
+  confidenceScore: number; // 0-100
 }
 
 /* ── Constants ────────────────────────────────────────────────────────── */
 
-/** Confidence assigned to identifiers sourced directly from case data. */
-const CASE_DATA_CONFIDENCE = 1.0;
+/** Confidence score assigned to identifiers sourced directly from case data (0-100). */
+export const CASE_DATA_CONFIDENCE = 90;
 
-/** Minimum confidence threshold for an identifier to be considered valid. */
+/** Confidence score assigned to identifiers discovered via connectors (0-100). */
+export const DISCOVERY_CONFIDENCE = 80;
+
+/** Minimum confidence threshold (0-1 scale) for an identifier to be considered valid. */
 const MIN_CONFIDENCE_THRESHOLD = 0.1;
 
-/** Maximum confidence value (clamped). */
+/** Maximum confidence value on the 0-1 scale (clamped). */
 const MAX_CONFIDENCE = 1.0;
 
 /** Source label for identifiers derived from the original case record. */
@@ -52,7 +63,7 @@ const CASE_DATA_SOURCE = "case_data";
 /* ── Helpers ──────────────────────────────────────────────────────────── */
 
 /**
- * Clamp a number between 0 and MAX_CONFIDENCE.
+ * Clamp a number between 0 and MAX_CONFIDENCE (0-1 scale).
  */
 function clampConfidence(value: number): number {
   return Math.min(MAX_CONFIDENCE, Math.max(0, value));
@@ -67,69 +78,25 @@ function normalizeValue(value: string): string {
 }
 
 /**
- * Check if two identity entries refer to the same identifier.
+ * Check if two alternate identifiers refer to the same identifier.
  * Two entries match when they share the same type and normalized value.
  */
-function isSameIdentifier(a: IdentityEntry, b: IdentityEntry): boolean {
+function isSameIdentifier(a: AlternateIdentifier, b: AlternateIdentifier): boolean {
   return a.type === b.type && normalizeValue(a.value) === normalizeValue(b.value);
 }
 
 /**
- * Check if two resolved systems refer to the same account.
- * Two systems match when they share the same provider and account ID.
+ * Convert a confidence value from the 0-1 scale to the 0-100 scale used in the DB.
  */
-function isSameSystem(a: ResolvedSystem, b: ResolvedSystem): boolean {
-  return (
-    a.provider === b.provider &&
-    normalizeValue(a.accountId) === normalizeValue(b.accountId)
-  );
+function toDbConfidence(value: number): number {
+  return Math.round(clampConfidence(value) * 100);
 }
 
 /**
- * Compute an overall confidence score for the identity graph.
- *
- * Strategy: weighted average where email/upn identifiers carry more
- * weight, boosted by the number of corroborating sources. A graph with
- * identifiers confirmed across multiple systems is more trustworthy than
- * one backed by a single source.
+ * Convert a confidence value from the 0-100 DB scale to the 0-1 scale.
  */
-function computeOverallConfidence(graph: IdentityGraph): number {
-  const { identifiers, resolvedSystems } = graph;
-
-  if (identifiers.length === 0) {
-    return 0;
-  }
-
-  // Weight map: strong identifiers weigh more in the overall score
-  const typeWeights: Record<string, number> = {
-    email: 1.0,
-    upn: 1.0,
-    objectId: 0.9,
-    employeeId: 0.85,
-    phone: 0.7,
-    name: 0.5,
-    custom: 0.4,
-  };
-
-  let weightedSum = 0;
-  let totalWeight = 0;
-
-  for (const entry of identifiers) {
-    const weight = typeWeights[entry.type] ?? 0.4;
-    weightedSum += entry.confidence * weight;
-    totalWeight += weight;
-  }
-
-  const baseConfidence = totalWeight > 0 ? weightedSum / totalWeight : 0;
-
-  // Corroboration bonus: each resolved system beyond the first adds a small
-  // bonus (up to +0.15), rewarding cross-system identity confirmation.
-  const corroborationBonus = Math.min(
-    0.15,
-    Math.max(0, resolvedSystems.length - 1) * 0.05
-  );
-
-  return clampConfidence(baseConfidence + corroborationBonus);
+function fromDbConfidence(value: number): number {
+  return Math.min(1, Math.max(0, value / 100));
 }
 
 /**
@@ -138,8 +105,8 @@ function computeOverallConfidence(graph: IdentityGraph): number {
  */
 function extractCustomIdentifiers(
   identifiers: Record<string, unknown>
-): IdentityEntry[] {
-  const entries: IdentityEntry[] = [];
+): AlternateIdentifier[] {
+  const entries: AlternateIdentifier[] = [];
 
   // Known key-to-type mappings
   const keyTypeMap: Record<string, string> = {
@@ -157,6 +124,9 @@ function extractCustomIdentifiers(
     phone: "phone",
     mobile: "phone",
     mobilePhone: "phone",
+    customerId: "customerId",
+    customer_id: "customerId",
+    iban: "iban",
   };
 
   for (const [key, value] of Object.entries(identifiers)) {
@@ -175,8 +145,8 @@ function extractCustomIdentifiers(
     entries.push({
       type: identifierType,
       value: stringValue,
+      confidence: fromDbConfidence(CASE_DATA_CONFIDENCE),
       source: CASE_DATA_SOURCE,
-      confidence: CASE_DATA_CONFIDENCE,
     });
   }
 
@@ -187,8 +157,13 @@ function extractCustomIdentifiers(
 
 /**
  * Build initial identity graph from case data subject info.
+ *
  * Takes the DataSubject record from the case and populates the graph
- * with all known identifiers at full confidence.
+ * with all known identifiers. The primary identifier is chosen based on
+ * availability: email first, then phone, then falls back to the full name
+ * with type OTHER.
+ *
+ * All identifiers sourced from case data receive CASE_DATA_CONFIDENCE (90).
  */
 export function buildInitialIdentityGraph(dataSubject: {
   fullName: string;
@@ -197,35 +172,51 @@ export function buildInitialIdentityGraph(dataSubject: {
   address: string | null;
   identifiers?: Record<string, unknown> | null;
 }): IdentityGraph {
-  const identifiers: IdentityEntry[] = [];
+  const alternateIdentifiers: AlternateIdentifier[] = [];
+  const caseConfidence01 = fromDbConfidence(CASE_DATA_CONFIDENCE);
 
-  // Always add the full name
-  if (dataSubject.fullName && dataSubject.fullName.trim().length > 0) {
-    identifiers.push({
-      type: "name",
-      value: dataSubject.fullName.trim(),
-      source: CASE_DATA_SOURCE,
-      confidence: CASE_DATA_CONFIDENCE,
-    });
+  // Determine primary identifier type and value
+  let primaryIdentifierType: PrimaryIdentifierType;
+  let primaryIdentifierValue: string;
+
+  if (dataSubject.email && dataSubject.email.trim().length > 0) {
+    primaryIdentifierType = "EMAIL";
+    primaryIdentifierValue = dataSubject.email.trim();
+  } else if (dataSubject.phone && dataSubject.phone.trim().length > 0) {
+    primaryIdentifierType = "PHONE";
+    primaryIdentifierValue = dataSubject.phone.trim();
+  } else {
+    primaryIdentifierType = "OTHER";
+    primaryIdentifierValue = dataSubject.fullName.trim();
   }
 
-  // Add email if present
+  // Add email as alternate identifier (if it exists and is not already the primary)
   if (dataSubject.email && dataSubject.email.trim().length > 0) {
-    identifiers.push({
+    alternateIdentifiers.push({
       type: "email",
       value: dataSubject.email.trim(),
+      confidence: caseConfidence01,
       source: CASE_DATA_SOURCE,
-      confidence: CASE_DATA_CONFIDENCE,
     });
   }
 
-  // Add phone if present
+  // Add phone as alternate identifier
   if (dataSubject.phone && dataSubject.phone.trim().length > 0) {
-    identifiers.push({
+    alternateIdentifiers.push({
       type: "phone",
       value: dataSubject.phone.trim(),
+      confidence: caseConfidence01,
       source: CASE_DATA_SOURCE,
-      confidence: CASE_DATA_CONFIDENCE,
+    });
+  }
+
+  // Add full name as alternate identifier
+  if (dataSubject.fullName && dataSubject.fullName.trim().length > 0) {
+    alternateIdentifiers.push({
+      type: "name",
+      value: dataSubject.fullName.trim(),
+      confidence: caseConfidence01,
+      source: CASE_DATA_SOURCE,
     });
   }
 
@@ -237,53 +228,91 @@ export function buildInitialIdentityGraph(dataSubject: {
 
     // De-duplicate against identifiers already added
     for (const entry of customEntries) {
-      const isDuplicate = identifiers.some((existing) =>
+      const isDuplicate = alternateIdentifiers.some((existing) =>
         isSameIdentifier(existing, entry)
       );
       if (!isDuplicate) {
-        identifiers.push(entry);
+        alternateIdentifiers.push(entry);
       }
     }
   }
 
   const graph: IdentityGraph = {
-    primaryEmail: dataSubject.email?.trim() || null,
-    primaryName: dataSubject.fullName?.trim() || null,
-    identifiers,
-    resolvedSystems: [],
-    confidence: 0,
+    displayName: dataSubject.fullName?.trim() || "",
+    primaryIdentifierType,
+    primaryIdentifierValue,
+    alternateIdentifiers,
+    confidenceScore: CASE_DATA_CONFIDENCE,
   };
-
-  // Compute overall confidence
-  graph.confidence = computeOverallConfidence(graph);
 
   return graph;
 }
 
 /**
- * Merge new identifiers discovered from a connector into the graph.
+ * Build QuerySpec subject identifiers from the identity graph.
+ *
+ * Returns a primary identifier derived from the graph's primary identifier
+ * fields, and a list of alternative identifiers from alternateIdentifiers,
+ * sorted by confidence descending. The primary identifier is excluded from
+ * alternatives to avoid redundancy.
+ */
+export function buildSubjectIdentifiers(graph: IdentityGraph): {
+  primary: { type: string; value: string };
+  alternatives: Array<{ type: string; value: string }>;
+} {
+  const primary = {
+    type: graph.primaryIdentifierType,
+    value: graph.primaryIdentifierValue,
+  };
+
+  if (graph.alternateIdentifiers.length === 0) {
+    return { primary, alternatives: [] };
+  }
+
+  // Build alternatives from alternateIdentifiers, excluding the primary
+  const primaryNormalized = normalizeValue(graph.primaryIdentifierValue);
+  const alternatives = graph.alternateIdentifiers
+    .filter((entry) => {
+      // Exclude entries that match the primary identifier value
+      return normalizeValue(entry.value) !== primaryNormalized;
+    })
+    .filter((entry) => entry.confidence >= MIN_CONFIDENCE_THRESHOLD)
+    .sort((a, b) => b.confidence - a.confidence)
+    .map((entry) => ({
+      type: entry.type,
+      value: entry.value,
+    }));
+
+  return { primary, alternatives };
+}
+
+/**
+ * Merge new alternate identifiers into the graph, deduplicating by type+value.
  *
  * De-duplication rules:
- * - If an identifier with the same type+value already exists, keep the
- *   one with the higher confidence. If the new entry has a different source,
- *   the higher confidence is retained (cross-system corroboration).
+ * - If an identifier with the same type+value already exists, keep the one
+ *   with the higher confidence. If the new entry comes from a different source
+ *   and is at least moderately confident, apply a small corroboration boost.
  * - New unique identifiers are appended.
  * - Identifiers below the minimum confidence threshold are dropped.
  *
  * The source parameter labels all new entries that do not already have
  * a source set.
+ *
+ * Returns a new IdentityGraph with the merged alternateIdentifiers and
+ * recalculated confidenceScore.
  */
 export function mergeIdentifiers(
   graph: IdentityGraph,
-  newEntries: IdentityEntry[],
+  newEntries: AlternateIdentifier[],
   source: string
 ): IdentityGraph {
   // Clone the existing identifiers to avoid mutating the original graph
-  const merged: IdentityEntry[] = [...graph.identifiers];
+  const merged: AlternateIdentifier[] = [...graph.alternateIdentifiers];
 
   for (const entry of newEntries) {
     // Apply the source label if the entry doesn't have one
-    const labeledEntry: IdentityEntry = {
+    const labeledEntry: AlternateIdentifier = {
       ...entry,
       source: entry.source || source,
       confidence: clampConfidence(entry.confidence),
@@ -330,139 +359,122 @@ export function mergeIdentifiers(
     }
   }
 
-  // Attempt to promote the primary email if we don't have one yet
-  let primaryEmail = graph.primaryEmail;
-  if (!primaryEmail) {
-    const emailEntry = merged
-      .filter((e) => e.type === "email")
-      .sort((a, b) => b.confidence - a.confidence)[0];
-    if (emailEntry) {
-      primaryEmail = emailEntry.value;
-    }
-  }
-
-  // Attempt to promote the primary name if we don't have one yet
-  let primaryName = graph.primaryName;
-  if (!primaryName) {
-    const nameEntry = merged
-      .filter((e) => e.type === "name")
-      .sort((a, b) => b.confidence - a.confidence)[0];
-    if (nameEntry) {
-      primaryName = nameEntry.value;
-    }
-  }
-
   const updatedGraph: IdentityGraph = {
     ...graph,
-    primaryEmail,
-    primaryName,
-    identifiers: merged,
-    resolvedSystems: [...graph.resolvedSystems],
-    confidence: 0,
+    alternateIdentifiers: merged,
+    confidenceScore: 0,
   };
 
-  updatedGraph.confidence = computeOverallConfidence(updatedGraph);
+  updatedGraph.confidenceScore = calculateConfidence(updatedGraph);
 
   return updatedGraph;
 }
 
 /**
- * Add a resolved system account to the graph.
+ * Add a resolved system account to the graph as an alternate identifier.
  *
- * If the same provider + accountId combination already exists, the entry
- * is updated (display name and lastSeen refreshed). Otherwise the new
- * system is appended.
+ * System accounts are represented as AlternateIdentifier entries with a
+ * type like "system_account" and the source set to the provider name.
+ * For example: { type: "system_account", value: "M365:user@acme",
+ * source: "M365", confidence: 0.85 }
+ *
+ * If a matching identifier (same type+value) already exists, its confidence
+ * and source are updated. Otherwise the system identifier is appended.
+ *
+ * Returns a new IdentityGraph with the updated alternateIdentifiers and
+ * recalculated confidenceScore.
  */
 export function addResolvedSystem(
   graph: IdentityGraph,
-  system: ResolvedSystem
+  system: AlternateIdentifier
 ): IdentityGraph {
-  const systems = [...graph.resolvedSystems];
+  const identifiers = [...graph.alternateIdentifiers];
 
-  const existingIndex = systems.findIndex((existing) =>
-    isSameSystem(existing, system)
+  const existingIndex = identifiers.findIndex((existing) =>
+    isSameIdentifier(existing, system)
   );
 
   if (existingIndex !== -1) {
-    // Update the existing entry with fresh information
-    systems[existingIndex] = {
-      ...systems[existingIndex],
-      displayName: system.displayName || systems[existingIndex].displayName,
-      lastSeen: system.lastSeen ?? systems[existingIndex].lastSeen,
+    // Update existing entry — keep the higher confidence
+    const existing = identifiers[existingIndex];
+    identifiers[existingIndex] = {
+      ...existing,
+      confidence: Math.max(existing.confidence, system.confidence),
+      source: system.source || existing.source,
     };
   } else {
-    systems.push({ ...system });
+    identifiers.push({ ...system });
   }
 
   const updatedGraph: IdentityGraph = {
     ...graph,
-    identifiers: [...graph.identifiers],
-    resolvedSystems: systems,
-    confidence: 0,
+    alternateIdentifiers: identifiers,
+    confidenceScore: 0,
   };
 
-  updatedGraph.confidence = computeOverallConfidence(updatedGraph);
+  updatedGraph.confidenceScore = calculateConfidence(updatedGraph);
 
   return updatedGraph;
 }
 
 /**
- * Build QuerySpec subject identifiers from the identity graph.
+ * Recalculate the overall confidenceScore (0-100) for the identity graph.
  *
- * Returns a primary identifier (preferring email, then upn, then the
- * highest-confidence identifier available) and a list of alternative
- * identifiers for use in connector queries.
- *
- * The alternatives are sorted by confidence descending, with the primary
- * identifier excluded to avoid redundancy.
+ * Strategy:
+ * - Uses a weighted average of alternate identifier confidences where
+ *   stronger identifier types (email, upn) carry more weight.
+ * - Applies a corroboration bonus based on the number of distinct sources
+ *   present in the graph — more cross-system confirmation yields a higher
+ *   score.
+ * - The result is clamped to the 0-100 range.
  */
-export function buildSubjectIdentifiers(graph: IdentityGraph): {
-  primary: { type: string; value: string };
-  alternatives: { type: string; value: string }[];
-} {
-  const { identifiers } = graph;
+export function calculateConfidence(graph: IdentityGraph): number {
+  const { alternateIdentifiers } = graph;
 
-  if (identifiers.length === 0) {
-    // Fallback: return an empty primary. The caller should handle this
-    // edge case (e.g., prompt the user to provide more information).
-    return {
-      primary: { type: "email", value: "" },
-      alternatives: [],
-    };
+  if (alternateIdentifiers.length === 0) {
+    // No alternate identifiers; base confidence on whether we have a primary
+    return graph.primaryIdentifierValue ? 50 : 0;
   }
 
-  // Priority order for selecting the primary identifier
-  const typePriority: string[] = ["email", "upn", "objectId", "employeeId", "phone", "name", "custom"];
-
-  // Sort identifiers: first by type priority, then by confidence descending
-  const sorted = [...identifiers].sort((a, b) => {
-    const aPriority = typePriority.indexOf(a.type);
-    const bPriority = typePriority.indexOf(b.type);
-    const aRank = aPriority === -1 ? typePriority.length : aPriority;
-    const bRank = bPriority === -1 ? typePriority.length : bPriority;
-
-    if (aRank !== bRank) {
-      return aRank - bRank;
-    }
-
-    // Same type priority — prefer higher confidence
-    return b.confidence - a.confidence;
-  });
-
-  const primary = {
-    type: sorted[0].type,
-    value: sorted[0].value,
+  // Weight map: strong identifiers weigh more in the overall score
+  const typeWeights: Record<string, number> = {
+    email: 1.0,
+    upn: 1.0,
+    objectId: 0.9,
+    employeeId: 0.85,
+    customerId: 0.85,
+    phone: 0.7,
+    iban: 0.7,
+    name: 0.5,
+    system_account: 0.6,
+    custom: 0.4,
   };
 
-  // All remaining identifiers become alternatives, sorted by confidence
-  const alternatives = sorted
-    .slice(1)
-    .filter((entry) => entry.confidence >= MIN_CONFIDENCE_THRESHOLD)
-    .sort((a, b) => b.confidence - a.confidence)
-    .map((entry) => ({
-      type: entry.type,
-      value: entry.value,
-    }));
+  let weightedSum = 0;
+  let totalWeight = 0;
 
-  return { primary, alternatives };
+  for (const entry of alternateIdentifiers) {
+    const weight = typeWeights[entry.type] ?? 0.4;
+    weightedSum += entry.confidence * weight;
+    totalWeight += weight;
+  }
+
+  const baseConfidence = totalWeight > 0 ? weightedSum / totalWeight : 0;
+
+  // Count distinct sources for corroboration bonus
+  const distinctSources = new Set(
+    alternateIdentifiers.map((entry) => entry.source)
+  );
+
+  // Each source beyond the first adds a small bonus (up to +0.10 on the 0-1 scale),
+  // rewarding cross-system identity confirmation.
+  const corroborationBonus = Math.min(
+    0.10,
+    Math.max(0, distinctSources.size - 1) * 0.03
+  );
+
+  const finalConfidence01 = clampConfidence(baseConfidence + corroborationBonus);
+
+  // Convert from 0-1 scale to 0-100 scale for the DB
+  return toDbConfidence(finalConfidence01);
 }

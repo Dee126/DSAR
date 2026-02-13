@@ -6,16 +6,17 @@
  * a DSAR case.
  *
  * Flow:
+ *   0. Mark run as RUNNING
  *   1. Load case + data subject
  *   2. Build identity graph from case data
- *   3. Find all ENABLED integrations for the tenant
- *   4. For each integration, build a QuerySpec and execute via connector
- *   5. Run detection on results (PII patterns, Art. 9)
- *   6. Create Finding records with data categories
- *   7. Create DetectorResult records
- *   8. Flag Art. 9 if detected
+ *   3. Find all ENABLED integrations for the tenant (filter by providerSelection)
+ *   4. For each integration, create CopilotQuery with new fields and execute via connector
+ *   5. After connector returns, create EvidenceItems
+ *   6. Run detection on EvidenceItem text -> create DetectorResult records linked to EvidenceItem
+ *   7. Create Findings — aggregate by DataCategory
+ *   8. Flag special categories if detected (Art. 9), auto-create Task
  *   9. Generate a deterministic text summary
- *  10. Update the CopilotRun record
+ *  10. Update the CopilotRun record + upsert IdentityProfile
  */
 
 import { Prisma } from "@prisma/client";
@@ -37,10 +38,12 @@ import {
 } from "./identity";
 import {
   runAllDetectors,
-  hasArt9Content,
-  getArt9Categories,
+  hasSpecialCategory,
+  getSpecialCategories,
   classifyFindings,
+  SPECIAL_CATEGORIES,
   type DetectionResult,
+  type DataCategoryType,
 } from "./detection";
 import { logAudit } from "@/lib/audit";
 
@@ -53,34 +56,128 @@ export interface DiscoveryRunContext {
   caseId: string;
   runId: string;
   userId: string;
-  reason: string;
+  justification: string;
+  providerSelection?: string[];
 }
 
 export interface DiscoveryRunResult {
   status: "COMPLETED" | "FAILED";
   totalFindings: number;
-  art9Flagged: boolean;
-  art9Categories: string[];
+  totalEvidenceItems: number;
+  containsSpecialCategory: boolean;
+  specialCategories: string[];
   identityGraph: IdentityGraph;
-  summary: string;
-  errorMessage?: string;
+  resultSummary: string;
+  errorDetails?: string;
 }
 
-// Internal type for accumulating per-query finding data before DB write.
-interface FindingRecord {
-  source: string;
-  location: string;
-  title: string;
-  description: string;
-  dataCategories: string[];
-  severity: string;
-  isArt9: boolean;
-  art9Categories: string[];
-  recordCount: number;
-  metadata: Prisma.InputJsonValue;
-  evidenceRef: string | null;
+/**
+ * Internal type for accumulating per-query evidence and detection data
+ * before the aggregation step that creates Finding records.
+ */
+interface EvidenceRecord {
+  evidenceItemId: string;
+  integrationId: string;
+  provider: string;
   queryId: string;
-  detectorResults: DetectionResult[];
+  detectionResults: DetectionResult[];
+  classifiedCategories: string[];
+  containsSpecialCategory: boolean;
+  specialCategories: string[];
+  recordCount: number;
+  title: string;
+  location: string;
+}
+
+// ---------------------------------------------------------------------------
+// Provider -> EvidenceItemType mapping
+// ---------------------------------------------------------------------------
+
+/**
+ * Map an IntegrationProvider string to the appropriate EvidenceItemType enum value.
+ */
+function mapProviderToItemType(provider: string): string {
+  const mapping: Record<string, string> = {
+    EXCHANGE_ONLINE: "EMAIL",
+    SHAREPOINT: "FILE",
+    ONEDRIVE: "FILE",
+    M365: "RECORD",
+    GOOGLE_WORKSPACE: "RECORD",
+    SALESFORCE: "RECORD",
+    SERVICENOW: "TICKET",
+    ATLASSIAN_JIRA: "TICKET",
+    ATLASSIAN_CONFLUENCE: "FILE",
+    WORKDAY: "RECORD",
+    SAP_SUCCESSFACTORS: "RECORD",
+    OKTA: "RECORD",
+    AWS: "RECORD",
+    AZURE: "RECORD",
+    GCP: "RECORD",
+  };
+  return mapping[provider] ?? "OTHER";
+}
+
+/**
+ * Determine the workload label for an EvidenceItem from the provider.
+ */
+function mapProviderToWorkload(provider: string): string | null {
+  const mapping: Record<string, string> = {
+    EXCHANGE_ONLINE: "EXCHANGE",
+    SHAREPOINT: "SHAREPOINT",
+    ONEDRIVE: "ONEDRIVE",
+    M365: "ENTRA_ID",
+    GOOGLE_WORKSPACE: "GOOGLE",
+    SALESFORCE: "SALESFORCE",
+    SERVICENOW: "SERVICENOW",
+    ATLASSIAN_JIRA: "JIRA",
+    ATLASSIAN_CONFLUENCE: "CONFLUENCE",
+  };
+  return mapping[provider] ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Severity determination
+// ---------------------------------------------------------------------------
+
+/**
+ * Map a DataCategory to a FindingSeverity value.
+ *
+ * Uses the new three-level enum: INFO, WARNING, CRITICAL.
+ * - CRITICAL: special category data (Art. 9)
+ * - WARNING: sensitive categories (PAYMENT, CREDITWORTHINESS, HR)
+ * - INFO: everything else
+ */
+function determineSeverity(
+  dataCategory: string,
+  isSpecialCategory: boolean
+): "INFO" | "WARNING" | "CRITICAL" {
+  if (isSpecialCategory) {
+    return "CRITICAL";
+  }
+
+  const warningCategories = new Set([
+    "PAYMENT",
+    "CREDITWORTHINESS",
+    "HR",
+  ]);
+
+  if (warningCategories.has(dataCategory)) {
+    return "WARNING";
+  }
+
+  return "INFO";
+}
+
+/**
+ * Generate a deterministic summary string for a Finding based on its data category.
+ */
+function buildFindingSummary(
+  dataCategory: string,
+  evidenceCount: number,
+  providers: string[]
+): string {
+  const providerList = providers.join(", ");
+  return `${dataCategory} data detected across ${evidenceCount} evidence item(s) from: ${providerList}.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,7 +213,7 @@ export async function executeDiscoveryRun(
     action: "copilot_run.started",
     entityType: "CopilotRun",
     entityId: ctx.runId,
-    details: { caseId: ctx.caseId, reason: ctx.reason },
+    details: { caseId: ctx.caseId, justification: ctx.justification },
   });
 
   try {
@@ -151,28 +248,41 @@ export async function executeDiscoveryRun(
 
     // ----------------------------------------------------------------
     // 3. Find all ENABLED integrations for the tenant
+    //    Filter by providerSelection if provided
     // ----------------------------------------------------------------
+    const integrationWhere: Prisma.IntegrationWhereInput = {
+      tenantId: ctx.tenantId,
+      status: "ENABLED",
+    };
+
+    if (ctx.providerSelection && ctx.providerSelection.length > 0) {
+      integrationWhere.provider = {
+        in: ctx.providerSelection as any,
+      };
+    }
+
     const integrations = await prisma.integration.findMany({
-      where: { tenantId: ctx.tenantId, status: "ENABLED" },
+      where: integrationWhere,
     });
 
     if (integrations.length === 0) {
-      const summary = generateFindingsSummary([], identityGraph);
+      const resultSummary = generateFindingsSummary([], [], identityGraph);
       return await completeRun(ctx, startedAt, {
         totalFindings: 0,
-        art9Flagged: false,
-        art9Categories: [],
+        totalEvidenceItems: 0,
+        containsSpecialCategory: false,
+        specialCategories: [],
         identityGraph,
-        summary,
+        resultSummary,
       });
     }
 
     // ----------------------------------------------------------------
-    // 4 – 7. Iterate integrations: query, detect, persist
+    // 4 – 7. Iterate integrations: query, create evidence, detect, persist
     // ----------------------------------------------------------------
-    const allFindingRecords: FindingRecord[] = [];
-    let globalArt9 = false;
-    const globalArt9Categories = new Set<string>();
+    const allEvidenceRecords: EvidenceRecord[] = [];
+    let globalContainsSpecialCategory = false;
+    const globalSpecialCategories = new Set<string>();
 
     for (const integration of integrations) {
       // Rate-limit check per case
@@ -209,11 +319,21 @@ export async function executeDiscoveryRun(
         subjectIdentifiers
       );
 
-      // Create CopilotQuery record (PENDING)
+      // Build a query text for the new CopilotQuery field
+      const queryText = `Locate all data for subject "${subjectIdentifiers.primary.value}" in ${integration.provider} (${integration.name})`;
+
+      // ----------------------------------------------------------------
+      // Step 4: Create CopilotQuery record with new fields (PENDING)
+      // ----------------------------------------------------------------
       const copilotQuery = await prisma.copilotQuery.create({
         data: {
           tenantId: ctx.tenantId,
+          caseId: ctx.caseId,
           runId: ctx.runId,
+          createdByUserId: ctx.userId,
+          queryText,
+          queryIntent: "DATA_LOCATION",
+          executionMode: "METADATA_ONLY",
           integrationId: integration.id,
           provider: integration.provider,
           querySpec: querySpec as unknown as Prisma.InputJsonValue,
@@ -309,105 +429,100 @@ export async function executeDiscoveryRun(
 
       // Merge identity: add the resolved system to the identity graph
       addResolvedSystem(identityGraph, {
-        provider: integration.provider,
-        accountId:
-          (collectionResult.resultMetadata as Record<string, unknown>)?.provider?.toString() ??
-          integration.provider,
-        displayName: integration.name,
+        type: "system_account",
+        value: `${integration.provider}:${(collectionResult.resultMetadata as Record<string, unknown>)?.provider?.toString() ?? integration.provider}`,
+        confidence: 0.85,
+        source: integration.provider,
       });
 
       // ----------------------------------------------------------
-      // 5. Run detection on collected data
+      // Step 5: Create EvidenceItem
+      // ----------------------------------------------------------
+      const evidenceItem = await prisma.evidenceItem.create({
+        data: {
+          tenantId: ctx.tenantId,
+          caseId: ctx.caseId,
+          runId: ctx.runId,
+          queryId: copilotQuery.id,
+          integrationId: integration.id,
+          provider: integration.provider,
+          workload: mapProviderToWorkload(integration.provider),
+          itemType: mapProviderToItemType(integration.provider) as any,
+          location: buildLocationString(integration.provider, integration.name),
+          title: `${integration.name}: ${collectionResult.findingsSummary}`,
+          metadata: collectionResult.resultMetadata as unknown as Prisma.InputJsonValue,
+          contentHandling: "METADATA_ONLY",
+        },
+      });
+
+      // ----------------------------------------------------------
+      // Step 6: Run detection on collected data -> create DetectorResult
       // ----------------------------------------------------------
 
       // Extract text content from resultMetadata for PII detection.
-      // The resultMetadata is a structured object; we serialise it to
-      // make all textual content available to regex/keyword detectors.
       const textForDetection = extractTextForDetection(collectionResult);
       const detectionResults = runAllDetectors(textForDetection);
       const classifiedCategories = classifyFindings(detectionResults);
 
-      const art9Detected = hasArt9Content(detectionResults);
-      const art9Cats = getArt9Categories(detectionResults);
+      const specialCategoryDetected = hasSpecialCategory(detectionResults);
+      const specialCats = getSpecialCategories(detectionResults);
 
-      if (art9Detected) {
-        globalArt9 = true;
-        for (const cat of art9Cats) {
-          globalArt9Categories.add(cat);
+      if (specialCategoryDetected) {
+        globalContainsSpecialCategory = true;
+        for (const cat of specialCats) {
+          globalSpecialCategories.add(cat);
         }
       }
 
       // Merge any identifiers discovered during detection
       if (detectionResults.length > 0) {
         const discoveredIdentifiers = detectionResults
-          .filter((d) => d.patternName === "EMAIL" && d.sampleMatch)
-          .map((d) => ({
-            type: "email" as const,
-            value: d.sampleMatch!,
-            source: integration.provider,
-            confidence: d.confidence,
-          }));
+          .flatMap((d) =>
+            d.detectedElements
+              .filter((el) => el.elementType === "EMAIL_ADDRESS" && el.snippetPreview)
+              .map((el) => ({
+                type: "email" as const,
+                value: el.snippetPreview!,
+                source: integration.provider,
+                confidence: d.detectedCategories[0]?.confidence ?? el.confidence,
+              }))
+          );
         if (discoveredIdentifiers.length > 0) {
           mergeIdentifiers(identityGraph, discoveredIdentifiers, integration.provider);
         }
       }
 
-      // ----------------------------------------------------------
-      // 6. Create Finding records
-      // ----------------------------------------------------------
-      const findingRecord: FindingRecord = {
-        source: integration.provider,
-        location: buildLocationString(integration.provider, integration.name),
-        title: `${integration.name}: ${collectionResult.findingsSummary}`,
-        description: collectionResult.findingsSummary,
-        dataCategories: classifiedCategories,
-        severity: determineSeverity(classifiedCategories, art9Detected),
-        isArt9: art9Detected,
-        art9Categories: art9Cats,
-        recordCount: collectionResult.recordsFound,
-        metadata: collectionResult.resultMetadata as unknown as Prisma.InputJsonValue,
-        evidenceRef: null,
-        queryId: copilotQuery.id,
-        detectorResults: detectionResults,
-      };
-      allFindingRecords.push(findingRecord);
-
-      const finding = await prisma.finding.create({
-        data: {
-          tenantId: ctx.tenantId,
-          runId: ctx.runId,
-          queryId: copilotQuery.id,
-          source: findingRecord.source,
-          location: findingRecord.location,
-          title: findingRecord.title,
-          description: findingRecord.description,
-          dataCategories: classifiedCategories as any,
-          severity: findingRecord.severity as any,
-          isArt9: findingRecord.isArt9,
-          art9Categories: findingRecord.art9Categories,
-          recordCount: findingRecord.recordCount,
-          metadata: findingRecord.metadata,
-          evidenceRef: findingRecord.evidenceRef,
-        },
-      });
-
-      // ----------------------------------------------------------
-      // 7. Create DetectorResult records
-      // ----------------------------------------------------------
+      // Create DetectorResult records linked to EvidenceItem (not Finding)
       if (detectionResults.length > 0) {
         await prisma.detectorResult.createMany({
           data: detectionResults.map((dr) => ({
             tenantId: ctx.tenantId,
-            findingId: finding.id,
+            caseId: ctx.caseId,
+            runId: ctx.runId,
+            evidenceItemId: evidenceItem.id,
             detectorType: dr.detectorType,
-            patternName: dr.patternName,
-            matchCount: dr.matchCount,
-            sampleMatch: dr.sampleMatch ?? null,
-            confidence: dr.confidence,
-            metadata: Prisma.JsonNull,
+            detectedElements: dr.detectedElements as unknown as Prisma.InputJsonValue,
+            detectedCategories: dr.detectedCategories as unknown as Prisma.InputJsonValue,
+            containsSpecialCategorySuspected: dr.containsSpecialCategorySuspected,
           })),
         });
       }
+
+      // Accumulate evidence record for aggregation step
+      const evidenceRecord: EvidenceRecord = {
+        evidenceItemId: evidenceItem.id,
+        integrationId: integration.id,
+        provider: integration.provider,
+        queryId: copilotQuery.id,
+        detectionResults,
+        classifiedCategories,
+        containsSpecialCategory: specialCategoryDetected,
+        specialCategories: specialCats,
+        recordCount: collectionResult.recordsFound,
+        title: `${integration.name}: ${collectionResult.findingsSummary}`,
+        location: buildLocationString(integration.provider, integration.name),
+      };
+      allEvidenceRecords.push(evidenceRecord);
 
       await logAudit({
         tenantId: ctx.tenantId,
@@ -419,44 +534,162 @@ export async function executeDiscoveryRun(
           runId: ctx.runId,
           provider: integration.provider,
           recordsFound: collectionResult.recordsFound,
-          findingId: finding.id,
+          evidenceItemId: evidenceItem.id,
           detectorCount: detectionResults.length,
-          art9Detected,
+          specialCategoryDetected,
         },
       });
     }
 
     // ----------------------------------------------------------------
-    // 8. Flag Art. 9 if detected
+    // Step 7: Create Findings — aggregate by DataCategory
     // ----------------------------------------------------------------
-    const art9CategoriesArray = Array.from(globalArt9Categories);
+    const categoryAggregation = new Map<
+      string,
+      {
+        evidenceItemIds: string[];
+        providers: Set<string>;
+        isSpecialCategory: boolean;
+        maxConfidence: number;
+      }
+    >();
+
+    for (const evidence of allEvidenceRecords) {
+      for (const cat of evidence.classifiedCategories) {
+        let agg = categoryAggregation.get(cat);
+        if (!agg) {
+          agg = {
+            evidenceItemIds: [],
+            providers: new Set(),
+            isSpecialCategory: false,
+            maxConfidence: 0,
+          };
+          categoryAggregation.set(cat, agg);
+        }
+        agg.evidenceItemIds.push(evidence.evidenceItemId);
+        agg.providers.add(evidence.provider);
+
+        // Check if this category is a special category
+        const isSpecial = SPECIAL_CATEGORIES.has(cat as DataCategoryType);
+        if (isSpecial) {
+          agg.isSpecialCategory = true;
+        }
+
+        // Track the max confidence across all detectors for this category
+        for (const dr of evidence.detectionResults) {
+          for (const dc of dr.detectedCategories) {
+            if (dc.category === cat && dc.confidence > agg.maxConfidence) {
+              agg.maxConfidence = dc.confidence;
+            }
+          }
+        }
+      }
+    }
+
+    const findingIds: string[] = [];
+    const categoryKeys = Array.from(categoryAggregation.keys());
+    for (const dataCategory of categoryKeys) {
+      const agg = categoryAggregation.get(dataCategory)!;
+      const severity = determineSeverity(dataCategory, agg.isSpecialCategory);
+      const summary = buildFindingSummary(
+        dataCategory,
+        agg.evidenceItemIds.length,
+        Array.from(agg.providers)
+      );
+
+      const finding = await prisma.finding.create({
+        data: {
+          tenantId: ctx.tenantId,
+          caseId: ctx.caseId,
+          runId: ctx.runId,
+          dataCategory: dataCategory as any,
+          severity,
+          confidence: agg.maxConfidence,
+          summary,
+          evidenceItemIds: agg.evidenceItemIds,
+          containsSpecialCategory: agg.isSpecialCategory,
+          containsThirdPartyDataSuspected: false,
+          requiresLegalReview: agg.isSpecialCategory,
+        },
+      });
+
+      findingIds.push(finding.id);
+    }
 
     // ----------------------------------------------------------------
-    // 9. Generate deterministic summary
+    // Step 8: Flag special categories if detected
     // ----------------------------------------------------------------
-    const summaryInput = allFindingRecords.map((f) => ({
-      source: f.source,
-      title: f.title,
-      dataCategories: f.dataCategories,
-      isArt9: f.isArt9,
-      recordCount: f.recordCount,
-    }));
-    const summary = generateFindingsSummary(summaryInput, identityGraph);
+    const specialCategoriesArray = Array.from(globalSpecialCategories);
+
+    if (globalContainsSpecialCategory) {
+      // Update the CopilotRun with special category flags
+      await prisma.copilotRun.update({
+        where: { id: ctx.runId },
+        data: {
+          containsSpecialCategory: true,
+          legalApprovalStatus: "REQUIRED",
+        },
+      });
+
+      // Auto-create a Task in the case for legal review
+      await prisma.task.create({
+        data: {
+          tenantId: ctx.tenantId,
+          caseId: ctx.caseId,
+          title: "Legal Review Required (Art. 9 Data Detected)",
+          description: `Copilot Run ${ctx.runId} detected special category data (${specialCategoriesArray.join(", ")}). Manual review by a DPO or legal counsel is required before disclosure.`,
+          status: "OPEN",
+        },
+      });
+
+      await logAudit({
+        tenantId: ctx.tenantId,
+        actorUserId: ctx.userId,
+        action: "copilot_run.special_category_detected",
+        entityType: "CopilotRun",
+        entityId: ctx.runId,
+        details: {
+          caseId: ctx.caseId,
+          specialCategories: specialCategoriesArray,
+          legalApprovalStatus: "REQUIRED",
+        },
+      });
+    }
 
     // ----------------------------------------------------------------
-    // 10. Update CopilotRun with final results
+    // Step 9: Generate deterministic summary
+    // ----------------------------------------------------------------
+    const summaryFindings = Array.from(categoryAggregation.entries()).map(
+      ([dataCategory, agg]) => ({
+        dataCategory,
+        severity: determineSeverity(dataCategory, agg.isSpecialCategory),
+        evidenceCount: agg.evidenceItemIds.length,
+        providers: Array.from(agg.providers),
+        isSpecialCategory: agg.isSpecialCategory,
+      })
+    );
+
+    const resultSummary = generateFindingsSummary(
+      summaryFindings,
+      allEvidenceRecords,
+      identityGraph
+    );
+
+    // ----------------------------------------------------------------
+    // Step 10: Complete run — update CopilotRun, upsert IdentityProfile
     // ----------------------------------------------------------------
     return await completeRun(ctx, startedAt, {
-      totalFindings: allFindingRecords.length,
-      art9Flagged: globalArt9,
-      art9Categories: art9CategoriesArray,
+      totalFindings: findingIds.length,
+      totalEvidenceItems: allEvidenceRecords.length,
+      containsSpecialCategory: globalContainsSpecialCategory,
+      specialCategories: specialCategoriesArray,
       identityGraph,
-      summary,
+      resultSummary,
     });
   } catch (err) {
-    const errorMessage =
+    const errorDetails =
       err instanceof Error ? err.message : "Unknown fatal error";
-    return await failRun(ctx, startedAt, errorMessage);
+    return await failRun(ctx, startedAt, errorDetails);
   }
 }
 
@@ -473,11 +706,16 @@ export async function executeDiscoveryRun(
  */
 export function generateFindingsSummary(
   findings: Array<{
-    source: string;
-    title: string;
-    dataCategories: string[];
-    isArt9: boolean;
+    dataCategory: string;
+    severity: string;
+    evidenceCount: number;
+    providers: string[];
+    isSpecialCategory: boolean;
+  }>,
+  evidenceRecords: Array<{
+    provider: string;
     recordCount: number;
+    title: string;
   }>,
   identityGraph: IdentityGraph
 ): string {
@@ -489,19 +727,21 @@ export function generateFindingsSummary(
 
   // Identity overview
   lines.push("Subject Identity:");
-  if (identityGraph.primaryEmail) {
-    lines.push(`  Primary email: ${identityGraph.primaryEmail}`);
+  if (identityGraph.primaryIdentifierType === "EMAIL") {
+    lines.push(`  Primary email: ${identityGraph.primaryIdentifierValue}`);
+  } else {
+    lines.push(`  Primary identifier (${identityGraph.primaryIdentifierType}): ${identityGraph.primaryIdentifierValue}`);
   }
-  if (identityGraph.primaryName) {
-    lines.push(`  Name: ${identityGraph.primaryName}`);
+  if (identityGraph.displayName) {
+    lines.push(`  Name: ${identityGraph.displayName}`);
   }
   const identifierCount =
-    identityGraph.identifiers?.length ?? 0;
+    identityGraph.alternateIdentifiers?.length ?? 0;
   if (identifierCount > 0) {
     lines.push(`  Known identifiers: ${identifierCount}`);
   }
   const resolvedCount =
-    identityGraph.resolvedSystems?.length ?? 0;
+    identityGraph.alternateIdentifiers?.filter((id) => id.type === "system_account").length ?? 0;
   if (resolvedCount > 0) {
     lines.push(`  Systems resolved: ${resolvedCount}`);
   }
@@ -516,52 +756,57 @@ export function generateFindingsSummary(
   }
 
   // Aggregate stats
-  const totalRecords = findings.reduce((sum, f) => sum + f.recordCount, 0);
-  const art9Findings = findings.filter((f) => f.isArt9);
-  const sourceSet = new Set(findings.map((f) => f.source));
-  const allCategories = new Set(findings.flatMap((f) => f.dataCategories));
+  const totalRecords = evidenceRecords.reduce((sum, e) => sum + e.recordCount, 0);
+  const totalEvidenceItems = evidenceRecords.length;
+  const specialFindings = findings.filter((f) => f.isSpecialCategory);
+  const sourceSet = new Set(evidenceRecords.map((e) => e.provider));
+  const allCategories = new Set(findings.map((f) => f.dataCategory));
 
   lines.push("Overview:");
   lines.push(`  Total findings: ${findings.length}`);
+  lines.push(`  Total evidence items: ${totalEvidenceItems}`);
   lines.push(`  Total records: ${totalRecords}`);
   lines.push(`  Sources queried: ${sourceSet.size}`);
   lines.push(`  Data categories found: ${allCategories.size > 0 ? Array.from(allCategories).join(", ") : "none"}`);
   lines.push("");
 
-  // Art. 9 warning
-  if (art9Findings.length > 0) {
-    const art9Cats = new Set(art9Findings.flatMap((f) => {
-      // Art. 9 categories are embedded at the finding level
-      return f.dataCategories.filter(
-        (c) => c === "SPECIAL_CATEGORY_ART9"
-      );
-    }));
+  // Special category warning
+  if (specialFindings.length > 0) {
     lines.push("*** ATTENTION: Art. 9 Special Category Data Detected ***");
-    lines.push(`  ${art9Findings.length} finding(s) flagged as containing special category data.`);
+    lines.push(`  ${specialFindings.length} finding(s) flagged as containing special category data.`);
     lines.push("  Manual review by a DPO or legal counsel is required before disclosure.");
     lines.push("");
   }
 
-  // Per-source breakdown
-  lines.push("Findings by Source:");
-  const bySource = new Map<string, typeof findings>();
+  // Findings by category
+  lines.push("Findings by Data Category:");
   for (const f of findings) {
-    const list = bySource.get(f.source) ?? [];
-    list.push(f);
-    bySource.set(f.source, list);
+    const severityLabel = f.isSpecialCategory ? " [SPECIAL CATEGORY]" : "";
+    lines.push(`  ${f.dataCategory} (${f.severity})${severityLabel}:`);
+    lines.push(`    Evidence items: ${f.evidenceCount}`);
+    lines.push(`    Providers: ${f.providers.join(", ")}`);
+  }
+  lines.push("");
+
+  // Per-source breakdown
+  lines.push("Evidence by Source:");
+  const bySource = new Map<string, typeof evidenceRecords>();
+  for (const e of evidenceRecords) {
+    const list = bySource.get(e.provider) ?? [];
+    list.push(e);
+    bySource.set(e.provider, list);
   }
   const sourceKeys = Array.from(bySource.keys());
   for (const source of sourceKeys) {
-    const sourceFindings = bySource.get(source)!;
-    const sourceRecords = sourceFindings.reduce(
-      (sum: number, f: { recordCount: number }) => sum + f.recordCount,
+    const sourceEvidence = bySource.get(source)!;
+    const sourceRecords = sourceEvidence.reduce(
+      (sum: number, e: { recordCount: number }) => sum + e.recordCount,
       0
     );
-    const hasArt9 = sourceFindings.some((f: { isArt9: boolean }) => f.isArt9);
     lines.push(`  ${source}:`);
-    lines.push(`    Findings: ${sourceFindings.length}, Records: ${sourceRecords}${hasArt9 ? " [Art. 9]" : ""}`);
-    for (const f of sourceFindings) {
-      lines.push(`    - ${f.title} (${f.recordCount} record${f.recordCount !== 1 ? "s" : ""})`);
+    lines.push(`    Evidence items: ${sourceEvidence.length}, Records: ${sourceRecords}`);
+    for (const e of sourceEvidence) {
+      lines.push(`    - ${e.title} (${e.recordCount} record${e.recordCount !== 1 ? "s" : ""})`);
     }
   }
 
@@ -580,10 +825,11 @@ async function completeRun(
   startedAt: Date,
   result: {
     totalFindings: number;
-    art9Flagged: boolean;
-    art9Categories: string[];
+    totalEvidenceItems: number;
+    containsSpecialCategory: boolean;
+    specialCategories: string[];
     identityGraph: IdentityGraph;
-    summary: string;
+    resultSummary: string;
   }
 ): Promise<DiscoveryRunResult> {
   const completedAt = new Date();
@@ -593,15 +839,35 @@ async function completeRun(
     data: {
       status: "COMPLETED",
       totalFindings: result.totalFindings,
-      art9Flagged: result.art9Flagged,
-      art9ReviewStatus: result.art9Flagged ? "PENDING_REVIEW" : undefined,
-      identityGraph: result.identityGraph as unknown as Prisma.InputJsonValue,
-      summary: result.summary,
+      totalEvidenceItems: result.totalEvidenceItems,
+      containsSpecialCategory: result.containsSpecialCategory,
+      legalApprovalStatus: result.containsSpecialCategory ? "REQUIRED" : "NOT_REQUIRED",
+      resultSummary: result.resultSummary,
       completedAt,
     },
   });
 
-  // Persist identity profile for the case
+  // Persist identity profile for the case using new field names.
+  // Map IdentityGraph fields to the new IdentityProfile schema:
+  //   displayName <- primaryName
+  //   primaryIdentifierType <- derived from primary identifier type
+  //   primaryIdentifierValue <- primary identifier value
+  //   alternateIdentifiers <- identifiers array (all except primary)
+  //   confidenceScore <- confidence * 100 (0..100 int)
+
+  const subjectIds = buildSubjectIdentifiers(result.identityGraph);
+  const primaryIdType = mapIdentifierTypeToEnum(subjectIds.primary.type);
+  const primaryIdValue = subjectIds.primary.value;
+
+  const alternateIdentifiers = (result.identityGraph.alternateIdentifiers ?? []).map((entry) => ({
+    type: entry.type,
+    value: entry.value,
+    confidence: entry.confidence,
+    source: entry.source,
+  }));
+
+  const confidenceScore = result.identityGraph.confidenceScore ?? 0;
+
   await prisma.identityProfile.upsert({
     where: {
       tenantId_caseId: {
@@ -610,22 +876,20 @@ async function completeRun(
       },
     },
     update: {
-      runId: ctx.runId,
-      primaryEmail: result.identityGraph.primaryEmail ?? null,
-      primaryName: result.identityGraph.primaryName ?? null,
-      identifiers: (result.identityGraph.identifiers ?? []) as unknown as Prisma.InputJsonValue,
-      resolvedSystems: (result.identityGraph.resolvedSystems ?? []) as unknown as Prisma.InputJsonValue,
-      confidence: result.identityGraph.confidence ?? 0,
+      displayName: result.identityGraph.displayName ?? "Unknown",
+      primaryIdentifierType: primaryIdType as any,
+      primaryIdentifierValue: primaryIdValue,
+      alternateIdentifiers: alternateIdentifiers as unknown as Prisma.InputJsonValue,
+      confidenceScore,
     },
     create: {
       tenantId: ctx.tenantId,
       caseId: ctx.caseId,
-      runId: ctx.runId,
-      primaryEmail: result.identityGraph.primaryEmail ?? null,
-      primaryName: result.identityGraph.primaryName ?? null,
-      identifiers: (result.identityGraph.identifiers ?? []) as unknown as Prisma.InputJsonValue,
-      resolvedSystems: (result.identityGraph.resolvedSystems ?? []) as unknown as Prisma.InputJsonValue,
-      confidence: result.identityGraph.confidence ?? 0,
+      displayName: result.identityGraph.displayName ?? "Unknown",
+      primaryIdentifierType: primaryIdType as any,
+      primaryIdentifierValue: primaryIdValue,
+      alternateIdentifiers: alternateIdentifiers as unknown as Prisma.InputJsonValue,
+      confidenceScore,
     },
   });
 
@@ -638,8 +902,9 @@ async function completeRun(
     details: {
       caseId: ctx.caseId,
       totalFindings: result.totalFindings,
-      art9Flagged: result.art9Flagged,
-      art9Categories: result.art9Categories,
+      totalEvidenceItems: result.totalEvidenceItems,
+      containsSpecialCategory: result.containsSpecialCategory,
+      specialCategories: result.specialCategories,
       durationMs: completedAt.getTime() - startedAt.getTime(),
     },
   });
@@ -647,10 +912,11 @@ async function completeRun(
   return {
     status: "COMPLETED",
     totalFindings: result.totalFindings,
-    art9Flagged: result.art9Flagged,
-    art9Categories: result.art9Categories,
+    totalEvidenceItems: result.totalEvidenceItems,
+    containsSpecialCategory: result.containsSpecialCategory,
+    specialCategories: result.specialCategories,
     identityGraph: result.identityGraph,
-    summary: result.summary,
+    resultSummary: result.resultSummary,
   };
 }
 
@@ -660,7 +926,7 @@ async function completeRun(
 async function failRun(
   ctx: DiscoveryRunContext,
   startedAt: Date,
-  errorMessage: string
+  errorDetails: string
 ): Promise<DiscoveryRunResult> {
   const completedAt = new Date();
 
@@ -668,7 +934,7 @@ async function failRun(
     where: { id: ctx.runId },
     data: {
       status: "FAILED",
-      errorMessage,
+      errorDetails,
       completedAt,
     },
   });
@@ -681,28 +947,29 @@ async function failRun(
     entityId: ctx.runId,
     details: {
       caseId: ctx.caseId,
-      error: errorMessage,
+      error: errorDetails,
       durationMs: completedAt.getTime() - startedAt.getTime(),
     },
   });
 
   // Return an empty identity graph on failure
   const emptyGraph: IdentityGraph = {
-    primaryEmail: null,
-    primaryName: null,
-    identifiers: [],
-    resolvedSystems: [],
-    confidence: 0,
+    displayName: "",
+    primaryIdentifierType: "OTHER",
+    primaryIdentifierValue: "",
+    alternateIdentifiers: [],
+    confidenceScore: 0,
   };
 
   return {
     status: "FAILED",
     totalFindings: 0,
-    art9Flagged: false,
-    art9Categories: [],
+    totalEvidenceItems: 0,
+    containsSpecialCategory: false,
+    specialCategories: [],
     identityGraph: emptyGraph,
-    summary: `Discovery run failed: ${errorMessage}`,
-    errorMessage,
+    resultSummary: `Discovery run failed: ${errorDetails}`,
+    errorDetails,
   };
 }
 
@@ -718,7 +985,12 @@ async function createSkippedQuery(
   await prisma.copilotQuery.create({
     data: {
       tenantId: ctx.tenantId,
+      caseId: ctx.caseId,
       runId: ctx.runId,
+      createdByUserId: ctx.userId,
+      queryText: `Skipped: ${reason}`,
+      queryIntent: "DATA_LOCATION",
+      executionMode: "METADATA_ONLY",
       integrationId,
       provider,
       querySpec: {} as Prisma.InputJsonValue,
@@ -811,45 +1083,18 @@ function buildLocationString(provider: string, integrationName: string): string 
 }
 
 /**
- * Determine finding severity based on data categories and Art. 9 presence.
+ * Map an identity entry type string (from IdentityGraph) to the
+ * PrimaryIdentifierType enum value used in the IdentityProfile model.
  */
-function determineSeverity(
-  dataCategories: string[],
-  isArt9: boolean
-): string {
-  if (isArt9) {
-    return "CRITICAL";
-  }
-
-  // Presence of financial or HR data elevates severity
-  const highCategories = new Set([
-    "PAYMENT_BANK",
-    "CREDIT_FINANCIAL",
-    "HR_EMPLOYMENT",
-  ]);
-
-  const mediumCategories = new Set([
-    "IDENTIFICATION",
-    "CONTACT",
-    "CONTRACT",
-    "COMMUNICATION",
-  ]);
-
-  for (const cat of dataCategories) {
-    if (highCategories.has(cat)) {
-      return "HIGH";
-    }
-  }
-
-  for (const cat of dataCategories) {
-    if (mediumCategories.has(cat)) {
-      return "MEDIUM";
-    }
-  }
-
-  if (dataCategories.length > 0) {
-    return "LOW";
-  }
-
-  return "INFO";
+function mapIdentifierTypeToEnum(type: string): string {
+  const mapping: Record<string, string> = {
+    email: "EMAIL",
+    upn: "UPN",
+    objectId: "OBJECT_ID",
+    employeeId: "EMPLOYEE_ID",
+    phone: "PHONE",
+    name: "OTHER",
+    custom: "OTHER",
+  };
+  return mapping[type] ?? "OTHER";
 }

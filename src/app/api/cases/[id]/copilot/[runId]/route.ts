@@ -6,26 +6,27 @@ import { checkPermission } from "@/lib/rbac";
 import { logAudit, getClientInfo } from "@/lib/audit";
 import { ApiError, handleApiError } from "@/lib/errors";
 
-interface RouteParams {
-  params: { id: string; runId: string };
-}
-
 const updateCopilotRunSchema = z.object({
-  art9ReviewStatus: z.enum(["APPROVED", "BLOCKED"]).optional(),
-  responseDraft: z.string().optional(),
+  legalApprovalStatus: z.enum(["APPROVED", "REJECTED"]).optional(),
+  cancel: z.boolean().optional(),
 });
 
 /* -- GET — Get a single copilot run with all details ----------------------- */
 
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string; runId: string }> }
+) {
   try {
     const user = await requireAuth();
     checkPermission(user.role, "copilot", "read");
 
+    const { id: caseId, runId } = await params;
+
     // Verify case exists in tenant
     const dsarCase = await prisma.dSARCase.findFirst({
       where: {
-        id: params.id,
+        id: caseId,
         tenantId: user.tenantId,
         deletedAt: null,
       },
@@ -37,12 +38,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const run = await prisma.copilotRun.findFirst({
       where: {
-        id: params.runId,
-        caseId: params.id,
+        id: runId,
+        caseId,
         tenantId: user.tenantId,
       },
       include: {
         createdBy: {
+          select: { id: true, name: true, email: true },
+        },
+        legalApprovedBy: {
           select: { id: true, name: true, email: true },
         },
         queries: {
@@ -53,11 +57,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           },
           orderBy: { createdAt: "asc" },
         },
-        findings: {
-          include: {
-            detectorResults: true,
-          },
+        evidenceItems: {
           orderBy: { createdAt: "asc" },
+        },
+        findings: {
+          orderBy: { createdAt: "asc" },
+        },
+        summaries: {
+          orderBy: { createdAt: "desc" },
+        },
+        exports: {
+          orderBy: { createdAt: "desc" },
         },
       },
     });
@@ -66,34 +76,23 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       throw new ApiError(404, "Copilot run not found");
     }
 
-    const clientInfo = getClientInfo(request);
-    await logAudit({
-      tenantId: user.tenantId,
-      actorUserId: user.id,
-      action: "COPILOT_RUN_VIEWED",
-      entityType: "CopilotRun",
-      entityId: run.id,
-      ip: clientInfo.ip,
-      userAgent: clientInfo.userAgent,
-      details: {
-        caseId: params.id,
-        caseNumber: dsarCase.caseNumber,
-        runStatus: run.status,
-      },
-    });
-
     return NextResponse.json(run);
   } catch (error) {
     return handleApiError(error);
   }
 }
 
-/* -- PATCH — Update a copilot run (Art. 9 review / response draft) --------- */
+/* -- PATCH — Update a copilot run (legal approval / cancel) ---------------- */
 
-export async function PATCH(request: NextRequest, { params }: RouteParams) {
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string; runId: string }> }
+) {
   try {
     const user = await requireAuth();
     checkPermission(user.role, "copilot", "manage");
+
+    const { id: caseId, runId } = await params;
 
     const body = await request.json();
     const data = updateCopilotRunSchema.parse(body);
@@ -101,7 +100,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     // Verify case exists in tenant
     const dsarCase = await prisma.dSARCase.findFirst({
       where: {
-        id: params.id,
+        id: caseId,
         tenantId: user.tenantId,
         deletedAt: null,
       },
@@ -114,8 +113,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     // Verify run exists in tenant/case
     const existingRun = await prisma.copilotRun.findFirst({
       where: {
-        id: params.runId,
-        caseId: params.id,
+        id: runId,
+        caseId,
         tenantId: user.tenantId,
       },
     });
@@ -126,66 +125,109 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     const clientInfo = getClientInfo(request);
 
-    // Handle Art. 9 review status update
-    if (data.art9ReviewStatus !== undefined) {
+    // Handle legal approval status update
+    if (data.legalApprovalStatus !== undefined) {
+      if (data.legalApprovalStatus === "APPROVED") {
+        await prisma.copilotRun.update({
+          where: { id: runId },
+          data: {
+            legalApprovalStatus: "APPROVED",
+            legalApprovedByUserId: user.id,
+            legalApprovedAt: new Date(),
+          },
+        });
+
+        await logAudit({
+          tenantId: user.tenantId,
+          actorUserId: user.id,
+          action: "copilot_run.legal_approved",
+          entityType: "CopilotRun",
+          entityId: runId,
+          ip: clientInfo.ip,
+          userAgent: clientInfo.userAgent,
+          details: {
+            caseId,
+            caseNumber: dsarCase.caseNumber,
+            legalApprovalStatus: "APPROVED",
+          },
+        });
+      } else {
+        // REJECTED
+        await prisma.copilotRun.update({
+          where: { id: runId },
+          data: {
+            legalApprovalStatus: "REJECTED",
+            legalApprovedByUserId: user.id,
+            legalApprovedAt: new Date(),
+          },
+        });
+
+        await logAudit({
+          tenantId: user.tenantId,
+          actorUserId: user.id,
+          action: "copilot_run.legal_rejected",
+          entityType: "CopilotRun",
+          entityId: runId,
+          ip: clientInfo.ip,
+          userAgent: clientInfo.userAgent,
+          details: {
+            caseId,
+            caseNumber: dsarCase.caseNumber,
+            legalApprovalStatus: "REJECTED",
+          },
+        });
+      }
+    }
+
+    // Handle cancel
+    if (data.cancel) {
+      if (
+        existingRun.status === "COMPLETED" ||
+        existingRun.status === "CANCELED" ||
+        existingRun.status === "FAILED"
+      ) {
+        throw new ApiError(
+          400,
+          `Cannot cancel a run with status ${existingRun.status}`
+        );
+      }
+
       await prisma.copilotRun.update({
-        where: { id: params.runId },
+        where: { id: runId },
         data: {
-          art9ReviewStatus: data.art9ReviewStatus,
-          art9ReviewedBy: user.id,
-          art9ReviewedAt: new Date(),
+          status: "CANCELED",
+          completedAt: new Date(),
         },
       });
 
       await logAudit({
         tenantId: user.tenantId,
         actorUserId: user.id,
-        action: "COPILOT_ART9_REVIEWED",
+        action: "copilot_run.canceled",
         entityType: "CopilotRun",
-        entityId: params.runId,
+        entityId: runId,
         ip: clientInfo.ip,
         userAgent: clientInfo.userAgent,
         details: {
-          caseId: params.id,
+          caseId,
           caseNumber: dsarCase.caseNumber,
-          art9ReviewStatus: data.art9ReviewStatus,
+          previousStatus: existingRun.status,
         },
       });
     }
 
-    // Handle response draft update
-    if (data.responseDraft !== undefined) {
-      await prisma.copilotRun.update({
-        where: { id: params.runId },
-        data: {
-          responseDraft: data.responseDraft,
-        },
-      });
-
-      await logAudit({
-        tenantId: user.tenantId,
-        actorUserId: user.id,
-        action: "COPILOT_SUMMARY_GENERATED",
-        entityType: "CopilotRun",
-        entityId: params.runId,
-        ip: clientInfo.ip,
-        userAgent: clientInfo.userAgent,
-        details: {
-          caseId: params.id,
-          caseNumber: dsarCase.caseNumber,
-        },
-      });
-    }
-
-    // Fetch and return the updated run
+    // Fetch and return the updated run with full includes
     const updatedRun = await prisma.copilotRun.findFirst({
       where: {
-        id: params.runId,
-        caseId: params.id,
+        id: runId,
+        caseId,
         tenantId: user.tenantId,
       },
       include: {
         createdBy: {
+          select: { id: true, name: true, email: true },
+        },
+        legalApprovedBy: {
           select: { id: true, name: true, email: true },
         },
         queries: {
@@ -196,11 +238,17 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           },
           orderBy: { createdAt: "asc" },
         },
-        findings: {
-          include: {
-            detectorResults: true,
-          },
+        evidenceItems: {
           orderBy: { createdAt: "asc" },
+        },
+        findings: {
+          orderBy: { createdAt: "asc" },
+        },
+        summaries: {
+          orderBy: { createdAt: "desc" },
+        },
+        exports: {
+          orderBy: { createdAt: "desc" },
         },
       },
     });

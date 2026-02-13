@@ -9,7 +9,7 @@ export async function GET() {
     const user = await requireAuth();
     checkPermission(user.role, "copilot", "read");
 
-    const [totalRuns, completedRuns, art9Runs, recentRuns, totalFindings] =
+    const [totalRuns, completedRuns, specialCategoryRuns, recentRuns, totalFindings] =
       await Promise.all([
         prisma.copilotRun.count({
           where: { tenantId: user.tenantId },
@@ -18,7 +18,7 @@ export async function GET() {
           where: { tenantId: user.tenantId, status: "COMPLETED" },
         }),
         prisma.copilotRun.count({
-          where: { tenantId: user.tenantId, art9Flagged: true },
+          where: { tenantId: user.tenantId, containsSpecialCategory: true },
         }),
         prisma.copilotRun.findMany({
           where: { tenantId: user.tenantId },
@@ -28,8 +28,8 @@ export async function GET() {
             id: true,
             status: true,
             totalFindings: true,
-            art9Flagged: true,
-            art9ReviewStatus: true,
+            containsSpecialCategory: true,
+            legalApprovalStatus: true,
             createdAt: true,
             completedAt: true,
             case: {
@@ -51,7 +51,7 @@ export async function GET() {
       totalRuns,
       completedRuns,
       failedRuns: totalRuns - completedRuns,
-      art9Runs,
+      specialCategoryRuns,
       totalFindings,
       recentRuns,
     });

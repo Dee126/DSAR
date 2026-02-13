@@ -107,10 +107,58 @@ interface DataCollectionItem { id: string; status: string; querySpec: string | n
 interface LegalReview { id: string; status: string; issues: string | null; exemptionsApplied: string[] | null; redactions: string | null; notes: string | null; reviewer: CaseUser | null; approvedAt: string | null; createdAt: string }
 interface SystemItem { id: string; name: string }
 
-interface CopilotRunSummary { id: string; status: string; reason: string; totalFindings: number; art9Flagged: boolean; art9ReviewStatus: string | null; createdAt: string; completedAt: string | null; createdBy: CaseUser; _count: { findings: number; queries: number } }
-interface CopilotRunDetail { id: string; status: string; reason: string; summary: string | null; responseDraft: string | null; totalFindings: number; art9Flagged: boolean; art9ReviewStatus: string | null; identityGraph: unknown; createdAt: string; completedAt: string | null; errorMessage: string | null; createdBy: CaseUser; queries: CopilotQueryItem[]; findings: CopilotFinding[] }
-interface CopilotQueryItem { id: string; provider: string; status: string; recordsFound: number | null; executionMs: number | null; errorMessage: string | null; integration: { id: string; name: string; provider: string } | null }
-interface CopilotFinding { id: string; source: string; location: string; title: string; description: string | null; dataCategories: string[]; severity: string; isArt9: boolean; art9Categories: string[]; recordCount: number; detectorResults: { id: string; detectorType: string; patternName: string; matchCount: number; sampleMatch: string | null; confidence: number }[] }
+interface CopilotRunSummary {
+  id: string; status: string; justification: string; totalFindings: number; totalEvidenceItems: number;
+  containsSpecialCategory: boolean; legalApprovalStatus: string; scopeSummary: string | null;
+  createdAt: string; completedAt: string | null; createdBy: CaseUser;
+  _count: { findings: number; queries: number; evidenceItems: number };
+}
+
+interface CopilotRunDetail {
+  id: string; status: string; justification: string; scopeSummary: string | null;
+  providerSelection: string[] | null; resultSummary: string | null; errorDetails: string | null;
+  totalFindings: number; totalEvidenceItems: number; containsSpecialCategory: boolean;
+  legalApprovalStatus: string; legalApprovedByUserId: string | null; legalApprovedAt: string | null;
+  createdAt: string; startedAt: string | null; completedAt: string | null;
+  createdBy: CaseUser; legalApprovedBy: CaseUser | null;
+  queries: CopilotQueryItem[];
+  evidenceItems: CopilotEvidenceItem[];
+  findings: CopilotFinding[];
+  summaries: CopilotSummaryItem[];
+  exports: CopilotExportItem[];
+}
+
+interface CopilotQueryItem {
+  id: string; provider: string | null; status: string; recordsFound: number | null;
+  executionMs: number | null; errorMessage: string | null; queryText: string;
+  queryIntent: string; executionMode: string;
+  integration: { id: string; name: string; provider: string } | null;
+}
+
+interface CopilotEvidenceItem {
+  id: string; provider: string; workload: string | null; itemType: string;
+  externalRef: string | null; location: string; title: string;
+  createdAtSource: string | null; modifiedAtSource: string | null;
+  contentHandling: string; sensitivityScore: number | null;
+  detectorResults: { id: string; detectorType: string; containsSpecialCategorySuspected: boolean; detectedCategories: { category: string; confidence: number }[] }[];
+}
+
+interface CopilotFinding {
+  id: string; dataCategory: string; severity: string; confidence: number;
+  summary: string; evidenceItemIds: string[];
+  containsSpecialCategory: boolean; containsThirdPartyDataSuspected: boolean;
+  requiresLegalReview: boolean;
+}
+
+interface CopilotSummaryItem {
+  id: string; summaryType: string; content: string; disclaimerIncluded: boolean;
+  createdAt: string; createdBy: CaseUser;
+}
+
+interface CopilotExportItem {
+  id: string; exportType: string; status: string; legalGateStatus: string;
+  createdAt: string; createdBy: CaseUser;
+}
 
 interface DSARCaseDetail {
   id: string; caseNumber: string; type: string; status: string; priority: string;
@@ -129,18 +177,17 @@ const EXPORT_ROLES = ["CASE_MANAGER", "DPO", "TENANT_ADMIN", "SUPER_ADMIN"];
 const COPILOT_ROLES = ["SUPER_ADMIN", "TENANT_ADMIN", "DPO", "CASE_MANAGER"];
 
 const COPILOT_STATUS_COLORS: Record<string, string> = {
-  CREATED: "bg-blue-100 text-blue-700",
+  DRAFT: "bg-gray-100 text-gray-700",
+  QUEUED: "bg-blue-100 text-blue-700",
   RUNNING: "bg-yellow-100 text-yellow-700 animate-pulse",
   COMPLETED: "bg-green-100 text-green-700",
   FAILED: "bg-red-100 text-red-700",
-  CANCELLED: "bg-gray-100 text-gray-500",
+  CANCELED: "bg-gray-100 text-gray-500",
 };
 
 const SEVERITY_COLORS: Record<string, string> = {
   INFO: "bg-gray-100 text-gray-600",
-  LOW: "bg-blue-100 text-blue-700",
-  MEDIUM: "bg-yellow-100 text-yellow-700",
-  HIGH: "bg-orange-100 text-orange-700",
+  WARNING: "bg-yellow-100 text-yellow-700",
   CRITICAL: "bg-red-100 text-red-700",
 };
 
@@ -148,12 +195,17 @@ const CATEGORY_COLORS: Record<string, string> = {
   IDENTIFICATION: "bg-blue-50 text-blue-700",
   CONTACT: "bg-green-50 text-green-700",
   CONTRACT: "bg-purple-50 text-purple-700",
-  PAYMENT_BANK: "bg-yellow-50 text-yellow-700",
+  PAYMENT: "bg-yellow-50 text-yellow-700",
   COMMUNICATION: "bg-indigo-50 text-indigo-700",
-  HR_EMPLOYMENT: "bg-pink-50 text-pink-700",
-  CREDIT_FINANCIAL: "bg-orange-50 text-orange-700",
+  HR: "bg-pink-50 text-pink-700",
+  CREDITWORTHINESS: "bg-orange-50 text-orange-700",
   ONLINE_TECHNICAL: "bg-gray-50 text-gray-700",
-  SPECIAL_CATEGORY_ART9: "bg-red-50 text-red-700",
+  HEALTH: "bg-red-100 text-red-800",
+  RELIGION: "bg-red-100 text-red-800",
+  UNION: "bg-red-100 text-red-800",
+  POLITICAL_OPINION: "bg-red-100 text-red-800",
+  OTHER_SPECIAL_CATEGORY: "bg-red-100 text-red-800",
+  OTHER: "bg-gray-100 text-gray-600",
 };
 
 type TabKey = "overview" | "tasks" | "documents" | "communications" | "data-collection" | "legal-review" | "copilot" | "timeline";
@@ -223,7 +275,9 @@ export default function CaseDetailPage() {
   // Copilot
   const [copilotRuns, setCopilotRuns] = useState<CopilotRunSummary[]>([]);
   const [selectedRun, setSelectedRun] = useState<CopilotRunDetail | null>(null);
-  const [copilotReason, setCopilotReason] = useState("");
+  const [copilotJustification, setCopilotJustification] = useState("");
+  const [selectedIntegrations, setSelectedIntegrations] = useState<string[]>([]);
+  const [availableIntegrations, setAvailableIntegrations] = useState<Array<{id: string; name: string; provider: string}>>([]);
   const [startingRun, setStartingRun] = useState(false);
   const [loadingRun, setLoadingRun] = useState(false);
 
@@ -258,7 +312,23 @@ export default function CaseDetailPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedRun || (selectedRun.status !== "CREATED" && selectedRun.status !== "RUNNING")) return;
+    async function loadIntegrations() {
+      try {
+        const res = await fetch("/api/integrations");
+        if (res.ok) {
+          const data = await res.json();
+          const list = Array.isArray(data) ? data : data.data ?? [];
+          const enabled = list.filter((i: { id: string; name: string; provider: string; status: string }) => i.status === "ENABLED");
+          setAvailableIntegrations(enabled.map((i: { id: string; name: string; provider: string }) => ({ id: i.id, name: i.name, provider: i.provider })));
+          setSelectedIntegrations(enabled.map((i: { id: string }) => i.id));
+        }
+      } catch { /* silently fail */ }
+    }
+    loadIntegrations();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedRun || (selectedRun.status !== "DRAFT" && selectedRun.status !== "QUEUED" && selectedRun.status !== "RUNNING")) return;
     const interval = setInterval(() => { fetchCopilotRunDetail(selectedRun.id); }, 3000);
     return () => clearInterval(interval);
   }, [selectedRun?.id, selectedRun?.status]);
@@ -427,20 +497,44 @@ export default function CaseDetailPage() {
   }
 
   async function handleStartCopilotRun() {
-    if (copilotReason.trim().length < 5) return;
+    if (copilotJustification.trim().length < 5) return;
     setStartingRun(true);
     try {
       const res = await fetch(`/api/cases/${caseId}/copilot`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: copilotReason }),
+        body: JSON.stringify({ justification: copilotJustification, providerSelection: selectedIntegrations, autoStart: true }),
       });
-      if (res.ok) { setCopilotReason(""); await fetchCopilotRuns(); }
+      if (res.ok) { setCopilotJustification(""); await fetchCopilotRuns(); }
     } catch { /* silently fail */ } finally { setStartingRun(false); }
+  }
+
+  async function handleGenerateSummary(runId: string, summaryType: string) {
+    try {
+      const res = await fetch(`/api/cases/${caseId}/copilot/${runId}/summaries`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ summaryType }),
+      });
+      if (res.ok) { await fetchCopilotRunDetail(runId); }
+    } catch { /* silently fail */ }
+  }
+
+  async function handleLegalApproval(runId: string, status: "APPROVED" | "REJECTED") {
+    try {
+      const res = await fetch(`/api/cases/${caseId}/copilot/${runId}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ legalApprovalStatus: status }),
+      });
+      if (res.ok) { await fetchCopilotRunDetail(runId); }
+    } catch { /* silently fail */ }
   }
 
   async function handleExportEvidence(runId: string) {
     try {
       const res = await fetch(`/api/cases/${caseId}/copilot/${runId}/export`);
+      if (res.status === 403) {
+        alert("Export blocked: Legal approval is required before exporting special category data.");
+        return;
+      }
       if (res.ok) {
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
@@ -813,11 +907,37 @@ export default function CaseDetailPage() {
                   <p className="mt-1 text-sm text-gray-500">Run an automated data discovery across all connected integrations for this case&apos;s data subject.</p>
                   <div className="mt-4 space-y-3">
                     <div>
-                      <label className="label">Reason / Justification <span className="text-red-500">*</span></label>
-                      <textarea value={copilotReason} onChange={(e) => setCopilotReason(e.target.value)} rows={2} className="input-field resize-y" placeholder="DSAR fulfillment — data subject access request for personal data..." />
+                      <label className="label">Justification <span className="text-red-500">*</span></label>
+                      <textarea value={copilotJustification} onChange={(e) => setCopilotJustification(e.target.value)} rows={2} className="input-field resize-y" placeholder="DSAR fulfillment — data subject access request for personal data..." />
                     </div>
+                    {availableIntegrations.length > 0 && (
+                      <div>
+                        <label className="label">Integrations</label>
+                        <div className="mt-1 space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                          {availableIntegrations.map((integration) => (
+                            <label key={integration.id} className="flex items-center gap-2 text-sm text-gray-700">
+                              <input
+                                type="checkbox"
+                                checked={selectedIntegrations.includes(integration.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedIntegrations((prev) => [...prev, integration.id]);
+                                  } else {
+                                    setSelectedIntegrations((prev) => prev.filter((id) => id !== integration.id));
+                                  }
+                                }}
+                                className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                              />
+                              <span className="font-medium">{integration.name}</span>
+                              <span className="text-xs text-gray-400">({integration.provider})</span>
+                            </label>
+                          ))}
+                        </div>
+                        <p className="mt-1 text-xs text-gray-400">Metadata-only mode. Select integrations to include in the discovery run.</p>
+                      </div>
+                    )}
                     <div className="flex justify-end">
-                      <button onClick={handleStartCopilotRun} disabled={copilotReason.trim().length < 5 || startingRun} className="btn-primary text-sm">{startingRun ? "Starting..." : "Start Discovery Run"}</button>
+                      <button onClick={handleStartCopilotRun} disabled={copilotJustification.trim().length < 5 || startingRun} className="btn-primary text-sm">{startingRun ? "Starting..." : "Start Discovery Run"}</button>
                     </div>
                   </div>
                 </div>
@@ -825,7 +945,7 @@ export default function CaseDetailPage() {
 
               {/* Run List */}
               {selectedRun ? (
-                <CopilotRunDetailView run={selectedRun} onBack={() => setSelectedRun(null)} onExport={handleExportEvidence} canManage={MANAGE_ROLES.includes(userRole)} caseId={caseId} onRefresh={() => fetchCopilotRunDetail(selectedRun.id)} />
+                <CopilotRunDetailView run={selectedRun} onBack={() => setSelectedRun(null)} onExport={handleExportEvidence} canManage={MANAGE_ROLES.includes(userRole)} caseId={caseId} onRefresh={() => fetchCopilotRunDetail(selectedRun.id)} onGenerateSummary={handleGenerateSummary} onLegalApproval={handleLegalApproval} />
               ) : (
                 <div className="card">
                   <h2 className="text-lg font-semibold text-gray-900">Discovery Runs ({copilotRuns.length})</h2>
@@ -838,12 +958,13 @@ export default function CaseDetailPage() {
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
                               <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${COPILOT_STATUS_COLORS[run.status] ?? "bg-gray-100 text-gray-700"}`}>{run.status.replace(/_/g, " ")}</span>
-                              {run.art9Flagged && <span className="inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">Art. 9</span>}
-                              <span className="text-sm text-gray-500">{run._count.findings} findings, {run._count.queries} queries</span>
+                              <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${run.legalApprovalStatus === "APPROVED" ? "bg-green-100 text-green-700" : run.legalApprovalStatus === "REJECTED" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"}`}>{run.legalApprovalStatus}</span>
+                              {run.containsSpecialCategory && <span className="inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">Special Category</span>}
+                              <span className="text-sm text-gray-500">{run._count.findings} findings, {run.totalEvidenceItems} evidence, {run._count.queries} queries</span>
                             </div>
                             <span className="text-xs text-gray-400">{new Date(run.createdAt).toLocaleString()}</span>
                           </div>
-                          <p className="mt-2 text-sm text-gray-700">{run.reason}</p>
+                          <p className="mt-2 text-sm text-gray-700">{run.justification}</p>
                           <p className="mt-1 text-xs text-gray-400">by {run.createdBy.name}</p>
                         </button>
                       ))}
@@ -963,31 +1084,77 @@ function TimelineSection({ caseData }: { caseData: DSARCaseDetail }) {
 
 /* ── Copilot Run Detail View Component ───────────────────────────────── */
 
-function CopilotRunDetailView({ run, onBack, onExport, canManage, caseId, onRefresh }: {
+type RunTabKey = "overview" | "evidence" | "findings" | "categories" | "summaries" | "export";
+
+const SPECIAL_CATEGORIES = ["HEALTH", "RELIGION", "UNION", "POLITICAL_OPINION", "OTHER_SPECIAL_CATEGORY"];
+
+const SUMMARY_TYPES = [
+  { key: "LOCATION_OVERVIEW", label: "Location Overview" },
+  { key: "CATEGORY_OVERVIEW", label: "Category Overview" },
+  { key: "DSAR_DRAFT", label: "DSAR Draft" },
+  { key: "RISK_SUMMARY", label: "Risk Summary" },
+];
+
+const EVIDENCE_PAGE_SIZE = 20;
+
+function CopilotRunDetailView({ run, onBack, onExport, canManage, caseId, onRefresh, onGenerateSummary, onLegalApproval }: {
   run: CopilotRunDetail;
   onBack: () => void;
   onExport: (runId: string) => void;
   canManage: boolean;
   caseId: string;
   onRefresh: () => void;
+  onGenerateSummary: (runId: string, summaryType: string) => Promise<void>;
+  onLegalApproval: (runId: string, status: "APPROVED" | "REJECTED") => Promise<void>;
 }) {
-  const [updatingArt9, setUpdatingArt9] = useState(false);
+  const [activeRunTab, setActiveRunTab] = useState<RunTabKey>("overview");
+  const [generatingSummary, setGeneratingSummary] = useState<string | null>(null);
+  const [approvingLegal, setApprovingLegal] = useState(false);
+  const [evidencePage, setEvidencePage] = useState(0);
 
-  async function handleArt9Review(status: string) {
-    setUpdatingArt9(true);
+  const isRunning = run.status === "DRAFT" || run.status === "QUEUED" || run.status === "RUNNING";
+
+  async function handleGenerate(summaryType: string) {
+    setGeneratingSummary(summaryType);
     try {
-      const res = await fetch(`/api/cases/${caseId}/copilot/${run.id}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ art9ReviewStatus: status }),
-      });
-      if (res.ok) onRefresh();
-    } catch { /* silently fail */ } finally { setUpdatingArt9(false); }
+      await onGenerateSummary(run.id, summaryType);
+    } finally { setGeneratingSummary(null); }
   }
 
-  const isRunning = run.status === "CREATED" || run.status === "RUNNING";
-  const identityGraph = run.identityGraph as { identifiers?: unknown[]; resolvedSystems?: string[] } | null;
-  const identifierCount = Array.isArray(identityGraph?.identifiers) ? identityGraph.identifiers.length : 0;
-  const resolvedSystems = Array.isArray(identityGraph?.resolvedSystems) ? identityGraph.resolvedSystems : [];
+  async function handleApproval(status: "APPROVED" | "REJECTED") {
+    setApprovingLegal(true);
+    try {
+      await onLegalApproval(run.id, status);
+    } finally { setApprovingLegal(false); }
+  }
+
+  // Group findings by data category
+  const findingsByCategory: Record<string, CopilotFinding[]> = {};
+  for (const f of run.findings) {
+    if (!findingsByCategory[f.dataCategory]) findingsByCategory[f.dataCategory] = [];
+    findingsByCategory[f.dataCategory].push(f);
+  }
+
+  // Category overview stats
+  const categoryStats = Object.entries(findingsByCategory).map(([category, findings]) => ({
+    category,
+    count: findings.length,
+    maxSeverity: findings.some((f) => f.severity === "CRITICAL") ? "CRITICAL" : findings.some((f) => f.severity === "WARNING") ? "WARNING" : "INFO",
+    isSpecial: SPECIAL_CATEGORIES.includes(category),
+  }));
+
+  // Paginated evidence
+  const totalEvidencePages = Math.max(1, Math.ceil(run.evidenceItems.length / EVIDENCE_PAGE_SIZE));
+  const paginatedEvidence = run.evidenceItems.slice(evidencePage * EVIDENCE_PAGE_SIZE, (evidencePage + 1) * EVIDENCE_PAGE_SIZE);
+
+  const runTabs: { key: RunTabKey; label: string; count?: number }[] = [
+    { key: "overview", label: "Overview" },
+    { key: "evidence", label: "Evidence", count: run.evidenceItems.length },
+    { key: "findings", label: "Findings", count: run.findings.length },
+    { key: "categories", label: "Categories", count: categoryStats.length },
+    { key: "summaries", label: "Summaries", count: run.summaries.length },
+    { key: "export", label: "Export", count: run.exports.length },
+  ];
 
   return (
     <div className="space-y-6">
@@ -1002,20 +1169,36 @@ function CopilotRunDetailView({ run, onBack, onExport, canManage, caseId, onRefr
               <div className="flex items-center gap-3">
                 <h2 className="text-lg font-semibold text-gray-900">Discovery Run</h2>
                 <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${COPILOT_STATUS_COLORS[run.status] ?? "bg-gray-100 text-gray-700"}`}>{run.status.replace(/_/g, " ")}</span>
-                {run.art9Flagged && <span className="inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">Art. 9 Data Detected</span>}
+                {run.containsSpecialCategory && <span className="inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">Special Category Data</span>}
+                <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${run.legalApprovalStatus === "APPROVED" ? "bg-green-100 text-green-700" : run.legalApprovalStatus === "REJECTED" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"}`}>{run.legalApprovalStatus}</span>
               </div>
               <p className="mt-1 text-sm text-gray-500">Started {new Date(run.createdAt).toLocaleString()} by {run.createdBy.name}</p>
             </div>
           </div>
           <div className="flex gap-2">
             <button onClick={onRefresh} className="btn-secondary text-sm">Refresh</button>
-            {run.status === "COMPLETED" && <button onClick={() => onExport(run.id)} className="btn-primary text-sm">Export Evidence</button>}
           </div>
         </div>
-        <p className="mt-3 text-sm text-gray-700">{run.reason}</p>
-        {run.errorMessage && <p className="mt-2 text-sm text-red-600">Error: {run.errorMessage}</p>}
-        {run.completedAt && <p className="mt-1 text-xs text-gray-400">Completed: {new Date(run.completedAt).toLocaleString()}</p>}
       </div>
+
+      {/* Legal Gate Banner */}
+      {run.containsSpecialCategory && run.legalApprovalStatus !== "APPROVED" && (
+        <div className="rounded-lg border border-red-300 bg-red-50 p-4">
+          <div className="flex items-start gap-3">
+            <svg className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-red-900">Art. 9 Special Category Data Detected — Legal review required before export</h3>
+              <p className="mt-1 text-sm text-red-700">This discovery run contains special category data that requires legal approval before it can be exported or included in the DSAR response.</p>
+              {canManage && run.legalApprovalStatus !== "REJECTED" && (
+                <div className="mt-3 flex gap-3">
+                  <button onClick={() => handleApproval("APPROVED")} disabled={approvingLegal} className="inline-flex items-center rounded-lg border border-green-300 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-100 disabled:opacity-50">Approve</button>
+                  <button onClick={() => handleApproval("REJECTED")} disabled={approvingLegal} className="inline-flex items-center rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">Reject</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Progress Indicator */}
       {isRunning && (
@@ -1028,148 +1211,333 @@ function CopilotRunDetailView({ run, onBack, onExport, canManage, caseId, onRefr
         </div>
       )}
 
-      {/* Summary */}
-      {run.summary && (
-        <div className="card">
-          <h3 className="text-base font-semibold text-gray-900">Summary</h3>
-          <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{run.summary}</p>
+      {/* Sub-tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex gap-6 overflow-x-auto">
+          {runTabs.map((tab) => (
+            <button key={tab.key} onClick={() => setActiveRunTab(tab.key)}
+              className={`whitespace-nowrap border-b-2 py-3 text-sm font-medium transition-colors ${activeRunTab === tab.key ? "border-brand-600 text-brand-600" : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"}`}>
+              {tab.label}
+              {tab.count !== undefined && <span className="ml-1.5 rounded-full bg-gray-100 px-2 py-0.5 text-xs">{tab.count}</span>}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* ── Overview Sub-tab ───────────────────────────────────────────── */}
+      {activeRunTab === "overview" && (
+        <div className="space-y-6">
+          <div className="card">
+            <h3 className="text-base font-semibold text-gray-900">Run Details</h3>
+            <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
+              <div><dt className="font-medium text-gray-500">Status</dt><dd className="mt-1"><span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${COPILOT_STATUS_COLORS[run.status] ?? "bg-gray-100 text-gray-700"}`}>{run.status.replace(/_/g, " ")}</span></dd></div>
+              <div><dt className="font-medium text-gray-500">Legal Approval</dt><dd className="mt-1"><span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${run.legalApprovalStatus === "APPROVED" ? "bg-green-100 text-green-700" : run.legalApprovalStatus === "REJECTED" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"}`}>{run.legalApprovalStatus}</span></dd></div>
+              <div><dt className="font-medium text-gray-500">Total Findings</dt><dd className="mt-1 text-gray-900">{run.totalFindings}</dd></div>
+              <div><dt className="font-medium text-gray-500">Total Evidence Items</dt><dd className="mt-1 text-gray-900">{run.totalEvidenceItems}</dd></div>
+              <div><dt className="font-medium text-gray-500">Special Category Data</dt><dd className="mt-1 text-gray-900">{run.containsSpecialCategory ? <span className="text-red-600 font-medium">Yes</span> : "No"}</dd></div>
+              <div><dt className="font-medium text-gray-500">Queries</dt><dd className="mt-1 text-gray-900">{run.queries.length}</dd></div>
+              <div><dt className="font-medium text-gray-500">Created</dt><dd className="mt-1 text-gray-900">{new Date(run.createdAt).toLocaleString()}</dd></div>
+              {run.startedAt && <div><dt className="font-medium text-gray-500">Started</dt><dd className="mt-1 text-gray-900">{new Date(run.startedAt).toLocaleString()}</dd></div>}
+              {run.completedAt && <div><dt className="font-medium text-gray-500">Completed</dt><dd className="mt-1 text-gray-900">{new Date(run.completedAt).toLocaleString()}</dd></div>}
+              {run.legalApprovedBy && <div><dt className="font-medium text-gray-500">Approved By</dt><dd className="mt-1 text-gray-900">{run.legalApprovedBy.name}</dd></div>}
+              {run.legalApprovedAt && <div><dt className="font-medium text-gray-500">Approved At</dt><dd className="mt-1 text-gray-900">{new Date(run.legalApprovedAt).toLocaleString()}</dd></div>}
+            </dl>
+          </div>
+
+          <div className="card">
+            <h3 className="text-base font-semibold text-gray-900">Justification</h3>
+            <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{run.justification}</p>
+          </div>
+
+          {run.scopeSummary && (
+            <div className="card">
+              <h3 className="text-base font-semibold text-gray-900">Scope Summary</h3>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{run.scopeSummary}</p>
+            </div>
+          )}
+
+          {run.resultSummary && (
+            <div className="card">
+              <h3 className="text-base font-semibold text-gray-900">Result Summary</h3>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{run.resultSummary}</p>
+            </div>
+          )}
+
+          {run.errorDetails && (
+            <div className="card border-red-200 bg-red-50/30">
+              <h3 className="text-base font-semibold text-red-900">Error Details</h3>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-red-700">{run.errorDetails}</p>
+            </div>
+          )}
+
+          {/* Queries table in overview */}
+          {run.queries.length > 0 && (
+            <div className="card">
+              <h3 className="text-base font-semibold text-gray-900">Queries ({run.queries.length})</h3>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      <th className="pb-2 pr-4">Provider</th>
+                      <th className="pb-2 pr-4">Integration</th>
+                      <th className="pb-2 pr-4">Intent</th>
+                      <th className="pb-2 pr-4">Mode</th>
+                      <th className="pb-2 pr-4">Status</th>
+                      <th className="pb-2 pr-4">Records</th>
+                      <th className="pb-2">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {run.queries.map((q) => (
+                      <tr key={q.id}>
+                        <td className="py-2.5 pr-4 font-medium text-gray-900">{q.provider ?? "N/A"}</td>
+                        <td className="py-2.5 pr-4 text-gray-700">{q.integration?.name ?? "N/A"}</td>
+                        <td className="py-2.5 pr-4 text-gray-700">{q.queryIntent}</td>
+                        <td className="py-2.5 pr-4 text-gray-500 text-xs">{q.executionMode}</td>
+                        <td className="py-2.5 pr-4"><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${COPILOT_STATUS_COLORS[q.status] ?? "bg-gray-100 text-gray-700"}`}>{q.status.replace(/_/g, " ")}</span></td>
+                        <td className="py-2.5 pr-4 text-gray-700">{q.recordsFound ?? "-"}</td>
+                        <td className="py-2.5 text-gray-500">{q.executionMs != null ? `${q.executionMs}ms` : "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Identity Graph */}
-      {identityGraph && (
+      {/* ── Evidence Sub-tab ───────────────────────────────────────────── */}
+      {activeRunTab === "evidence" && (
         <div className="card">
-          <h3 className="text-base font-semibold text-gray-900">Identity Graph</h3>
-          <div className="mt-3 flex items-center gap-6 text-sm">
-            <div><span className="font-medium text-gray-500">Identifiers:</span> <span className="text-gray-900">{identifierCount}</span></div>
-            <div><span className="font-medium text-gray-500">Resolved Systems:</span> <span className="text-gray-900">{resolvedSystems.length}</span></div>
-          </div>
-          {resolvedSystems.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {resolvedSystems.map((sys, i) => (
-                <span key={i} className="inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">{sys}</span>
+          <h3 className="text-base font-semibold text-gray-900">Evidence Items ({run.evidenceItems.length})</h3>
+          {run.evidenceItems.length === 0 ? (
+            <p className="mt-4 text-sm text-gray-500">No evidence items collected yet.</p>
+          ) : (
+            <>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      <th className="pb-2 pr-4">Provider</th>
+                      <th className="pb-2 pr-4">Location</th>
+                      <th className="pb-2 pr-4">Title</th>
+                      <th className="pb-2 pr-4">Item Type</th>
+                      <th className="pb-2 pr-4">Content Handling</th>
+                      <th className="pb-2 pr-4">Sensitivity</th>
+                      <th className="pb-2">Detectors</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {paginatedEvidence.map((item) => (
+                      <tr key={item.id}>
+                        <td className="py-2.5 pr-4 font-medium text-gray-900">{item.provider}</td>
+                        <td className="py-2.5 pr-4 text-gray-700 max-w-[200px] truncate" title={item.location}>{item.location}</td>
+                        <td className="py-2.5 pr-4 text-gray-700 max-w-[200px] truncate" title={item.title}>{item.title}</td>
+                        <td className="py-2.5 pr-4"><span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">{item.itemType}</span></td>
+                        <td className="py-2.5 pr-4 text-gray-500 text-xs">{item.contentHandling}</td>
+                        <td className="py-2.5 pr-4">{item.sensitivityScore != null ? <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${item.sensitivityScore >= 0.7 ? "bg-red-100 text-red-700" : item.sensitivityScore >= 0.4 ? "bg-yellow-100 text-yellow-700" : "bg-green-100 text-green-700"}`}>{Math.round(item.sensitivityScore * 100)}%</span> : <span className="text-gray-400">-</span>}</td>
+                        <td className="py-2.5"><span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">{item.detectorResults.length}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {/* Pagination */}
+              {totalEvidencePages > 1 && (
+                <div className="mt-4 flex items-center justify-between border-t border-gray-200 pt-4">
+                  <p className="text-sm text-gray-500">Showing {evidencePage * EVIDENCE_PAGE_SIZE + 1}&ndash;{Math.min((evidencePage + 1) * EVIDENCE_PAGE_SIZE, run.evidenceItems.length)} of {run.evidenceItems.length}</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => setEvidencePage((p) => Math.max(0, p - 1))} disabled={evidencePage === 0} className="btn-secondary text-sm disabled:opacity-50">Previous</button>
+                    <button onClick={() => setEvidencePage((p) => Math.min(totalEvidencePages - 1, p + 1))} disabled={evidencePage >= totalEvidencePages - 1} className="btn-secondary text-sm disabled:opacity-50">Next</button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Findings Sub-tab ───────────────────────────────────────────── */}
+      {activeRunTab === "findings" && (
+        <div className="space-y-6">
+          {run.findings.length === 0 ? (
+            <div className="card"><p className="text-sm text-gray-500">No findings yet.</p></div>
+          ) : (
+            Object.entries(findingsByCategory).map(([category, findings]) => (
+              <div key={category} className="card">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-base font-semibold text-gray-900">{category.replace(/_/g, " ")}</h3>
+                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${CATEGORY_COLORS[category] ?? "bg-gray-100 text-gray-700"}`}>{findings.length} finding{findings.length !== 1 ? "s" : ""}</span>
+                  {SPECIAL_CATEGORIES.includes(category) && <span className="inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">Special Category</span>}
+                </div>
+                <div className="mt-4 space-y-3">
+                  {findings.map((finding) => (
+                    <div key={finding.id} className="rounded-lg border border-gray-200 p-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${SEVERITY_COLORS[finding.severity] ?? "bg-gray-100 text-gray-700"}`}>{finding.severity}</span>
+                            <span className="text-sm text-gray-500">{Math.round(finding.confidence * 100)}% confidence</span>
+                            {finding.containsSpecialCategory && <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">Special Category</span>}
+                            {finding.requiresLegalReview && <span className="inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">Legal Review Required</span>}
+                            {finding.containsThirdPartyDataSuspected && <span className="inline-flex rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">Third-Party Data</span>}
+                          </div>
+                          <p className="mt-2 text-sm text-gray-700">{finding.summary}</p>
+                          <p className="mt-1 text-xs text-gray-500">{finding.evidenceItemIds.length} evidence item{finding.evidenceItemIds.length !== 1 ? "s" : ""}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* ── Categories Sub-tab ─────────────────────────────────────────── */}
+      {activeRunTab === "categories" && (
+        <div className="card">
+          <h3 className="text-base font-semibold text-gray-900">Data Categories Overview</h3>
+          {categoryStats.length === 0 ? (
+            <p className="mt-4 text-sm text-gray-500">No categories identified yet.</p>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {categoryStats.map(({ category, count, maxSeverity, isSpecial }) => (
+                <div key={category} className={`rounded-lg border p-4 ${isSpecial ? "border-red-200 bg-red-50/50" : "border-gray-200"}`}>
+                  <div className="flex items-center justify-between">
+                    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${CATEGORY_COLORS[category] ?? "bg-gray-100 text-gray-700"}`}>{category.replace(/_/g, " ")}</span>
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${SEVERITY_COLORS[maxSeverity] ?? "bg-gray-100 text-gray-700"}`}>{maxSeverity}</span>
+                  </div>
+                  <p className="mt-2 text-2xl font-bold text-gray-900">{count}</p>
+                  <p className="text-xs text-gray-500">finding{count !== 1 ? "s" : ""}</p>
+                  {isSpecial && (
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <svg className="h-4 w-4 text-red-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+                      <span className="text-xs font-medium text-red-600">Special Category (Art. 9)</span>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           )}
         </div>
       )}
 
-      {/* Queries */}
-      {run.queries.length > 0 && (
-        <div className="card">
-          <h3 className="text-base font-semibold text-gray-900">Queries ({run.queries.length})</h3>
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  <th className="pb-2 pr-4">Provider</th>
-                  <th className="pb-2 pr-4">Integration</th>
-                  <th className="pb-2 pr-4">Status</th>
-                  <th className="pb-2 pr-4">Records</th>
-                  <th className="pb-2">Time</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {run.queries.map((q) => (
-                  <tr key={q.id}>
-                    <td className="py-2.5 pr-4 font-medium text-gray-900">{q.provider}</td>
-                    <td className="py-2.5 pr-4 text-gray-700">{q.integration?.name ?? "N/A"}</td>
-                    <td className="py-2.5 pr-4"><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${COPILOT_STATUS_COLORS[q.status] ?? "bg-gray-100 text-gray-700"}`}>{q.status.replace(/_/g, " ")}</span></td>
-                    <td className="py-2.5 pr-4 text-gray-700">{q.recordsFound ?? "-"}</td>
-                    <td className="py-2.5 text-gray-500">{q.executionMs != null ? `${q.executionMs}ms` : "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Findings */}
-      {run.findings.length > 0 && (
-        <div className="card">
-          <h3 className="text-base font-semibold text-gray-900">Findings ({run.findings.length})</h3>
-          <div className="mt-4 space-y-4">
-            {run.findings.map((finding) => (
-              <div key={finding.id} className="rounded-lg border border-gray-200 p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-sm font-semibold text-gray-900">{finding.title}</h4>
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${SEVERITY_COLORS[finding.severity] ?? "bg-gray-100 text-gray-700"}`}>{finding.severity}</span>
-                      {finding.isArt9 && <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">Art. 9</span>}
-                    </div>
-                    <p className="mt-1 text-xs text-gray-500">{finding.source} &middot; {finding.location} &middot; {finding.recordCount} record{finding.recordCount !== 1 ? "s" : ""}</p>
-                  </div>
-                </div>
-                {finding.description && <p className="mt-2 text-sm text-gray-700">{finding.description}</p>}
-                {/* Data Categories */}
-                {finding.dataCategories.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {finding.dataCategories.map((cat) => (
-                      <span key={cat} className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_COLORS[cat] ?? "bg-gray-100 text-gray-700"}`}>{cat.replace(/_/g, " ")}</span>
-                    ))}
-                  </div>
-                )}
-                {/* Art. 9 Categories */}
-                {finding.art9Categories.length > 0 && (
-                  <div className="mt-2">
-                    <span className="text-xs font-medium text-red-600">Art. 9 Categories:</span>
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      {finding.art9Categories.map((cat) => (
-                        <span key={cat} className="inline-flex rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">{cat.replace(/_/g, " ")}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {/* Detector Results */}
-                {finding.detectorResults.length > 0 && (
-                  <div className="mt-3 border-t border-gray-100 pt-3">
-                    <p className="text-xs font-medium text-gray-500">Detector Results</p>
-                    <div className="mt-2 space-y-1.5">
-                      {finding.detectorResults.map((dr) => (
-                        <div key={dr.id} className="flex items-center gap-3 text-xs">
-                          <span className="font-medium text-gray-700">{dr.detectorType}</span>
-                          <span className="text-gray-500">{dr.patternName}</span>
-                          <span className="text-gray-400">{dr.matchCount} match{dr.matchCount !== 1 ? "es" : ""}</span>
-                          <span className="text-gray-400">{Math.round(dr.confidence * 100)}% confidence</span>
-                          {dr.sampleMatch && <span className="truncate font-mono text-gray-500" title={dr.sampleMatch}>&ldquo;{dr.sampleMatch}&rdquo;</span>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Art. 9 Review */}
-      {run.art9Flagged && (
-        <div className="card border-red-200 bg-red-50/30">
-          <h3 className="text-base font-semibold text-red-900">Art. 9 Special Category Data Review</h3>
-          <p className="mt-1 text-sm text-red-700">This discovery run detected special category data (Art. 9 GDPR). Review and approval is required before the data can be included in the response.</p>
-          <div className="mt-3 flex items-center gap-3">
-            <span className="text-sm font-medium text-gray-700">Review Status:</span>
-            <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${run.art9ReviewStatus === "APPROVED" ? "bg-green-100 text-green-700" : run.art9ReviewStatus === "BLOCKED" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"}`}>
-              {run.art9ReviewStatus ?? "PENDING"}
-            </span>
-          </div>
-          {canManage && run.art9ReviewStatus !== "APPROVED" && run.art9ReviewStatus !== "BLOCKED" && (
-            <div className="mt-4 flex gap-3">
-              <button onClick={() => handleArt9Review("APPROVED")} disabled={updatingArt9} className="inline-flex items-center rounded-lg border border-green-300 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-100 disabled:opacity-50">Approve</button>
-              <button onClick={() => handleArt9Review("BLOCKED")} disabled={updatingArt9} className="inline-flex items-center rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50">Block</button>
+      {/* ── Summaries Sub-tab ──────────────────────────────────────────── */}
+      {activeRunTab === "summaries" && (
+        <div className="space-y-6">
+          <div className="card">
+            <h3 className="text-base font-semibold text-gray-900">Generate Summary</h3>
+            <p className="mt-1 text-sm text-gray-500">Generate AI-powered summaries for this discovery run.</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {SUMMARY_TYPES.map((st) => (
+                <button key={st.key} onClick={() => handleGenerate(st.key)} disabled={generatingSummary !== null}
+                  className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                  {generatingSummary === st.key ? (
+                    <><div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-brand-600" />{`Generating ${st.label}...`}</>
+                  ) : (
+                    <>{st.label}</>
+                  )}
+                </button>
+              ))}
             </div>
+          </div>
+
+          {run.summaries.length === 0 ? (
+            <div className="card"><p className="text-sm text-gray-500">No summaries generated yet. Use the buttons above to generate one.</p></div>
+          ) : (
+            run.summaries.map((summary) => (
+              <div key={summary.id} className="card">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <h4 className="text-sm font-semibold text-gray-900">{summary.summaryType.replace(/_/g, " ")}</h4>
+                    {summary.disclaimerIncluded && <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Disclaimer Included</span>}
+                  </div>
+                  <span className="text-xs text-gray-400">{new Date(summary.createdAt).toLocaleString()} by {summary.createdBy.name}</span>
+                </div>
+                <div className="mt-3 whitespace-pre-wrap rounded-lg bg-gray-50 p-4 text-sm text-gray-700">{summary.content}</div>
+              </div>
+            ))
           )}
         </div>
       )}
 
-      {/* Response Draft */}
-      {run.responseDraft && (
-        <div className="card">
-          <h3 className="text-base font-semibold text-gray-900">Response Draft</h3>
-          <div className="mt-3 whitespace-pre-wrap rounded-lg bg-gray-50 p-4 text-sm text-gray-700">{run.responseDraft}</div>
+      {/* ── Export Sub-tab ──────────────────────────────────────────────── */}
+      {activeRunTab === "export" && (
+        <div className="space-y-6">
+          {/* Legal gate warning */}
+          {run.containsSpecialCategory && run.legalApprovalStatus !== "APPROVED" && (
+            <div className="rounded-lg border border-red-300 bg-red-50 p-4">
+              <div className="flex items-start gap-3">
+                <svg className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+                <div>
+                  <h3 className="text-sm font-semibold text-red-900">Export Blocked</h3>
+                  <p className="mt-1 text-sm text-red-700">This run contains special category data (Art. 9 GDPR). Legal approval is required before export is permitted.</p>
+                  {canManage && run.legalApprovalStatus !== "REJECTED" && (
+                    <div className="mt-3 flex gap-3">
+                      <button onClick={() => handleApproval("APPROVED")} disabled={approvingLegal} className="inline-flex items-center rounded-lg border border-green-300 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-100 disabled:opacity-50">Approve</button>
+                      <button onClick={() => handleApproval("REJECTED")} disabled={approvingLegal} className="inline-flex items-center rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">Reject</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="card">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">Export Evidence</h3>
+                <p className="mt-1 text-sm text-gray-500">Download all collected evidence as a JSON file.</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="text-right text-sm">
+                  <p className="text-gray-500">Legal Gate Status</p>
+                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${run.legalApprovalStatus === "APPROVED" ? "bg-green-100 text-green-700" : run.legalApprovalStatus === "REJECTED" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"}`}>{run.legalApprovalStatus}</span>
+                </div>
+                <button
+                  onClick={() => onExport(run.id)}
+                  disabled={run.status !== "COMPLETED" || (run.containsSpecialCategory && run.legalApprovalStatus !== "APPROVED")}
+                  className="btn-primary text-sm disabled:opacity-50"
+                >
+                  Export JSON
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Previous exports */}
+          {run.exports.length > 0 && (
+            <div className="card">
+              <h3 className="text-base font-semibold text-gray-900">Export History ({run.exports.length})</h3>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      <th className="pb-2 pr-4">Type</th>
+                      <th className="pb-2 pr-4">Status</th>
+                      <th className="pb-2 pr-4">Legal Gate</th>
+                      <th className="pb-2 pr-4">Created By</th>
+                      <th className="pb-2">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {run.exports.map((exp) => (
+                      <tr key={exp.id}>
+                        <td className="py-2.5 pr-4 font-medium text-gray-900">{exp.exportType}</td>
+                        <td className="py-2.5 pr-4"><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${COPILOT_STATUS_COLORS[exp.status] ?? "bg-gray-100 text-gray-700"}`}>{exp.status}</span></td>
+                        <td className="py-2.5 pr-4"><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${exp.legalGateStatus === "APPROVED" ? "bg-green-100 text-green-700" : exp.legalGateStatus === "REJECTED" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"}`}>{exp.legalGateStatus}</span></td>
+                        <td className="py-2.5 pr-4 text-gray-700">{exp.createdBy.name}</td>
+                        <td className="py-2.5 text-gray-500">{new Date(exp.createdAt).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -8,13 +8,13 @@ import Link from "next/link";
 interface CopilotRunItem {
   id: string;
   status: string;
-  reason: string;
+  justification: string;
   totalFindings: number;
-  art9Flagged: boolean;
-  art9ReviewStatus: string | null;
+  containsSpecialCategory: boolean;
+  legalApprovalStatus: string;
   createdAt: string;
   completedAt: string | null;
-  errorMessage: string | null;
+  errorDetails: string | null;
   case: {
     id: string;
     caseNumber: string;
@@ -37,7 +37,7 @@ export default function CopilotPage() {
   const [stats, setStats] = useState<{
     totalRuns: number;
     completedRuns: number;
-    art9Runs: number;
+    specialCategoryRuns: number;
     totalFindings: number;
     recentRuns: CopilotRunItem[];
   } | null>(null);
@@ -125,7 +125,7 @@ export default function CopilotPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
               </svg>
             </div>
-            <p className="mt-2 text-3xl font-bold text-red-600">{stats.art9Runs}</p>
+            <p className="mt-2 text-3xl font-bold text-red-600">{stats.specialCategoryRuns}</p>
           </div>
         </div>
       )}
@@ -211,9 +211,9 @@ export default function CopilotPage() {
                       {run.totalFindings}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4">
-                      {run.art9Flagged ? (
+                      {run.containsSpecialCategory ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">
-                          {run.art9ReviewStatus === "APPROVED" ? "Approved" : run.art9ReviewStatus === "BLOCKED" ? "Blocked" : "Pending Review"}
+                          {run.legalApprovalStatus === "APPROVED" ? "Approved" : run.legalApprovalStatus === "REJECTED" ? "Rejected" : "Pending Review"}
                         </span>
                       ) : (
                         <span className="text-xs text-gray-400">-</span>

@@ -4,6 +4,8 @@
  * Provides regex-based PII detection, GDPR data-category classification,
  * Art. 9 special-category keyword detection, and basic PDF metadata
  * extraction. All sample output is redacted before it leaves this module.
+ *
+ * Updated to match the expanded DataCategory enum and DetectorResult schema.
  */
 
 // ---------------------------------------------------------------------------
@@ -14,35 +16,66 @@ export type DataCategoryType =
   | "IDENTIFICATION"
   | "CONTACT"
   | "CONTRACT"
-  | "PAYMENT_BANK"
+  | "PAYMENT"
   | "COMMUNICATION"
-  | "HR_EMPLOYMENT"
-  | "CREDIT_FINANCIAL"
+  | "HR"
+  | "CREDITWORTHINESS"
   | "ONLINE_TECHNICAL"
-  | "SPECIAL_CATEGORY_ART9";
+  | "HEALTH"
+  | "RELIGION"
+  | "UNION"
+  | "POLITICAL_OPINION"
+  | "OTHER_SPECIAL_CATEGORY"
+  | "OTHER";
+
+/**
+ * The set of DataCategory values that represent Art. 9 special categories.
+ */
+export const SPECIAL_CATEGORIES: ReadonlySet<DataCategoryType> = new Set<DataCategoryType>([
+  "HEALTH",
+  "RELIGION",
+  "UNION",
+  "POLITICAL_OPINION",
+  "OTHER_SPECIAL_CATEGORY",
+]);
+
+/**
+ * Returns true if the given category is an Art. 9 special category.
+ */
+export function isSpecialCategory(category: DataCategoryType): boolean {
+  return SPECIAL_CATEGORIES.has(category);
+}
 
 export interface DetectionPattern {
   name: string;
   type: "regex" | "keyword";
   pattern: RegExp;
   category: DataCategoryType;
-  isArt9: boolean;
-  art9Type?: string;
+  isSpecial: boolean;
   /** Return a redacted representation of the match (e.g. "DE89 **** **** 0000") */
   redactSample: (match: string) => string;
 }
 
+/**
+ * Matches the DetectorResult model in the Prisma schema.
+ *
+ * Each DetectionResult represents the output of one detector type run
+ * against a piece of evidence. It aggregates detected elements (individual
+ * matches) and detected categories (GDPR data categories found).
+ */
 export interface DetectionResult {
-  patternName: string;
-  detectorType: string;
-  matchCount: number;
-  /** Redacted first match — null when nothing was found */
-  sampleMatch: string | null;
-  /** 0-1 confidence score */
-  confidence: number;
-  category: DataCategoryType;
-  isArt9: boolean;
-  art9Type?: string;
+  detectorType: string; // "REGEX" | "PDF_METADATA" | "OCR" | "LLM_CLASSIFIER"
+  detectedElements: Array<{
+    elementType: string;
+    confidence: number;
+    snippetPreview: string | null; // Redacted/truncated
+    offsets?: { start: number; end: number };
+  }>;
+  detectedCategories: Array<{
+    category: DataCategoryType;
+    confidence: number;
+  }>;
+  containsSpecialCategorySuspected: boolean;
 }
 
 export interface PdfMetadata {
@@ -170,32 +203,32 @@ export const PII_PATTERNS: DetectionPattern[] = [
     name: "IBAN_DE",
     type: "regex",
     pattern: /\bDE\d{2}\s?\d{4}\s?\d{4}\s?\d{4}\s?\d{4}\s?\d{2}\b/gi,
-    category: "PAYMENT_BANK",
-    isArt9: false,
+    category: "PAYMENT",
+    isSpecial: false,
     redactSample: redactIban,
   },
   {
     name: "IBAN_AT",
     type: "regex",
     pattern: /\bAT\d{2}\s?\d{4}\s?\d{4}\s?\d{4}\s?\d{4}\b/gi,
-    category: "PAYMENT_BANK",
-    isArt9: false,
+    category: "PAYMENT",
+    isSpecial: false,
     redactSample: redactIban,
   },
   {
     name: "IBAN_CH",
     type: "regex",
     pattern: /\bCH\d{2}\s?\d{4}\s?\d{1}[A-Za-z0-9]{3}\s?[A-Za-z0-9]{4}\s?[A-Za-z0-9]{4}\s?[A-Za-z0-9]{1}\b/gi,
-    category: "PAYMENT_BANK",
-    isArt9: false,
+    category: "PAYMENT",
+    isSpecial: false,
     redactSample: redactIban,
   },
   {
     name: "IBAN_EU_GENERIC",
     type: "regex",
     pattern: /\b[A-Z]{2}\d{2}\s?[\dA-Za-z]{4}(?:\s?[\dA-Za-z]{4}){2,7}(?:\s?[\dA-Za-z]{1,4})?\b/g,
-    category: "PAYMENT_BANK",
-    isArt9: false,
+    category: "PAYMENT",
+    isSpecial: false,
     redactSample: redactIban,
   },
 
@@ -204,24 +237,24 @@ export const PII_PATTERNS: DetectionPattern[] = [
     name: "CREDIT_CARD_VISA",
     type: "regex",
     pattern: /\b4\d{3}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g,
-    category: "PAYMENT_BANK",
-    isArt9: false,
+    category: "PAYMENT",
+    isSpecial: false,
     redactSample: redactCreditCard,
   },
   {
     name: "CREDIT_CARD_MASTERCARD",
     type: "regex",
     pattern: /\b5[1-5]\d{2}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g,
-    category: "PAYMENT_BANK",
-    isArt9: false,
+    category: "PAYMENT",
+    isSpecial: false,
     redactSample: redactCreditCard,
   },
   {
     name: "CREDIT_CARD_AMEX",
     type: "regex",
     pattern: /\b3[47]\d{2}[\s-]?\d{6}[\s-]?\d{5}\b/g,
-    category: "PAYMENT_BANK",
-    isArt9: false,
+    category: "PAYMENT",
+    isSpecial: false,
     redactSample: redactCreditCard,
   },
 
@@ -231,7 +264,7 @@ export const PII_PATTERNS: DetectionPattern[] = [
     type: "regex",
     pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
     category: "CONTACT",
-    isArt9: false,
+    isSpecial: false,
     redactSample: redactEmail,
   },
 
@@ -241,7 +274,7 @@ export const PII_PATTERNS: DetectionPattern[] = [
     type: "regex",
     pattern: /\b\+?\d{1,3}[\s.-]?\(?\d{2,5}\)?[\s.-]?\d{3,4}[\s.-]?\d{2,4}[\s.-]?\d{0,4}\b/g,
     category: "CONTACT",
-    isArt9: false,
+    isSpecial: false,
     redactSample: redactPhone,
   },
   {
@@ -249,7 +282,7 @@ export const PII_PATTERNS: DetectionPattern[] = [
     type: "regex",
     pattern: /\b(?:\+49|0049|0)\s?\(?\d{2,5}\)?[\s./-]?\d{3,8}[\s./-]?\d{0,5}\b/g,
     category: "CONTACT",
-    isArt9: false,
+    isSpecial: false,
     redactSample: redactPhone,
   },
   {
@@ -257,7 +290,7 @@ export const PII_PATTERNS: DetectionPattern[] = [
     type: "regex",
     pattern: /\b(?:\+43|0043|0)\s?\(?\d{1,4}\)?[\s./-]?\d{3,10}\b/g,
     category: "CONTACT",
-    isArt9: false,
+    isSpecial: false,
     redactSample: redactPhone,
   },
   {
@@ -265,7 +298,7 @@ export const PII_PATTERNS: DetectionPattern[] = [
     type: "regex",
     pattern: /\b(?:\+41|0041|0)\s?\(?\d{2}\)?[\s./-]?\d{3}[\s./-]?\d{2}[\s./-]?\d{2}\b/g,
     category: "CONTACT",
-    isArt9: false,
+    isSpecial: false,
     redactSample: redactPhone,
   },
 
@@ -275,7 +308,7 @@ export const PII_PATTERNS: DetectionPattern[] = [
     type: "regex",
     pattern: /\b\d{2}\s?\d{3}\s?\d{3}\s?\d{3}\b/g,
     category: "IDENTIFICATION",
-    isArt9: false,
+    isSpecial: false,
     redactSample: redactTaxId,
   },
 
@@ -285,8 +318,8 @@ export const PII_PATTERNS: DetectionPattern[] = [
     type: "regex",
     // German Sozialversicherungsnummer: 12 characters, letter at position 9
     pattern: /\b\d{2}[0-3]\d[0-1]\d{2}[A-Za-z]\d{3}\b/g,
-    category: "HR_EMPLOYMENT",
-    isArt9: false,
+    category: "HR",
+    isSpecial: false,
     redactSample: redactSSN,
   },
   {
@@ -294,8 +327,8 @@ export const PII_PATTERNS: DetectionPattern[] = [
     type: "regex",
     // Austrian Sozialversicherungsnummer: 10 digits (NNNN DDMMYY)
     pattern: /\b\d{4}\s?\d{2}[01]\d[0-3]\d\b/g,
-    category: "HR_EMPLOYMENT",
-    isArt9: false,
+    category: "HR",
+    isSpecial: false,
     redactSample: redactSSN,
   },
   {
@@ -303,8 +336,8 @@ export const PII_PATTERNS: DetectionPattern[] = [
     type: "regex",
     // US-style SSN (###-##-####) — included for international coverage
     pattern: /\b\d{3}-\d{2}-\d{4}\b/g,
-    category: "HR_EMPLOYMENT",
-    isArt9: false,
+    category: "HR",
+    isSpecial: false,
     redactSample: redactSSN,
   },
 
@@ -315,7 +348,7 @@ export const PII_PATTERNS: DetectionPattern[] = [
     // German passport: C + 8 alphanumeric characters (e.g., C01X00T47)
     pattern: /\b[Cc][A-Za-z0-9]{8}\b/g,
     category: "IDENTIFICATION",
-    isArt9: false,
+    isSpecial: false,
     redactSample: redactPassport,
   },
   {
@@ -324,7 +357,7 @@ export const PII_PATTERNS: DetectionPattern[] = [
     // Austrian passport: letter + 7 digits
     pattern: /\b[A-Za-z]\d{7}\b/g,
     category: "IDENTIFICATION",
-    isArt9: false,
+    isSpecial: false,
     redactSample: redactPassport,
   },
   {
@@ -333,7 +366,7 @@ export const PII_PATTERNS: DetectionPattern[] = [
     // Generic: 1-2 letters followed by 6-8 digits
     pattern: /\b[A-Za-z]{1,2}\d{6,8}\b/g,
     category: "IDENTIFICATION",
-    isArt9: false,
+    isSpecial: false,
     redactSample: redactPassport,
   },
 
@@ -344,7 +377,7 @@ export const PII_PATTERNS: DetectionPattern[] = [
     // DD.MM.YYYY or DD/MM/YYYY or DD-MM-YYYY
     pattern: /\b(0[1-9]|[12]\d|3[01])[./-](0[1-9]|1[0-2])[./-](19|20)\d{2}\b/g,
     category: "IDENTIFICATION",
-    isArt9: false,
+    isSpecial: false,
     redactSample: redactDob,
   },
   {
@@ -353,7 +386,7 @@ export const PII_PATTERNS: DetectionPattern[] = [
     // YYYY-MM-DD
     pattern: /\b(19|20)\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\b/g,
     category: "IDENTIFICATION",
-    isArt9: false,
+    isSpecial: false,
     redactSample: redactDob,
   },
 ];
@@ -506,52 +539,70 @@ const CRIMINAL_KEYWORDS = [
 ];
 
 interface Art9CategoryDef {
-  art9Type: string;
+  name: string;
+  category: DataCategoryType;
+  isSpecial: boolean;
   keywords: string[];
 }
 
 const ART9_CATEGORIES: Art9CategoryDef[] = [
-  { art9Type: "health_data", keywords: HEALTH_KEYWORDS },
-  { art9Type: "biometric_data", keywords: BIOMETRIC_KEYWORDS },
-  { art9Type: "political_opinions", keywords: POLITICAL_KEYWORDS },
-  { art9Type: "religious_beliefs", keywords: RELIGIOUS_KEYWORDS },
-  { art9Type: "trade_union_membership", keywords: TRADE_UNION_KEYWORDS },
-  { art9Type: "ethnic_origin", keywords: ETHNIC_KEYWORDS },
-  { art9Type: "sexual_orientation", keywords: SEXUAL_ORIENTATION_KEYWORDS },
-  { art9Type: "criminal_convictions", keywords: CRIMINAL_KEYWORDS },
+  { name: "HEALTH_DATA", category: "HEALTH", isSpecial: true, keywords: HEALTH_KEYWORDS },
+  { name: "BIOMETRIC_DATA", category: "OTHER_SPECIAL_CATEGORY", isSpecial: true, keywords: BIOMETRIC_KEYWORDS },
+  { name: "POLITICAL_OPINIONS", category: "POLITICAL_OPINION", isSpecial: true, keywords: POLITICAL_KEYWORDS },
+  { name: "RELIGIOUS_BELIEFS", category: "RELIGION", isSpecial: true, keywords: RELIGIOUS_KEYWORDS },
+  { name: "TRADE_UNION_MEMBERSHIP", category: "UNION", isSpecial: true, keywords: TRADE_UNION_KEYWORDS },
+  { name: "ETHNIC_ORIGIN", category: "OTHER_SPECIAL_CATEGORY", isSpecial: true, keywords: ETHNIC_KEYWORDS },
+  { name: "SEXUAL_ORIENTATION", category: "OTHER_SPECIAL_CATEGORY", isSpecial: true, keywords: SEXUAL_ORIENTATION_KEYWORDS },
+  { name: "CRIMINAL_CONVICTIONS", category: "OTHER_SPECIAL_CATEGORY", isSpecial: true, keywords: CRIMINAL_KEYWORDS },
 ];
 
 export const ART9_KEYWORDS: DetectionPattern[] = ART9_CATEGORIES.map(
-  ({ art9Type, keywords }) => ({
-    name: `ART9_${art9Type.toUpperCase()}`,
+  ({ name, category, isSpecial: isSpecialFlag, keywords }) => ({
+    name: `ART9_${name}`,
     type: "keyword" as const,
     pattern: buildKeywordPattern(keywords),
-    category: "SPECIAL_CATEGORY_ART9" as DataCategoryType,
-    isArt9: true,
-    art9Type,
+    category,
+    isSpecial: isSpecialFlag,
     redactSample: redactKeyword,
   }),
 );
 
 // ---------------------------------------------------------------------------
-// Core detection functions
+// Internal: run a single pattern and collect raw match data
 // ---------------------------------------------------------------------------
 
+interface RawPatternMatch {
+  patternName: string;
+  type: "regex" | "keyword";
+  category: DataCategoryType;
+  isSpecial: boolean;
+  matches: Array<{
+    text: string;
+    start: number;
+    end: number;
+  }>;
+  redactSample: (match: string) => string;
+}
+
 /**
- * Run a single detection pattern against a text and return a result.
+ * Run a single detection pattern against a text and return raw match info.
  * Returns null if the pattern produced zero matches.
  */
-function runPattern(
+function runPatternRaw(
   text: string,
   dp: DetectionPattern,
-): DetectionResult | null {
+): RawPatternMatch | null {
   // Reset lastIndex for global regexps (they are stateful)
   const regex = new RegExp(dp.pattern.source, dp.pattern.flags);
-  const matches: string[] = [];
+  const matches: Array<{ text: string; start: number; end: number }> = [];
   let m: RegExpExecArray | null;
 
   while ((m = regex.exec(text)) !== null) {
-    matches.push(m[0]);
+    matches.push({
+      text: m[0],
+      start: m.index,
+      end: m.index + m[0].length,
+    });
     // Safety: prevent infinite loops on zero-length matches
     if (m[0].length === 0) {
       regex.lastIndex += 1;
@@ -560,34 +611,95 @@ function runPattern(
 
   if (matches.length === 0) return null;
 
-  // Compute confidence heuristic:
-  //  - regex matches get higher baseline than keywords
-  //  - more matches increase confidence (diminishing returns)
-  const baseConfidence = dp.type === "regex" ? 0.75 : 0.6;
-  const countBoost = Math.min(matches.length * 0.05, 0.2);
-  const confidence = Math.min(baseConfidence + countBoost, 1.0);
-
   return {
     patternName: dp.name,
-    detectorType: dp.type,
-    matchCount: matches.length,
-    sampleMatch: dp.redactSample(matches[0]),
-    confidence: parseFloat(confidence.toFixed(2)),
+    type: dp.type,
     category: dp.category,
-    isArt9: dp.isArt9,
-    ...(dp.art9Type ? { art9Type: dp.art9Type } : {}),
+    isSpecial: dp.isSpecial,
+    matches,
+    redactSample: dp.redactSample,
+  };
+}
+
+/**
+ * Compute a confidence score for a set of matches.
+ * Regex matches get a higher baseline than keywords.
+ * More matches increase confidence with diminishing returns.
+ */
+function computeConfidence(type: "regex" | "keyword", matchCount: number): number {
+  const baseConfidence = type === "regex" ? 0.75 : 0.6;
+  const countBoost = Math.min(matchCount * 0.05, 0.2);
+  return parseFloat(Math.min(baseConfidence + countBoost, 1.0).toFixed(2));
+}
+
+// ---------------------------------------------------------------------------
+// Core detection functions
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a DetectionResult from raw pattern matches for a single detector type.
+ * Groups all pattern matches into detectedElements and detectedCategories.
+ */
+function buildDetectionResult(
+  detectorType: string,
+  rawMatches: RawPatternMatch[],
+): DetectionResult {
+  const detectedElements: DetectionResult["detectedElements"] = [];
+  const categoryMap = new Map<DataCategoryType, { totalConfidence: number; count: number }>();
+  let containsSpecial = false;
+
+  for (const raw of rawMatches) {
+    const confidence = computeConfidence(raw.type, raw.matches.length);
+
+    // Add each individual match as an element
+    for (const match of raw.matches) {
+      detectedElements.push({
+        elementType: raw.patternName,
+        confidence,
+        snippetPreview: raw.redactSample(match.text),
+        offsets: { start: match.start, end: match.end },
+      });
+    }
+
+    // Accumulate category confidence (take the max per category)
+    const existing = categoryMap.get(raw.category);
+    if (!existing || confidence > existing.totalConfidence) {
+      categoryMap.set(raw.category, { totalConfidence: confidence, count: (existing?.count ?? 0) + raw.matches.length });
+    }
+
+    if (raw.isSpecial) {
+      containsSpecial = true;
+    }
+  }
+
+  const detectedCategories: DetectionResult["detectedCategories"] = [];
+  categoryMap.forEach((info, category) => {
+    detectedCategories.push({
+      category,
+      confidence: info.totalConfidence,
+    });
+  });
+
+  // Sort categories by confidence descending
+  detectedCategories.sort((a, b) => b.confidence - a.confidence);
+
+  return {
+    detectorType,
+    detectedElements,
+    detectedCategories,
+    containsSpecialCategorySuspected: containsSpecial,
   };
 }
 
 /**
  * Detect PII patterns (non-Art. 9) in the given text.
  */
-export function detectPII(text: string): DetectionResult[] {
+function detectPIIRaw(text: string): RawPatternMatch[] {
   if (!text || typeof text !== "string") return [];
 
-  const results: DetectionResult[] = [];
+  const results: RawPatternMatch[] = [];
   for (const pattern of PII_PATTERNS) {
-    const result = runPattern(text, pattern);
+    const result = runPatternRaw(text, pattern);
     if (result) results.push(result);
   }
   return results;
@@ -596,58 +708,79 @@ export function detectPII(text: string): DetectionResult[] {
 /**
  * Detect Art. 9 special-category keywords in the given text.
  */
-export function detectArt9(text: string): DetectionResult[] {
+function detectArt9Raw(text: string): RawPatternMatch[] {
   if (!text || typeof text !== "string") return [];
 
-  const results: DetectionResult[] = [];
+  const results: RawPatternMatch[] = [];
   for (const pattern of ART9_KEYWORDS) {
-    const result = runPattern(text, pattern);
+    const result = runPatternRaw(text, pattern);
     if (result) results.push(result);
   }
   return results;
 }
 
 /**
- * Run all detectors (PII + Art. 9) against the given text.
- * Results are sorted by confidence descending.
+ * Run all detectors (PII regex + Art. 9 keywords) against the given text.
+ *
+ * Returns an array of DetectionResult objects — one per detector type that
+ * produced matches. Currently produces up to two results:
+ *   - "REGEX" for PII pattern matches
+ *   - "REGEX" for Art. 9 keyword matches (keyword patterns use regex under the hood)
+ *
+ * Each result contains detectedElements (individual matches) and
+ * detectedCategories (GDPR data categories with confidence scores).
  */
 export function runAllDetectors(text: string): DetectionResult[] {
-  const piiResults = detectPII(text);
-  const art9Results = detectArt9(text);
-  const combined = [...piiResults, ...art9Results];
-  combined.sort((a, b) => b.confidence - a.confidence);
-  return combined;
+  const results: DetectionResult[] = [];
+
+  const piiRaw = detectPIIRaw(text);
+  if (piiRaw.length > 0) {
+    results.push(buildDetectionResult("REGEX", piiRaw));
+  }
+
+  const art9Raw = detectArt9Raw(text);
+  if (art9Raw.length > 0) {
+    results.push(buildDetectionResult("REGEX", art9Raw));
+  }
+
+  return results;
+}
+
+/**
+ * Returns true if any result indicates Art. 9 special-category data is suspected.
+ */
+export function hasSpecialCategory(results: DetectionResult[]): boolean {
+  return results.some((r) => r.containsSpecialCategorySuspected);
+}
+
+/**
+ * Return the distinct Art. 9 special-category types found across all results.
+ * Returns the specific DataCategoryType values (HEALTH, RELIGION, etc.).
+ */
+export function getSpecialCategories(results: DetectionResult[]): DataCategoryType[] {
+  const specialCats = new Set<DataCategoryType>();
+  for (const r of results) {
+    for (const dc of r.detectedCategories) {
+      if (isSpecialCategory(dc.category)) {
+        specialCats.add(dc.category);
+      }
+    }
+  }
+  return Array.from(specialCats);
 }
 
 /**
  * Extract the unique GDPR data categories from a set of detection results.
+ * Returns a deduplicated list of all DataCategoryType values found.
  */
 export function classifyFindings(results: DetectionResult[]): DataCategoryType[] {
   const categories = new Set<DataCategoryType>();
   for (const r of results) {
-    categories.add(r.category);
-  }
-  return Array.from(categories);
-}
-
-/**
- * Returns true if any result indicates Art. 9 special-category data.
- */
-export function hasArt9Content(results: DetectionResult[]): boolean {
-  return results.some((r) => r.isArt9);
-}
-
-/**
- * Return the distinct Art. 9 sub-categories found (e.g. "health_data").
- */
-export function getArt9Categories(results: DetectionResult[]): string[] {
-  const types = new Set<string>();
-  for (const r of results) {
-    if (r.isArt9 && r.art9Type) {
-      types.add(r.art9Type);
+    for (const dc of r.detectedCategories) {
+      categories.add(dc.category);
     }
   }
-  return Array.from(types);
+  return Array.from(categories);
 }
 
 // ---------------------------------------------------------------------------

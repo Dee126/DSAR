@@ -117,11 +117,12 @@ enum IntegrationStatus {
 }
 
 enum CopilotRunStatus {
-  CREATED
+  DRAFT
+  QUEUED
   RUNNING
   COMPLETED
   FAILED
-  CANCELLED
+  CANCELED
 }
 
 enum CopilotQueryStatus {
@@ -134,9 +135,7 @@ enum CopilotQueryStatus {
 
 enum FindingSeverity {
   INFO
-  LOW
-  MEDIUM
-  HIGH
+  WARNING
   CRITICAL
 }
 
@@ -144,18 +143,82 @@ enum DataCategory {
   IDENTIFICATION          // Name, DOB, photo, ID numbers
   CONTACT                 // Email, phone, address
   CONTRACT                // Account info, customer number
-  PAYMENT_BANK            // IBAN, credit card, billing
+  PAYMENT                 // IBAN, credit card, billing
   COMMUNICATION           // Emails, messages, call logs
-  HR_EMPLOYMENT           // Salary, evaluations, contracts
-  CREDIT_FINANCIAL        // Credit score, debts, transactions
+  HR                      // Salary, evaluations, contracts
+  CREDITWORTHINESS        // Credit score, debts, transactions
   ONLINE_TECHNICAL        // IP, cookies, device IDs, logs
-  SPECIAL_CATEGORY_ART9   // Health, biometric, political, religious, ethnic, sexual, trade union, criminal
+  HEALTH                  // Medical, disability, treatments (Art. 9)
+  RELIGION                // Religious beliefs (Art. 9)
+  UNION                   // Trade union membership (Art. 9)
+  POLITICAL_OPINION       // Political opinions (Art. 9)
+  OTHER_SPECIAL_CATEGORY  // Biometric, ethnic, sexual orientation, criminal (Art. 9)
+  OTHER                   // Unclassified
 }
 
-enum Art9ReviewStatus {
-  PENDING_REVIEW
+enum LegalApprovalStatus {
+  NOT_REQUIRED
+  REQUIRED
+  PENDING
   APPROVED
+  REJECTED
+}
+
+enum QueryIntent {
+  DATA_LOCATION
+  DSAR_SUMMARY
+  CATEGORY_OVERVIEW
+  RISK_CHECK
+  EXPORT_PREP
+  OTHER
+}
+
+enum EvidenceItemType {
+  EMAIL
+  FILE
+  RECORD
+  CALENDAR
+  CONTACT
+  TICKET
+  OTHER
+}
+
+enum ContentHandling {
+  NONE
+  METADATA_ONLY
+  CONTENT_STORED
+}
+
+enum PrimaryIdentifierType {
+  EMAIL
+  UPN
+  OBJECT_ID
+  CUSTOMER_ID
+  EMPLOYEE_ID
+  PHONE
+  IBAN
+  OTHER
+}
+
+enum CopilotSummaryType {
+  LOCATION_OVERVIEW
+  CATEGORY_OVERVIEW
+  DSAR_DRAFT
+  RISK_SUMMARY
+}
+
+enum ExportType {
+  ZIP
+  DOCX
+  XLSX
+  PDF
+  JSON
+  CSV
+}
+
+enum ExportLegalGateStatus {
   BLOCKED
+  ALLOWED
 }
 
 enum IntegrationHealthStatus {
@@ -192,8 +255,11 @@ model Tenant {
   copilotRuns        CopilotRun[]
   copilotQueries     CopilotQuery[]
   identityProfiles   IdentityProfile[]
+  evidenceItems      EvidenceItem[]
   findings           Finding[]
   detectorResults    DetectorResult[]
+  copilotSummaries   CopilotSummary[]
+  exportArtifacts    ExportArtifact[]
 
   @@map("tenants")
 }
@@ -220,7 +286,10 @@ model User {
   legalReviews       LegalReview[]       @relation("LegalReviewReviewer")
   ownedIntegrations  Integration[]       @relation("IntegrationOwner")
   assignedCollections DataCollectionItem[] @relation("DataCollectionAssignee")
-  copilotRuns        CopilotRun[]        @relation("CopilotRunCreatedBy")
+  copilotRuns           CopilotRun[]        @relation("CopilotRunCreatedBy")
+  copilotRunApprovals   CopilotRun[]        @relation("CopilotRunLegalApprover")
+  copilotSummaries      CopilotSummary[]    @relation("CopilotSummaryCreatedBy")
+  exportArtifacts       ExportArtifact[]    @relation("ExportArtifactCreatedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -511,6 +580,7 @@ model Integration {
   owner               User?                @relation("IntegrationOwner", fields: [ownerUserId], references: [id])
   dataCollectionItems DataCollectionItem[]
   copilotQueries      CopilotQuery[]
+  evidenceItems       EvidenceItem[]      @relation("EvidenceIntegration")
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -520,32 +590,38 @@ model Integration {
 // ─── Privacy Copilot Models ──────────────────────────────────────────────────
 
 model CopilotRun {
-  id              String           @id @default(uuid())
-  tenantId        String
-  caseId          String
-  createdByUserId String
-  status          CopilotRunStatus @default(CREATED)
-  reason          String           // Justification for running the copilot
-  summary         String?          // LLM-generated summary (from evidence only)
-  responseDraft   String?          // DSAR response draft
-  identityGraph   Json?            // Resolved identity graph
-  totalFindings   Int              @default(0)
-  art9Flagged     Boolean          @default(false)
-  art9ReviewStatus Art9ReviewStatus?
-  art9ReviewedBy  String?
-  art9ReviewedAt  DateTime?
-  startedAt       DateTime?
-  completedAt     DateTime?
-  errorMessage    String?
-  metadata        Json?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  id                      String              @id @default(uuid())
+  tenantId                String
+  caseId                  String
+  createdByUserId         String
+  status                  CopilotRunStatus    @default(DRAFT)
+  justification           String              // Mandatory reason (e.g. "DSAR Art. 15 request – …")
+  scopeSummary            String?             // Human-readable scope (e.g. "M365 Mailbox + SharePoint Finance Site")
+  providerSelection       Json?               // JSON array: which integrations/workloads are included
+  resultSummary           String?             // Short summary text (evidence-based, later LLM-assisted)
+  errorDetails            String?             // Error info if FAILED
+  containsSpecialCategory Boolean             @default(false)
+  legalApprovalStatus     LegalApprovalStatus @default(NOT_REQUIRED)
+  legalApprovedByUserId   String?
+  legalApprovedAt         DateTime?
+  retentionDeleteAt       DateTime?           // Auto-delete timestamp based on tenant settings
+  totalFindings           Int                 @default(0)
+  totalEvidenceItems      Int                 @default(0)
+  startedAt               DateTime?
+  completedAt             DateTime?
+  metadata                Json?
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
 
-  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  case      DSARCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  createdBy User           @relation("CopilotRunCreatedBy", fields: [createdByUserId], references: [id])
-  queries   CopilotQuery[]
-  findings  Finding[]
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case            DSARCase           @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  createdBy       User               @relation("CopilotRunCreatedBy", fields: [createdByUserId], references: [id])
+  legalApprovedBy User?              @relation("CopilotRunLegalApprover", fields: [legalApprovedByUserId], references: [id])
+  queries         CopilotQuery[]
+  evidenceItems   EvidenceItem[]
+  findings        Finding[]
+  summaries       CopilotSummary[]
+  exports         ExportArtifact[]
 
   @@index([tenantId, caseId])
   @@index([tenantId, status])
@@ -553,93 +629,170 @@ model CopilotRun {
 }
 
 model CopilotQuery {
-  id             String             @id @default(uuid())
-  tenantId       String
-  runId          String
-  integrationId  String?
-  provider       String
-  querySpec      Json               // Full QuerySpec used for this query
-  status         CopilotQueryStatus @default(PENDING)
-  recordsFound   Int?
-  errorMessage   String?
-  executionMs    Int?
-  startedAt      DateTime?
-  completedAt    DateTime?
-  createdAt      DateTime           @default(now())
+  id                  String             @id @default(uuid())
+  tenantId            String
+  caseId              String
+  runId               String
+  createdByUserId     String
+  queryText           String             // Freetext query (e.g. "Which data exists for …")
+  queryIntent         QueryIntent        @default(DATA_LOCATION)
+  subjectIdentityId   String?            // Links to IdentityProfile
+  executionMode       ContentHandling    @default(METADATA_ONLY)
+  constraints         Json?              // Optional: timeRange, systems included/excluded
+  // Execution fields (per-integration query)
+  integrationId       String?
+  provider            String?
+  querySpec           Json?              // Full QuerySpec for connector execution
+  status              CopilotQueryStatus @default(PENDING)
+  recordsFound        Int?
+  errorMessage        String?
+  executionMs         Int?
+  startedAt           DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime           @default(now())
 
-  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  run         CopilotRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
-  integration Integration? @relation(fields: [integrationId], references: [id])
-  findings    Finding[]
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  run             CopilotRun       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  integration     Integration?     @relation(fields: [integrationId], references: [id])
+  subjectIdentity IdentityProfile? @relation(fields: [subjectIdentityId], references: [id])
+  evidenceItems   EvidenceItem[]
 
   @@index([tenantId, runId])
   @@map("copilot_queries")
 }
 
 model IdentityProfile {
-  id              String   @id @default(uuid())
-  tenantId        String
-  caseId          String
-  runId           String?
-  primaryEmail    String?
-  primaryName     String?
-  identifiers     Json     // Array of { type, value, source, confidence }
-  resolvedSystems Json?    // Array of { provider, accountId, displayName }
-  confidence      Float    @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                      String               @id @default(uuid())
+  tenantId                String
+  caseId                  String
+  displayName             String               // e.g. "Max Mustermann"
+  primaryIdentifierType   PrimaryIdentifierType @default(EMAIL)
+  primaryIdentifierValue  String               // e.g. "max@acme.com"
+  alternateIdentifiers    Json                 // Array of { type, value, confidence, source }
+  confidenceScore         Int                  @default(0) // 0..100
+  createdByUserId         String?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
 
-  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  case   DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case     DSARCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  queries  CopilotQuery[]
 
   @@unique([tenantId, caseId])
   @@map("identity_profiles")
 }
 
-model Finding {
-  id             String          @id @default(uuid())
-  tenantId       String
-  runId          String
-  queryId        String?
-  source         String          // Provider name (e.g. "EXCHANGE_ONLINE")
-  location       String          // e.g. "mailbox:user@acme.com/Inbox"
-  title          String
-  description    String?
-  dataCategories DataCategory[]
-  severity       FindingSeverity @default(INFO)
-  isArt9         Boolean         @default(false)
-  art9Categories String[]        // e.g. ["HEALTH", "BIOMETRIC"]
-  recordCount    Int             @default(1)
-  metadata       Json?           // Additional structured data
-  evidenceRef    String?         // Reference to evidence storage
-  redacted       Boolean         @default(false)
-  createdAt      DateTime        @default(now())
+model EvidenceItem {
+  id                String          @id @default(uuid())
+  tenantId          String
+  caseId            String
+  runId             String
+  queryId           String?
+  integrationId     String?
+  provider          String          // e.g. "M365", "EXCHANGE_ONLINE"
+  workload          String?         // e.g. "EXCHANGE", "SHAREPOINT"
+  itemType          EvidenceItemType @default(OTHER)
+  externalRef       String?         // External system ID (Graph item id, etc.)
+  location          String          // e.g. "Mailbox:user@acme.com/Inbox"
+  title             String          // e.g. email subject or filename
+  createdAtSource   DateTime?
+  modifiedAtSource  DateTime?
+  owners            Json?           // { createdBy, modifiedBy, sender, etc. }
+  metadata          Json?           // Structured metadata (NO full content by default)
+  contentHandling   ContentHandling @default(METADATA_ONLY)
+  linkedDocumentId  String?         // Optional: if exported/stored as Document
+  sensitivityScore  Int?            // 0..100
+  createdAt         DateTime        @default(now())
 
-  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  run      CopilotRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
-  query    CopilotQuery? @relation(fields: [queryId], references: [id])
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  run         CopilotRun       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  query       CopilotQuery?    @relation(fields: [queryId], references: [id])
+  integration Integration?     @relation("EvidenceIntegration", fields: [integrationId], references: [id])
   detectorResults DetectorResult[]
 
   @@index([tenantId, runId])
-  @@index([tenantId, runId, isArt9])
-  @@map("findings")
+  @@index([tenantId, caseId])
+  @@map("evidence_items")
 }
 
 model DetectorResult {
-  id          String   @id @default(uuid())
-  tenantId    String
-  findingId   String
-  detectorType String  // "regex", "pdf_metadata", "ocr", "keyword"
-  patternName String   // e.g. "IBAN", "CREDIT_CARD", "EMAIL"
-  matchCount  Int      @default(1)
-  sampleMatch String?  // Redacted sample (e.g. "DE89 **** **** 0000")
-  confidence  Float    @default(1.0)
-  metadata    Json?
-  createdAt   DateTime @default(now())
+  id                               String   @id @default(uuid())
+  tenantId                         String
+  caseId                           String
+  runId                            String
+  evidenceItemId                   String
+  detectorType                     String   // "REGEX", "PDF_METADATA", "OCR", "IMAGE_MODEL", "LLM_CLASSIFIER"
+  detectedElements                 Json     // Array of { elementType, confidence, snippetPreview, offsets? }
+  detectedCategories               Json     // Array of { category: DataCategory, confidence }
+  containsSpecialCategorySuspected Boolean  @default(false)
+  createdAt                        DateTime @default(now())
 
-  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  finding Finding @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  evidenceItem EvidenceItem @relation(fields: [evidenceItemId], references: [id], onDelete: Cascade)
 
-  @@index([tenantId, findingId])
+  @@index([tenantId, evidenceItemId])
   @@map("detector_results")
+}
+
+model Finding {
+  id                              String          @id @default(uuid())
+  tenantId                        String
+  caseId                          String
+  runId                           String
+  dataCategory                    DataCategory
+  severity                        FindingSeverity @default(INFO)
+  confidence                      Float           @default(0)
+  summary                         String          // Short text; references evidence, no LLM hallucination
+  evidenceItemIds                 String[]        // References to EvidenceItem IDs
+  containsSpecialCategory         Boolean         @default(false)
+  containsThirdPartyDataSuspected Boolean         @default(false)
+  requiresLegalReview             Boolean         @default(false)
+  createdAt                       DateTime        @default(now())
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  run    CopilotRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, runId])
+  @@index([tenantId, caseId])
+  @@map("findings")
+}
+
+model CopilotSummary {
+  id                    String             @id @default(uuid())
+  tenantId              String
+  caseId                String
+  runId                 String
+  createdByUserId       String
+  summaryType           CopilotSummaryType
+  content               String             // Generated text
+  evidenceSnapshotHash  String             // Hash to verify summary matches evidence state
+  disclaimerIncluded    Boolean            @default(true)
+  createdAt             DateTime           @default(now())
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  run       CopilotRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  createdBy User       @relation("CopilotSummaryCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([tenantId, runId])
+  @@map("copilot_summaries")
+}
+
+model ExportArtifact {
+  id              String                @id @default(uuid())
+  tenantId        String
+  caseId          String
+  runId           String
+  documentId      String?               // Reference to stored Document
+  exportType      ExportType            @default(JSON)
+  status          String                @default("PENDING") // PENDING, GENERATING, COMPLETED, FAILED
+  legalGateStatus ExportLegalGateStatus @default(ALLOWED)
+  createdByUserId String
+  createdAt       DateTime              @default(now())
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  run       CopilotRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  createdBy User       @relation("ExportArtifactCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([tenantId, runId])
+  @@map("export_artifacts")
 }

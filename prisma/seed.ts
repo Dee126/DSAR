@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, FindingSeverity, DataCategory } from "@prisma/client";
+import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -7,8 +7,11 @@ async function main() {
   console.log("Seeding database...");
 
   // Clean existing data (order matters for FK constraints)
+  await prisma.exportArtifact.deleteMany();
+  await prisma.copilotSummary.deleteMany();
   await prisma.detectorResult.deleteMany();
   await prisma.finding.deleteMany();
+  await prisma.evidenceItem.deleteMany();
   await prisma.copilotQuery.deleteMany();
   await prisma.copilotRun.deleteMany();
   await prisma.identityProfile.deleteMany();
@@ -1025,6 +1028,26 @@ async function main() {
 
   // ── Privacy Copilot Demo Data ─────────────────────────────────────
 
+  // IdentityProfile for case1 (needed before CopilotQuery references it)
+  const identityProfile1 = await prisma.identityProfile.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case1.id,
+      displayName: subject1.fullName,
+      primaryIdentifierType: PrimaryIdentifierType.EMAIL,
+      primaryIdentifierValue: subject1.email!,
+      alternateIdentifiers: [
+        { type: "email", value: subject1.email, confidence: 0.9, source: "case_data" },
+        { type: "name", value: subject1.fullName, confidence: 0.9, source: "case_data" },
+        { type: "upn", value: "john.smith@acme-corp.com", confidence: 0.85, source: "M365" },
+        { type: "system_account", value: "M365:m365-user-guid-001", confidence: 0.85, source: "M365" },
+        { type: "system_account", value: "EXCHANGE_ONLINE:exo-mailbox-guid-001", confidence: 0.8, source: "EXCHANGE_ONLINE" },
+      ],
+      confidenceScore: 90,
+      createdByUserId: caseManager.id,
+    },
+  });
+
   // CopilotRun for case1 (John Smith access request, DATA_COLLECTION stage)
   const copilotRun1 = await prisma.copilotRun.create({
     data: {
@@ -1032,46 +1055,22 @@ async function main() {
       caseId: case1.id,
       createdByUserId: caseManager.id,
       status: CopilotRunStatus.COMPLETED,
-      reason: "DSAR fulfillment — automated data discovery for personal data access request",
-      summary: [
-        "=== Discovery Run Summary ===",
-        "",
-        "Subject Identity:",
-        `  Primary email: ${subject1.email}`,
-        `  Name: ${subject1.fullName}`,
-        "  Known identifiers: 3",
-        "  Systems resolved: 2",
-        "",
-        "Overview:",
-        "  Total findings: 3",
-        "  Total records: 7",
-        "  Sources queried: 2",
-        "  Data categories found: IDENTIFICATION, CONTACT, COMMUNICATION, HR_EMPLOYMENT",
-        "",
-        "Findings by Source:",
-        "  M365:",
-        "    Findings: 1, Records: 1",
-        "    - M365 user profile found (1 record)",
-        "  EXCHANGE_ONLINE:",
-        "    Findings: 2, Records: 6",
-        "    - Exchange emails containing personal data (5 records)",
-        "    - HR data found in email attachments (1 record)",
-      ].join("\n"),
+      justification: "DSAR fulfillment — automated data discovery for personal data access request (Art. 15)",
+      scopeSummary: "M365 User Profile + Exchange Online Mailbox Search",
+      providerSelection: [
+        { integrationId: m365Integration.id, provider: "M365", workload: "user_profile" },
+        { integrationId: exchangeIntegration.id, provider: "EXCHANGE_ONLINE", workload: "mailbox_search" },
+      ],
+      resultSummary: [
+        "Discovery run completed. Found 3 evidence items across 2 providers.",
+        "Data categories: IDENTIFICATION, CONTACT, COMMUNICATION, HR.",
+        "No special category (Art. 9) data detected.",
+        "3 findings generated, 0 requiring legal review.",
+      ].join(" "),
+      containsSpecialCategory: false,
+      legalApprovalStatus: LegalApprovalStatus.NOT_REQUIRED,
       totalFindings: 3,
-      art9Flagged: false,
-      identityGraph: {
-        primaryEmail: subject1.email,
-        primaryName: subject1.fullName,
-        identifiers: [
-          { type: "email", value: subject1.email, source: "data_subject", confidence: 1.0 },
-          { type: "name", value: subject1.fullName, source: "data_subject", confidence: 1.0 },
-          { type: "upn", value: "john.smith@acme-corp.com", source: "M365", confidence: 0.95 },
-        ],
-        resolvedSystems: [
-          { provider: "M365", accountId: "m365-user-guid-001", displayName: "Acme Corp M365" },
-          { provider: "EXCHANGE_ONLINE", accountId: "exo-mailbox-guid-001", displayName: "Acme Exchange" },
-        ],
-      },
+      totalEvidenceItems: 3,
       startedAt: daysAgo(9),
       completedAt: daysAgo(9),
     },
@@ -1081,7 +1080,13 @@ async function main() {
   const copilotQueryM365 = await prisma.copilotQuery.create({
     data: {
       tenantId: tenant.id,
+      caseId: case1.id,
       runId: copilotRun1.id,
+      createdByUserId: caseManager.id,
+      queryText: "Which personal data exists for John Smith in M365 user directory?",
+      queryIntent: QueryIntent.DATA_LOCATION,
+      subjectIdentityId: identityProfile1.id,
+      executionMode: ContentHandling.METADATA_ONLY,
       integrationId: m365Integration.id,
       provider: "M365",
       querySpec: {
@@ -1102,13 +1107,19 @@ async function main() {
   const copilotQueryExchange = await prisma.copilotQuery.create({
     data: {
       tenantId: tenant.id,
+      caseId: case1.id,
       runId: copilotRun1.id,
+      createdByUserId: caseManager.id,
+      queryText: "Search Exchange Online mailbox for personal data belonging to John Smith",
+      queryIntent: QueryIntent.DATA_LOCATION,
+      subjectIdentityId: identityProfile1.id,
+      executionMode: ContentHandling.METADATA_ONLY,
       integrationId: exchangeIntegration.id,
       provider: "EXCHANGE_ONLINE",
       querySpec: {
         subjectIdentifiers: { primary: { type: "email", value: subject1.email }, alternatives: [] },
         searchTerms: { terms: ["john smith", "john.smith"], matchType: "contains" },
-        providerScope: { mailboxes: [subject1.email], folderScope: "all", includeAttachments: true },
+        providerScope: { mailboxes: [subject1.email!], folderScope: "all", includeAttachments: true },
         outputOptions: { mode: "metadata_only", maxItems: 500, includeAttachments: false },
         legal: { purpose: "DSAR", dataMinimization: true },
         templateId: "exchange_mailbox_search",
@@ -1121,147 +1132,246 @@ async function main() {
     },
   });
 
-  // Findings linked to the run
-  const finding1 = await prisma.finding.create({
+  // EvidenceItem records (3 items matching the 3 findings)
+  const evidenceItem1 = await prisma.evidenceItem.create({
     data: {
       tenantId: tenant.id,
+      caseId: case1.id,
       runId: copilotRun1.id,
       queryId: copilotQueryM365.id,
-      source: "M365",
-      location: "M365:Acme Corp M365",
-      title: "M365 user profile found",
-      description: "Entra ID user profile containing display name, email, department, and job title.",
-      dataCategories: [DataCategory.IDENTIFICATION, DataCategory.CONTACT],
-      severity: FindingSeverity.MEDIUM,
-      isArt9: false,
-      art9Categories: [],
-      recordCount: 1,
+      integrationId: m365Integration.id,
+      provider: "M365",
+      workload: "ENTRA_ID",
+      itemType: EvidenceItemType.RECORD,
+      externalRef: "m365-user-guid-001",
+      location: "EntraID:UserProfile:john.smith@acme-corp.com",
+      title: "Entra ID user profile — John Smith",
+      createdAtSource: daysAgo(365),
+      modifiedAtSource: daysAgo(30),
+      owners: { createdBy: "admin@acme-corp.com" },
       metadata: {
         userPrincipalName: "john.smith@acme-corp.com",
         department: "Engineering",
         jobTitle: "Software Developer",
+        displayName: subject1.fullName,
+        mail: subject1.email,
       },
+      contentHandling: ContentHandling.METADATA_ONLY,
+      sensitivityScore: 35,
+    },
+  });
+
+  const evidenceItem2 = await prisma.evidenceItem.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case1.id,
+      runId: copilotRun1.id,
+      queryId: copilotQueryExchange.id,
+      integrationId: exchangeIntegration.id,
+      provider: "EXCHANGE_ONLINE",
+      workload: "EXCHANGE",
+      itemType: EvidenceItemType.EMAIL,
+      externalRef: "exo-message-guid-batch-001",
+      location: `Mailbox:${subject1.email}/Inbox,Sent Items`,
+      title: "Exchange emails containing personal data (5 messages)",
+      createdAtSource: daysAgo(60),
+      modifiedAtSource: daysAgo(10),
+      owners: { mailbox: subject1.email },
+      metadata: {
+        matchedFolders: ["Inbox", "Sent Items"],
+        messageCount: 5,
+        containsAttachments: false,
+      },
+      contentHandling: ContentHandling.METADATA_ONLY,
+      sensitivityScore: 50,
+    },
+  });
+
+  const evidenceItem3 = await prisma.evidenceItem.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case1.id,
+      runId: copilotRun1.id,
+      queryId: copilotQueryExchange.id,
+      integrationId: exchangeIntegration.id,
+      provider: "EXCHANGE_ONLINE",
+      workload: "EXCHANGE",
+      itemType: EvidenceItemType.FILE,
+      externalRef: "exo-attachment-guid-001",
+      location: `Mailbox:${subject1.email}/Inbox/Q4_Compensation_Review.xlsx`,
+      title: "Q4_Compensation_Review.xlsx (email attachment)",
+      createdAtSource: daysAgo(45),
+      modifiedAtSource: daysAgo(45),
+      owners: { sender: "hr@acme-corp.com", mailbox: subject1.email },
+      metadata: {
+        attachmentType: "xlsx",
+        attachmentName: "Q4_Compensation_Review.xlsx",
+        parentMessageSubject: "Q4 Compensation Review",
+      },
+      contentHandling: ContentHandling.METADATA_ONLY,
+      sensitivityScore: 75,
+    },
+  });
+
+  // Findings linked to the run (new schema)
+  const finding1 = await prisma.finding.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case1.id,
+      runId: copilotRun1.id,
+      dataCategory: DataCategory.IDENTIFICATION,
+      severity: FindingSeverity.INFO,
+      confidence: 0.9,
+      summary: "Entra ID user profile containing display name, email, department, and job title.",
+      evidenceItemIds: [evidenceItem1.id],
+      containsSpecialCategory: false,
+      containsThirdPartyDataSuspected: false,
+      requiresLegalReview: false,
     },
   });
 
   const finding2 = await prisma.finding.create({
     data: {
       tenantId: tenant.id,
+      caseId: case1.id,
       runId: copilotRun1.id,
-      queryId: copilotQueryExchange.id,
-      source: "EXCHANGE_ONLINE",
-      location: "EXCHANGE_ONLINE:Acme Exchange",
-      title: "Exchange emails containing personal data",
-      description: "Mailbox search returned 5 emails containing personal identifiers including email addresses and a phone number.",
-      dataCategories: [DataCategory.COMMUNICATION, DataCategory.CONTACT],
-      severity: FindingSeverity.MEDIUM,
-      isArt9: false,
-      art9Categories: [],
-      recordCount: 5,
-      metadata: {
-        mailbox: subject1.email,
-        folderScope: "all",
-        matchedFolders: ["Inbox", "Sent Items"],
-      },
+      dataCategory: DataCategory.COMMUNICATION,
+      severity: FindingSeverity.WARNING,
+      confidence: 0.85,
+      summary: "Mailbox search returned 5 emails containing personal identifiers including email addresses and a phone number.",
+      evidenceItemIds: [evidenceItem2.id],
+      containsSpecialCategory: false,
+      containsThirdPartyDataSuspected: true,
+      requiresLegalReview: false,
     },
   });
 
   const finding3 = await prisma.finding.create({
     data: {
       tenantId: tenant.id,
+      caseId: case1.id,
       runId: copilotRun1.id,
-      queryId: copilotQueryExchange.id,
-      source: "EXCHANGE_ONLINE",
-      location: "EXCHANGE_ONLINE:Acme Exchange",
-      title: "HR data found in email attachments",
-      description: "Email attachment contains salary information and employment contract details for the data subject.",
-      dataCategories: [DataCategory.HR_EMPLOYMENT],
-      severity: FindingSeverity.HIGH,
-      isArt9: false,
-      art9Categories: [],
-      recordCount: 1,
-      metadata: {
-        mailbox: subject1.email,
-        attachmentType: "xlsx",
-        attachmentName: "Q4_Compensation_Review.xlsx",
-      },
-    },
-  });
-
-  // DetectorResult records for findings
-  // Finding 1: EMAIL detector
-  await prisma.detectorResult.create({
-    data: {
-      tenantId: tenant.id,
-      findingId: finding1.id,
-      detectorType: "regex",
-      patternName: "EMAIL",
-      matchCount: 2,
-      sampleMatch: "j***@acme-corp.com",
-      confidence: 0.9,
-    },
-  });
-
-  // Finding 2: EMAIL detector + PHONE detector
-  await prisma.detectorResult.create({
-    data: {
-      tenantId: tenant.id,
-      findingId: finding2.id,
-      detectorType: "regex",
-      patternName: "EMAIL",
-      matchCount: 5,
-      sampleMatch: "j***@acme-corp.com",
-      confidence: 0.85,
-    },
-  });
-
-  await prisma.detectorResult.create({
-    data: {
-      tenantId: tenant.id,
-      findingId: finding2.id,
-      detectorType: "regex",
-      patternName: "PHONE",
-      matchCount: 1,
-      sampleMatch: "+49 *****42",
-      confidence: 0.75,
-    },
-  });
-
-  // Finding 3: IBAN detector (NOT art9)
-  await prisma.detectorResult.create({
-    data: {
-      tenantId: tenant.id,
-      findingId: finding3.id,
-      detectorType: "regex",
-      patternName: "IBAN",
-      matchCount: 1,
-      sampleMatch: "DE******0000",
+      dataCategory: DataCategory.HR,
+      severity: FindingSeverity.CRITICAL,
       confidence: 0.8,
+      summary: "Email attachment contains salary information and employment contract details for the data subject.",
+      evidenceItemIds: [evidenceItem3.id],
+      containsSpecialCategory: false,
+      containsThirdPartyDataSuspected: false,
+      requiresLegalReview: true,
     },
   });
 
-  // IdentityProfile for case1
-  await prisma.identityProfile.create({
+  // DetectorResult records linked to evidence items (new schema)
+  // EvidenceItem 1 (M365 profile): EMAIL detector
+  await prisma.detectorResult.create({
     data: {
       tenantId: tenant.id,
       caseId: case1.id,
       runId: copilotRun1.id,
-      primaryEmail: subject1.email,
-      primaryName: subject1.fullName,
-      identifiers: [
-        { type: "email", value: subject1.email, source: "data_subject", confidence: 1.0 },
-        { type: "name", value: subject1.fullName, source: "data_subject", confidence: 1.0 },
-        { type: "upn", value: "john.smith@acme-corp.com", source: "M365", confidence: 0.95 },
+      evidenceItemId: evidenceItem1.id,
+      detectorType: "REGEX",
+      detectedElements: [
+        { elementType: "EMAIL_ADDRESS", confidence: 0.9, snippetPreview: "j***@acme-corp.com", offsets: { start: 0, end: 26 } },
+        { elementType: "EMAIL_ADDRESS", confidence: 0.9, snippetPreview: "j***@example.com", offsets: { start: 30, end: 52 } },
       ],
-      resolvedSystems: [
-        { provider: "M365", accountId: "m365-user-guid-001", displayName: "Acme Corp M365" },
-        { provider: "EXCHANGE_ONLINE", accountId: "exo-mailbox-guid-001", displayName: "Acme Exchange" },
+      detectedCategories: [
+        { category: "CONTACT", confidence: 0.9 },
+        { category: "IDENTIFICATION", confidence: 0.85 },
       ],
-      confidence: 0.95,
+      containsSpecialCategorySuspected: false,
     },
   });
 
-  console.log("Created copilot demo data (1 run, 2 queries, 3 findings, 4 detector results, 1 identity profile)");
+  // EvidenceItem 2 (Exchange emails): EMAIL + PHONE detectors
+  await prisma.detectorResult.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case1.id,
+      runId: copilotRun1.id,
+      evidenceItemId: evidenceItem2.id,
+      detectorType: "REGEX",
+      detectedElements: [
+        { elementType: "EMAIL_ADDRESS", confidence: 0.85, snippetPreview: "j***@acme-corp.com", offsets: { start: 0, end: 26 } },
+        { elementType: "EMAIL_ADDRESS", confidence: 0.85, snippetPreview: "j***@example.com", offsets: { start: 100, end: 122 } },
+        { elementType: "EMAIL_ADDRESS", confidence: 0.85, snippetPreview: "j***@acme-corp.com", offsets: { start: 200, end: 226 } },
+        { elementType: "PHONE_EU_INTERNATIONAL", confidence: 0.75, snippetPreview: "+49 *****42", offsets: { start: 300, end: 318 } },
+      ],
+      detectedCategories: [
+        { category: "CONTACT", confidence: 0.85 },
+        { category: "COMMUNICATION", confidence: 0.8 },
+      ],
+      containsSpecialCategorySuspected: false,
+    },
+  });
+
+  // EvidenceItem 3 (HR attachment): IBAN detector
+  await prisma.detectorResult.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case1.id,
+      runId: copilotRun1.id,
+      evidenceItemId: evidenceItem3.id,
+      detectorType: "REGEX",
+      detectedElements: [
+        { elementType: "IBAN_DE", confidence: 0.8, snippetPreview: "DE******0000", offsets: { start: 0, end: 22 } },
+      ],
+      detectedCategories: [
+        { category: "PAYMENT", confidence: 0.8 },
+        { category: "HR", confidence: 0.75 },
+      ],
+      containsSpecialCategorySuspected: false,
+    },
+  });
+
+  // CopilotSummary (LOCATION_OVERVIEW)
+  await prisma.copilotSummary.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case1.id,
+      runId: copilotRun1.id,
+      createdByUserId: caseManager.id,
+      summaryType: CopilotSummaryType.LOCATION_OVERVIEW,
+      content: [
+        "## Data Location Overview for John Smith",
+        "",
+        "**Run completed**: 9 days ago | **Evidence items**: 3 | **Findings**: 3",
+        "",
+        "### M365 (Entra ID)",
+        "- User profile found: display name, email, department (Engineering), job title (Software Developer)",
+        "- Data categories: IDENTIFICATION, CONTACT",
+        "- Severity: INFO",
+        "",
+        "### Exchange Online",
+        "- 5 emails found in Inbox and Sent Items containing personal identifiers",
+        "- 1 attachment (Q4_Compensation_Review.xlsx) containing salary/employment data",
+        "- Data categories: COMMUNICATION, CONTACT, HR, PAYMENT",
+        "- Severity: WARNING (emails), CRITICAL (HR attachment)",
+        "",
+        "### Special Category (Art. 9)",
+        "No special category data detected.",
+        "",
+        "*This summary was generated from evidence metadata. No full content was accessed.*",
+      ].join("\n"),
+      evidenceSnapshotHash: "sha256:demo-snapshot-hash-case1-run1",
+      disclaimerIncluded: true,
+    },
+  });
+
+  // ExportArtifact (JSON export, ALLOWED)
+  await prisma.exportArtifact.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case1.id,
+      runId: copilotRun1.id,
+      exportType: ExportType.JSON,
+      status: "COMPLETED",
+      legalGateStatus: ExportLegalGateStatus.ALLOWED,
+      createdByUserId: caseManager.id,
+    },
+  });
+
+  console.log("Created copilot demo data (1 run, 2 queries, 3 evidence items, 3 findings, 3 detector results, 1 identity profile, 1 summary, 1 export artifact)");
 
   console.log("\n--- Seed Complete ---");
   console.log("Tenant: Acme Corp");
@@ -1278,10 +1388,13 @@ async function main() {
   console.log(`Communication Logs: 7`);
   console.log(`Data Collection Items: 9`);
   console.log(`Legal Reviews: 3`);
-  console.log(`Copilot Runs: 1 (COMPLETED, 3 findings)`);
+  console.log(`Copilot Runs: 1 (COMPLETED, 3 findings, 3 evidence items)`);
   console.log(`Copilot Queries: 2 (M365, Exchange)`);
-  console.log(`Findings: 3 (with 4 detector results)`);
+  console.log(`Evidence Items: 3 (1 record, 1 email batch, 1 file)`);
+  console.log(`Findings: 3 (with 3 detector results)`);
   console.log(`Identity Profiles: 1`);
+  console.log(`Copilot Summaries: 1 (LOCATION_OVERVIEW)`);
+  console.log(`Export Artifacts: 1 (JSON, ALLOWED)`);
 }
 
 main()
