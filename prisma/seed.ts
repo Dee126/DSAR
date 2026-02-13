@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus } from "@prisma/client";
+import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, FindingSeverity, DataCategory } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -7,6 +7,11 @@ async function main() {
   console.log("Seeding database...");
 
   // Clean existing data (order matters for FK constraints)
+  await prisma.detectorResult.deleteMany();
+  await prisma.finding.deleteMany();
+  await prisma.copilotQuery.deleteMany();
+  await prisma.copilotRun.deleteMany();
+  await prisma.identityProfile.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.legalReview.deleteMany();
   await prisma.dataCollectionItem.deleteMany();
@@ -1018,6 +1023,246 @@ async function main() {
 
   console.log("Created audit logs");
 
+  // ── Privacy Copilot Demo Data ─────────────────────────────────────
+
+  // CopilotRun for case1 (John Smith access request, DATA_COLLECTION stage)
+  const copilotRun1 = await prisma.copilotRun.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case1.id,
+      createdByUserId: caseManager.id,
+      status: CopilotRunStatus.COMPLETED,
+      reason: "DSAR fulfillment — automated data discovery for personal data access request",
+      summary: [
+        "=== Discovery Run Summary ===",
+        "",
+        "Subject Identity:",
+        `  Primary email: ${subject1.email}`,
+        `  Name: ${subject1.fullName}`,
+        "  Known identifiers: 3",
+        "  Systems resolved: 2",
+        "",
+        "Overview:",
+        "  Total findings: 3",
+        "  Total records: 7",
+        "  Sources queried: 2",
+        "  Data categories found: IDENTIFICATION, CONTACT, COMMUNICATION, HR_EMPLOYMENT",
+        "",
+        "Findings by Source:",
+        "  M365:",
+        "    Findings: 1, Records: 1",
+        "    - M365 user profile found (1 record)",
+        "  EXCHANGE_ONLINE:",
+        "    Findings: 2, Records: 6",
+        "    - Exchange emails containing personal data (5 records)",
+        "    - HR data found in email attachments (1 record)",
+      ].join("\n"),
+      totalFindings: 3,
+      art9Flagged: false,
+      identityGraph: {
+        primaryEmail: subject1.email,
+        primaryName: subject1.fullName,
+        identifiers: [
+          { type: "email", value: subject1.email, source: "data_subject", confidence: 1.0 },
+          { type: "name", value: subject1.fullName, source: "data_subject", confidence: 1.0 },
+          { type: "upn", value: "john.smith@acme-corp.com", source: "M365", confidence: 0.95 },
+        ],
+        resolvedSystems: [
+          { provider: "M365", accountId: "m365-user-guid-001", displayName: "Acme Corp M365" },
+          { provider: "EXCHANGE_ONLINE", accountId: "exo-mailbox-guid-001", displayName: "Acme Exchange" },
+        ],
+      },
+      startedAt: daysAgo(9),
+      completedAt: daysAgo(9),
+    },
+  });
+
+  // CopilotQuery records linked to the run
+  const copilotQueryM365 = await prisma.copilotQuery.create({
+    data: {
+      tenantId: tenant.id,
+      runId: copilotRun1.id,
+      integrationId: m365Integration.id,
+      provider: "M365",
+      querySpec: {
+        subjectIdentifiers: { primary: { type: "email", value: subject1.email }, alternatives: [{ type: "name", value: subject1.fullName }] },
+        providerScope: { lookupType: "user_profile" },
+        outputOptions: { mode: "metadata_only", maxItems: 500, includeAttachments: false },
+        legal: { purpose: "DSAR", dataMinimization: true },
+        templateId: "m365_user_lookup",
+      },
+      status: CopilotQueryStatus.COMPLETED,
+      recordsFound: 1,
+      executionMs: 1250,
+      startedAt: daysAgo(9),
+      completedAt: daysAgo(9),
+    },
+  });
+
+  const copilotQueryExchange = await prisma.copilotQuery.create({
+    data: {
+      tenantId: tenant.id,
+      runId: copilotRun1.id,
+      integrationId: exchangeIntegration.id,
+      provider: "EXCHANGE_ONLINE",
+      querySpec: {
+        subjectIdentifiers: { primary: { type: "email", value: subject1.email }, alternatives: [] },
+        searchTerms: { terms: ["john smith", "john.smith"], matchType: "contains" },
+        providerScope: { mailboxes: [subject1.email], folderScope: "all", includeAttachments: true },
+        outputOptions: { mode: "metadata_only", maxItems: 500, includeAttachments: false },
+        legal: { purpose: "DSAR", dataMinimization: true },
+        templateId: "exchange_mailbox_search",
+      },
+      status: CopilotQueryStatus.COMPLETED,
+      recordsFound: 5,
+      executionMs: 3400,
+      startedAt: daysAgo(9),
+      completedAt: daysAgo(9),
+    },
+  });
+
+  // Findings linked to the run
+  const finding1 = await prisma.finding.create({
+    data: {
+      tenantId: tenant.id,
+      runId: copilotRun1.id,
+      queryId: copilotQueryM365.id,
+      source: "M365",
+      location: "M365:Acme Corp M365",
+      title: "M365 user profile found",
+      description: "Entra ID user profile containing display name, email, department, and job title.",
+      dataCategories: [DataCategory.IDENTIFICATION, DataCategory.CONTACT],
+      severity: FindingSeverity.MEDIUM,
+      isArt9: false,
+      art9Categories: [],
+      recordCount: 1,
+      metadata: {
+        userPrincipalName: "john.smith@acme-corp.com",
+        department: "Engineering",
+        jobTitle: "Software Developer",
+      },
+    },
+  });
+
+  const finding2 = await prisma.finding.create({
+    data: {
+      tenantId: tenant.id,
+      runId: copilotRun1.id,
+      queryId: copilotQueryExchange.id,
+      source: "EXCHANGE_ONLINE",
+      location: "EXCHANGE_ONLINE:Acme Exchange",
+      title: "Exchange emails containing personal data",
+      description: "Mailbox search returned 5 emails containing personal identifiers including email addresses and a phone number.",
+      dataCategories: [DataCategory.COMMUNICATION, DataCategory.CONTACT],
+      severity: FindingSeverity.MEDIUM,
+      isArt9: false,
+      art9Categories: [],
+      recordCount: 5,
+      metadata: {
+        mailbox: subject1.email,
+        folderScope: "all",
+        matchedFolders: ["Inbox", "Sent Items"],
+      },
+    },
+  });
+
+  const finding3 = await prisma.finding.create({
+    data: {
+      tenantId: tenant.id,
+      runId: copilotRun1.id,
+      queryId: copilotQueryExchange.id,
+      source: "EXCHANGE_ONLINE",
+      location: "EXCHANGE_ONLINE:Acme Exchange",
+      title: "HR data found in email attachments",
+      description: "Email attachment contains salary information and employment contract details for the data subject.",
+      dataCategories: [DataCategory.HR_EMPLOYMENT],
+      severity: FindingSeverity.HIGH,
+      isArt9: false,
+      art9Categories: [],
+      recordCount: 1,
+      metadata: {
+        mailbox: subject1.email,
+        attachmentType: "xlsx",
+        attachmentName: "Q4_Compensation_Review.xlsx",
+      },
+    },
+  });
+
+  // DetectorResult records for findings
+  // Finding 1: EMAIL detector
+  await prisma.detectorResult.create({
+    data: {
+      tenantId: tenant.id,
+      findingId: finding1.id,
+      detectorType: "regex",
+      patternName: "EMAIL",
+      matchCount: 2,
+      sampleMatch: "j***@acme-corp.com",
+      confidence: 0.9,
+    },
+  });
+
+  // Finding 2: EMAIL detector + PHONE detector
+  await prisma.detectorResult.create({
+    data: {
+      tenantId: tenant.id,
+      findingId: finding2.id,
+      detectorType: "regex",
+      patternName: "EMAIL",
+      matchCount: 5,
+      sampleMatch: "j***@acme-corp.com",
+      confidence: 0.85,
+    },
+  });
+
+  await prisma.detectorResult.create({
+    data: {
+      tenantId: tenant.id,
+      findingId: finding2.id,
+      detectorType: "regex",
+      patternName: "PHONE",
+      matchCount: 1,
+      sampleMatch: "+49 *****42",
+      confidence: 0.75,
+    },
+  });
+
+  // Finding 3: IBAN detector (NOT art9)
+  await prisma.detectorResult.create({
+    data: {
+      tenantId: tenant.id,
+      findingId: finding3.id,
+      detectorType: "regex",
+      patternName: "IBAN",
+      matchCount: 1,
+      sampleMatch: "DE******0000",
+      confidence: 0.8,
+    },
+  });
+
+  // IdentityProfile for case1
+  await prisma.identityProfile.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case1.id,
+      runId: copilotRun1.id,
+      primaryEmail: subject1.email,
+      primaryName: subject1.fullName,
+      identifiers: [
+        { type: "email", value: subject1.email, source: "data_subject", confidence: 1.0 },
+        { type: "name", value: subject1.fullName, source: "data_subject", confidence: 1.0 },
+        { type: "upn", value: "john.smith@acme-corp.com", source: "M365", confidence: 0.95 },
+      ],
+      resolvedSystems: [
+        { provider: "M365", accountId: "m365-user-guid-001", displayName: "Acme Corp M365" },
+        { provider: "EXCHANGE_ONLINE", accountId: "exo-mailbox-guid-001", displayName: "Acme Exchange" },
+      ],
+      confidence: 0.95,
+    },
+  });
+
+  console.log("Created copilot demo data (1 run, 2 queries, 3 findings, 4 detector results, 1 identity profile)");
+
   console.log("\n--- Seed Complete ---");
   console.log("Tenant: Acme Corp");
   console.log("Users:");
@@ -1033,6 +1278,10 @@ async function main() {
   console.log(`Communication Logs: 7`);
   console.log(`Data Collection Items: 9`);
   console.log(`Legal Reviews: 3`);
+  console.log(`Copilot Runs: 1 (COMPLETED, 3 findings)`);
+  console.log(`Copilot Queries: 2 (M365, Exchange)`);
+  console.log(`Findings: 3 (with 4 detector results)`);
+  console.log(`Identity Profiles: 1`);
 }
 
 main()

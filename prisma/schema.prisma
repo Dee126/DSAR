@@ -116,6 +116,48 @@ enum IntegrationStatus {
   DISABLED
 }
 
+enum CopilotRunStatus {
+  CREATED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum CopilotQueryStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum FindingSeverity {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum DataCategory {
+  IDENTIFICATION          // Name, DOB, photo, ID numbers
+  CONTACT                 // Email, phone, address
+  CONTRACT                // Account info, customer number
+  PAYMENT_BANK            // IBAN, credit card, billing
+  COMMUNICATION           // Emails, messages, call logs
+  HR_EMPLOYMENT           // Salary, evaluations, contracts
+  CREDIT_FINANCIAL        // Credit score, debts, transactions
+  ONLINE_TECHNICAL        // IP, cookies, device IDs, logs
+  SPECIAL_CATEGORY_ART9   // Health, biometric, political, religious, ethnic, sexual, trade union, criminal
+}
+
+enum Art9ReviewStatus {
+  PENDING_REVIEW
+  APPROVED
+  BLOCKED
+}
+
 enum IntegrationHealthStatus {
   HEALTHY
   DEGRADED
@@ -147,6 +189,11 @@ model Tenant {
   dataCollectionItems DataCollectionItem[]
   legalReviews       LegalReview[]
   integrations       Integration[]
+  copilotRuns        CopilotRun[]
+  copilotQueries     CopilotQuery[]
+  identityProfiles   IdentityProfile[]
+  findings           Finding[]
+  detectorResults    DetectorResult[]
 
   @@map("tenants")
 }
@@ -173,6 +220,7 @@ model User {
   legalReviews       LegalReview[]       @relation("LegalReviewReviewer")
   ownedIntegrations  Integration[]       @relation("IntegrationOwner")
   assignedCollections DataCollectionItem[] @relation("DataCollectionAssignee")
+  copilotRuns        CopilotRun[]        @relation("CopilotRunCreatedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -237,6 +285,8 @@ model DSARCase {
   communicationLogs   CommunicationLog[]
   dataCollectionItems DataCollectionItem[]
   legalReviews        LegalReview[]
+  copilotRuns         CopilotRun[]
+  identityProfiles    IdentityProfile[]
 
   @@unique([tenantId, caseNumber])
   @@index([tenantId])
@@ -460,8 +510,136 @@ model Integration {
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   owner               User?                @relation("IntegrationOwner", fields: [ownerUserId], references: [id])
   dataCollectionItems DataCollectionItem[]
+  copilotQueries      CopilotQuery[]
 
   @@index([tenantId])
   @@index([tenantId, status])
   @@map("integrations")
+}
+
+// ─── Privacy Copilot Models ──────────────────────────────────────────────────
+
+model CopilotRun {
+  id              String           @id @default(uuid())
+  tenantId        String
+  caseId          String
+  createdByUserId String
+  status          CopilotRunStatus @default(CREATED)
+  reason          String           // Justification for running the copilot
+  summary         String?          // LLM-generated summary (from evidence only)
+  responseDraft   String?          // DSAR response draft
+  identityGraph   Json?            // Resolved identity graph
+  totalFindings   Int              @default(0)
+  art9Flagged     Boolean          @default(false)
+  art9ReviewStatus Art9ReviewStatus?
+  art9ReviewedBy  String?
+  art9ReviewedAt  DateTime?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  errorMessage    String?
+  metadata        Json?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case      DSARCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  createdBy User           @relation("CopilotRunCreatedBy", fields: [createdByUserId], references: [id])
+  queries   CopilotQuery[]
+  findings  Finding[]
+
+  @@index([tenantId, caseId])
+  @@index([tenantId, status])
+  @@map("copilot_runs")
+}
+
+model CopilotQuery {
+  id             String             @id @default(uuid())
+  tenantId       String
+  runId          String
+  integrationId  String?
+  provider       String
+  querySpec      Json               // Full QuerySpec used for this query
+  status         CopilotQueryStatus @default(PENDING)
+  recordsFound   Int?
+  errorMessage   String?
+  executionMs    Int?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime           @default(now())
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  run         CopilotRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  integration Integration? @relation(fields: [integrationId], references: [id])
+  findings    Finding[]
+
+  @@index([tenantId, runId])
+  @@map("copilot_queries")
+}
+
+model IdentityProfile {
+  id              String   @id @default(uuid())
+  tenantId        String
+  caseId          String
+  runId           String?
+  primaryEmail    String?
+  primaryName     String?
+  identifiers     Json     // Array of { type, value, source, confidence }
+  resolvedSystems Json?    // Array of { provider, accountId, displayName }
+  confidence      Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case   DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, caseId])
+  @@map("identity_profiles")
+}
+
+model Finding {
+  id             String          @id @default(uuid())
+  tenantId       String
+  runId          String
+  queryId        String?
+  source         String          // Provider name (e.g. "EXCHANGE_ONLINE")
+  location       String          // e.g. "mailbox:user@acme.com/Inbox"
+  title          String
+  description    String?
+  dataCategories DataCategory[]
+  severity       FindingSeverity @default(INFO)
+  isArt9         Boolean         @default(false)
+  art9Categories String[]        // e.g. ["HEALTH", "BIOMETRIC"]
+  recordCount    Int             @default(1)
+  metadata       Json?           // Additional structured data
+  evidenceRef    String?         // Reference to evidence storage
+  redacted       Boolean         @default(false)
+  createdAt      DateTime        @default(now())
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  run      CopilotRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  query    CopilotQuery? @relation(fields: [queryId], references: [id])
+  detectorResults DetectorResult[]
+
+  @@index([tenantId, runId])
+  @@index([tenantId, runId, isArt9])
+  @@map("findings")
+}
+
+model DetectorResult {
+  id          String   @id @default(uuid())
+  tenantId    String
+  findingId   String
+  detectorType String  // "regex", "pdf_metadata", "ocr", "keyword"
+  patternName String   // e.g. "IBAN", "CREDIT_CARD", "EMAIL"
+  matchCount  Int      @default(1)
+  sampleMatch String?  // Redacted sample (e.g. "DE89 **** **** 0000")
+  confidence  Float    @default(1.0)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  finding Finding @relation(fields: [findingId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, findingId])
+  @@map("detector_results")
 }

@@ -107,6 +107,11 @@ interface DataCollectionItem { id: string; status: string; querySpec: string | n
 interface LegalReview { id: string; status: string; issues: string | null; exemptionsApplied: string[] | null; redactions: string | null; notes: string | null; reviewer: CaseUser | null; approvedAt: string | null; createdAt: string }
 interface SystemItem { id: string; name: string }
 
+interface CopilotRunSummary { id: string; status: string; reason: string; totalFindings: number; art9Flagged: boolean; art9ReviewStatus: string | null; createdAt: string; completedAt: string | null; createdBy: CaseUser; _count: { findings: number; queries: number } }
+interface CopilotRunDetail { id: string; status: string; reason: string; summary: string | null; responseDraft: string | null; totalFindings: number; art9Flagged: boolean; art9ReviewStatus: string | null; identityGraph: unknown; createdAt: string; completedAt: string | null; errorMessage: string | null; createdBy: CaseUser; queries: CopilotQueryItem[]; findings: CopilotFinding[] }
+interface CopilotQueryItem { id: string; provider: string; status: string; recordsFound: number | null; executionMs: number | null; errorMessage: string | null; integration: { id: string; name: string; provider: string } | null }
+interface CopilotFinding { id: string; source: string; location: string; title: string; description: string | null; dataCategories: string[]; severity: string; isArt9: boolean; art9Categories: string[]; recordCount: number; detectorResults: { id: string; detectorType: string; patternName: string; matchCount: number; sampleMatch: string | null; confidence: number }[] }
+
 interface DSARCaseDetail {
   id: string; caseNumber: string; type: string; status: string; priority: string;
   lawfulBasis: string | null; receivedAt: string; dueDate: string; extendedDueDate: string | null;
@@ -121,8 +126,37 @@ interface DSARCaseDetail {
 
 const MANAGE_ROLES = ["SUPER_ADMIN", "TENANT_ADMIN", "DPO", "CASE_MANAGER"];
 const EXPORT_ROLES = ["CASE_MANAGER", "DPO", "TENANT_ADMIN", "SUPER_ADMIN"];
+const COPILOT_ROLES = ["SUPER_ADMIN", "TENANT_ADMIN", "DPO", "CASE_MANAGER"];
 
-type TabKey = "overview" | "tasks" | "documents" | "communications" | "data-collection" | "legal-review" | "timeline";
+const COPILOT_STATUS_COLORS: Record<string, string> = {
+  CREATED: "bg-blue-100 text-blue-700",
+  RUNNING: "bg-yellow-100 text-yellow-700 animate-pulse",
+  COMPLETED: "bg-green-100 text-green-700",
+  FAILED: "bg-red-100 text-red-700",
+  CANCELLED: "bg-gray-100 text-gray-500",
+};
+
+const SEVERITY_COLORS: Record<string, string> = {
+  INFO: "bg-gray-100 text-gray-600",
+  LOW: "bg-blue-100 text-blue-700",
+  MEDIUM: "bg-yellow-100 text-yellow-700",
+  HIGH: "bg-orange-100 text-orange-700",
+  CRITICAL: "bg-red-100 text-red-700",
+};
+
+const CATEGORY_COLORS: Record<string, string> = {
+  IDENTIFICATION: "bg-blue-50 text-blue-700",
+  CONTACT: "bg-green-50 text-green-700",
+  CONTRACT: "bg-purple-50 text-purple-700",
+  PAYMENT_BANK: "bg-yellow-50 text-yellow-700",
+  COMMUNICATION: "bg-indigo-50 text-indigo-700",
+  HR_EMPLOYMENT: "bg-pink-50 text-pink-700",
+  CREDIT_FINANCIAL: "bg-orange-50 text-orange-700",
+  ONLINE_TECHNICAL: "bg-gray-50 text-gray-700",
+  SPECIAL_CATEGORY_ART9: "bg-red-50 text-red-700",
+};
+
+type TabKey = "overview" | "tasks" | "documents" | "communications" | "data-collection" | "legal-review" | "copilot" | "timeline";
 
 /* ── Component ────────────────────────────────────────────────────────── */
 
@@ -186,12 +220,20 @@ export default function CaseDetailPage() {
   const [lrNotes, setLrNotes] = useState("");
   const [addingLr, setAddingLr] = useState(false);
 
+  // Copilot
+  const [copilotRuns, setCopilotRuns] = useState<CopilotRunSummary[]>([]);
+  const [selectedRun, setSelectedRun] = useState<CopilotRunDetail | null>(null);
+  const [copilotReason, setCopilotReason] = useState("");
+  const [startingRun, setStartingRun] = useState(false);
+  const [loadingRun, setLoadingRun] = useState(false);
+
   // Document viewer
   const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
 
   const userRole = session?.user?.role ?? "";
   const canManage = MANAGE_ROLES.includes(userRole);
   const canExport = EXPORT_ROLES.includes(userRole);
+  const canCopilot = COPILOT_ROLES.includes(userRole);
 
   const fetchCase = useCallback(async () => {
     try {
@@ -212,7 +254,14 @@ export default function CaseDetailPage() {
       } catch { /* silently fail */ }
     }
     load();
+    fetchCopilotRuns();
   }, []);
+
+  useEffect(() => {
+    if (!selectedRun || (selectedRun.status !== "CREATED" && selectedRun.status !== "RUNNING")) return;
+    const interval = setInterval(() => { fetchCopilotRunDetail(selectedRun.id); }, 3000);
+    return () => clearInterval(interval);
+  }, [selectedRun?.id, selectedRun?.status]);
 
   /* ── Handlers ─────────────────────────────────────────────────────── */
 
@@ -360,6 +409,49 @@ export default function CaseDetailPage() {
     } catch { /* silently fail */ }
   }
 
+  /* ── Copilot Handlers ──────────────────────────────────────────────── */
+
+  async function fetchCopilotRuns() {
+    try {
+      const res = await fetch(`/api/cases/${caseId}/copilot`);
+      if (res.ok) setCopilotRuns(await res.json());
+    } catch { /* silently fail */ }
+  }
+
+  async function fetchCopilotRunDetail(runId: string) {
+    setLoadingRun(true);
+    try {
+      const res = await fetch(`/api/cases/${caseId}/copilot/${runId}`);
+      if (res.ok) setSelectedRun(await res.json());
+    } catch { /* silently fail */ } finally { setLoadingRun(false); }
+  }
+
+  async function handleStartCopilotRun() {
+    if (copilotReason.trim().length < 5) return;
+    setStartingRun(true);
+    try {
+      const res = await fetch(`/api/cases/${caseId}/copilot`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: copilotReason }),
+      });
+      if (res.ok) { setCopilotReason(""); await fetchCopilotRuns(); }
+    } catch { /* silently fail */ } finally { setStartingRun(false); }
+  }
+
+  async function handleExportEvidence(runId: string) {
+    try {
+      const res = await fetch(`/api/cases/${caseId}/copilot/${runId}/export`);
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `copilot-run-${runId}-evidence.json`;
+        document.body.appendChild(a); a.click(); a.remove();
+        window.URL.revokeObjectURL(url);
+      }
+    } catch { /* silently fail */ }
+  }
+
   /* ── Loading / Not Found ──────────────────────────────────────────── */
 
   if (loading) return (
@@ -387,6 +479,7 @@ export default function CaseDetailPage() {
     { key: "communications", label: "Communications", count: caseData.communicationLogs?.length ?? 0 },
     { key: "data-collection", label: "Data Collection", count: caseData.dataCollectionItems?.length ?? 0 },
     { key: "legal-review", label: "Legal Review", count: caseData.legalReviews?.length ?? 0 },
+    { key: "copilot", label: "Copilot", count: copilotRuns.length },
     { key: "timeline", label: "Timeline" },
   ];
 
@@ -711,6 +804,56 @@ export default function CaseDetailPage() {
             </div>
           )}
 
+          {activeTab === "copilot" && (
+            <div className="space-y-6">
+              {/* Start New Run */}
+              {canCopilot && (
+                <div className="card">
+                  <h2 className="text-lg font-semibold text-gray-900">Privacy Copilot</h2>
+                  <p className="mt-1 text-sm text-gray-500">Run an automated data discovery across all connected integrations for this case&apos;s data subject.</p>
+                  <div className="mt-4 space-y-3">
+                    <div>
+                      <label className="label">Reason / Justification <span className="text-red-500">*</span></label>
+                      <textarea value={copilotReason} onChange={(e) => setCopilotReason(e.target.value)} rows={2} className="input-field resize-y" placeholder="DSAR fulfillment — data subject access request for personal data..." />
+                    </div>
+                    <div className="flex justify-end">
+                      <button onClick={handleStartCopilotRun} disabled={copilotReason.trim().length < 5 || startingRun} className="btn-primary text-sm">{startingRun ? "Starting..." : "Start Discovery Run"}</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Run List */}
+              {selectedRun ? (
+                <CopilotRunDetailView run={selectedRun} onBack={() => setSelectedRun(null)} onExport={handleExportEvidence} canManage={MANAGE_ROLES.includes(userRole)} caseId={caseId} onRefresh={() => fetchCopilotRunDetail(selectedRun.id)} />
+              ) : (
+                <div className="card">
+                  <h2 className="text-lg font-semibold text-gray-900">Discovery Runs ({copilotRuns.length})</h2>
+                  {copilotRuns.length === 0 ? (
+                    <p className="mt-4 text-sm text-gray-500">No discovery runs yet. Start one above to search for the data subject&apos;s personal data across connected systems.</p>
+                  ) : (
+                    <div className="mt-4 space-y-3">
+                      {copilotRuns.map((run) => (
+                        <button key={run.id} onClick={() => fetchCopilotRunDetail(run.id)} className="w-full rounded-lg border border-gray-200 p-4 text-left transition-colors hover:bg-gray-50">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${COPILOT_STATUS_COLORS[run.status] ?? "bg-gray-100 text-gray-700"}`}>{run.status.replace(/_/g, " ")}</span>
+                              {run.art9Flagged && <span className="inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">Art. 9</span>}
+                              <span className="text-sm text-gray-500">{run._count.findings} findings, {run._count.queries} queries</span>
+                            </div>
+                            <span className="text-xs text-gray-400">{new Date(run.createdAt).toLocaleString()}</span>
+                          </div>
+                          <p className="mt-2 text-sm text-gray-700">{run.reason}</p>
+                          <p className="mt-1 text-xs text-gray-400">by {run.createdBy.name}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {activeTab === "timeline" && (
             <TimelineSection caseData={caseData} />
           )}
@@ -812,6 +955,221 @@ function TimelineSection({ caseData }: { caseData: DSARCaseDetail }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Copilot Run Detail View Component ───────────────────────────────── */
+
+function CopilotRunDetailView({ run, onBack, onExport, canManage, caseId, onRefresh }: {
+  run: CopilotRunDetail;
+  onBack: () => void;
+  onExport: (runId: string) => void;
+  canManage: boolean;
+  caseId: string;
+  onRefresh: () => void;
+}) {
+  const [updatingArt9, setUpdatingArt9] = useState(false);
+
+  async function handleArt9Review(status: string) {
+    setUpdatingArt9(true);
+    try {
+      const res = await fetch(`/api/cases/${caseId}/copilot/${run.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ art9ReviewStatus: status }),
+      });
+      if (res.ok) onRefresh();
+    } catch { /* silently fail */ } finally { setUpdatingArt9(false); }
+  }
+
+  const isRunning = run.status === "CREATED" || run.status === "RUNNING";
+  const identityGraph = run.identityGraph as { identifiers?: unknown[]; resolvedSystems?: string[] } | null;
+  const identifierCount = Array.isArray(identityGraph?.identifiers) ? identityGraph.identifiers.length : 0;
+  const resolvedSystems = Array.isArray(identityGraph?.resolvedSystems) ? identityGraph.resolvedSystems : [];
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="card">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button onClick={onBack} className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
+            </button>
+            <div>
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-semibold text-gray-900">Discovery Run</h2>
+                <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${COPILOT_STATUS_COLORS[run.status] ?? "bg-gray-100 text-gray-700"}`}>{run.status.replace(/_/g, " ")}</span>
+                {run.art9Flagged && <span className="inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">Art. 9 Data Detected</span>}
+              </div>
+              <p className="mt-1 text-sm text-gray-500">Started {new Date(run.createdAt).toLocaleString()} by {run.createdBy.name}</p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={onRefresh} className="btn-secondary text-sm">Refresh</button>
+            {run.status === "COMPLETED" && <button onClick={() => onExport(run.id)} className="btn-primary text-sm">Export Evidence</button>}
+          </div>
+        </div>
+        <p className="mt-3 text-sm text-gray-700">{run.reason}</p>
+        {run.errorMessage && <p className="mt-2 text-sm text-red-600">Error: {run.errorMessage}</p>}
+        {run.completedAt && <p className="mt-1 text-xs text-gray-400">Completed: {new Date(run.completedAt).toLocaleString()}</p>}
+      </div>
+
+      {/* Progress Indicator */}
+      {isRunning && (
+        <div className="card flex items-center gap-4">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" />
+          <div>
+            <p className="text-sm font-medium text-gray-900">Discovery in progress...</p>
+            <p className="text-xs text-gray-500">Querying connected systems for personal data. This page auto-refreshes every 3 seconds.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Summary */}
+      {run.summary && (
+        <div className="card">
+          <h3 className="text-base font-semibold text-gray-900">Summary</h3>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{run.summary}</p>
+        </div>
+      )}
+
+      {/* Identity Graph */}
+      {identityGraph && (
+        <div className="card">
+          <h3 className="text-base font-semibold text-gray-900">Identity Graph</h3>
+          <div className="mt-3 flex items-center gap-6 text-sm">
+            <div><span className="font-medium text-gray-500">Identifiers:</span> <span className="text-gray-900">{identifierCount}</span></div>
+            <div><span className="font-medium text-gray-500">Resolved Systems:</span> <span className="text-gray-900">{resolvedSystems.length}</span></div>
+          </div>
+          {resolvedSystems.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {resolvedSystems.map((sys, i) => (
+                <span key={i} className="inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">{sys}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Queries */}
+      {run.queries.length > 0 && (
+        <div className="card">
+          <h3 className="text-base font-semibold text-gray-900">Queries ({run.queries.length})</h3>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className="pb-2 pr-4">Provider</th>
+                  <th className="pb-2 pr-4">Integration</th>
+                  <th className="pb-2 pr-4">Status</th>
+                  <th className="pb-2 pr-4">Records</th>
+                  <th className="pb-2">Time</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {run.queries.map((q) => (
+                  <tr key={q.id}>
+                    <td className="py-2.5 pr-4 font-medium text-gray-900">{q.provider}</td>
+                    <td className="py-2.5 pr-4 text-gray-700">{q.integration?.name ?? "N/A"}</td>
+                    <td className="py-2.5 pr-4"><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${COPILOT_STATUS_COLORS[q.status] ?? "bg-gray-100 text-gray-700"}`}>{q.status.replace(/_/g, " ")}</span></td>
+                    <td className="py-2.5 pr-4 text-gray-700">{q.recordsFound ?? "-"}</td>
+                    <td className="py-2.5 text-gray-500">{q.executionMs != null ? `${q.executionMs}ms` : "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Findings */}
+      {run.findings.length > 0 && (
+        <div className="card">
+          <h3 className="text-base font-semibold text-gray-900">Findings ({run.findings.length})</h3>
+          <div className="mt-4 space-y-4">
+            {run.findings.map((finding) => (
+              <div key={finding.id} className="rounded-lg border border-gray-200 p-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-semibold text-gray-900">{finding.title}</h4>
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${SEVERITY_COLORS[finding.severity] ?? "bg-gray-100 text-gray-700"}`}>{finding.severity}</span>
+                      {finding.isArt9 && <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">Art. 9</span>}
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">{finding.source} &middot; {finding.location} &middot; {finding.recordCount} record{finding.recordCount !== 1 ? "s" : ""}</p>
+                  </div>
+                </div>
+                {finding.description && <p className="mt-2 text-sm text-gray-700">{finding.description}</p>}
+                {/* Data Categories */}
+                {finding.dataCategories.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {finding.dataCategories.map((cat) => (
+                      <span key={cat} className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_COLORS[cat] ?? "bg-gray-100 text-gray-700"}`}>{cat.replace(/_/g, " ")}</span>
+                    ))}
+                  </div>
+                )}
+                {/* Art. 9 Categories */}
+                {finding.art9Categories.length > 0 && (
+                  <div className="mt-2">
+                    <span className="text-xs font-medium text-red-600">Art. 9 Categories:</span>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {finding.art9Categories.map((cat) => (
+                        <span key={cat} className="inline-flex rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">{cat.replace(/_/g, " ")}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* Detector Results */}
+                {finding.detectorResults.length > 0 && (
+                  <div className="mt-3 border-t border-gray-100 pt-3">
+                    <p className="text-xs font-medium text-gray-500">Detector Results</p>
+                    <div className="mt-2 space-y-1.5">
+                      {finding.detectorResults.map((dr) => (
+                        <div key={dr.id} className="flex items-center gap-3 text-xs">
+                          <span className="font-medium text-gray-700">{dr.detectorType}</span>
+                          <span className="text-gray-500">{dr.patternName}</span>
+                          <span className="text-gray-400">{dr.matchCount} match{dr.matchCount !== 1 ? "es" : ""}</span>
+                          <span className="text-gray-400">{Math.round(dr.confidence * 100)}% confidence</span>
+                          {dr.sampleMatch && <span className="truncate font-mono text-gray-500" title={dr.sampleMatch}>&ldquo;{dr.sampleMatch}&rdquo;</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Art. 9 Review */}
+      {run.art9Flagged && (
+        <div className="card border-red-200 bg-red-50/30">
+          <h3 className="text-base font-semibold text-red-900">Art. 9 Special Category Data Review</h3>
+          <p className="mt-1 text-sm text-red-700">This discovery run detected special category data (Art. 9 GDPR). Review and approval is required before the data can be included in the response.</p>
+          <div className="mt-3 flex items-center gap-3">
+            <span className="text-sm font-medium text-gray-700">Review Status:</span>
+            <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${run.art9ReviewStatus === "APPROVED" ? "bg-green-100 text-green-700" : run.art9ReviewStatus === "BLOCKED" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"}`}>
+              {run.art9ReviewStatus ?? "PENDING"}
+            </span>
+          </div>
+          {canManage && run.art9ReviewStatus !== "APPROVED" && run.art9ReviewStatus !== "BLOCKED" && (
+            <div className="mt-4 flex gap-3">
+              <button onClick={() => handleArt9Review("APPROVED")} disabled={updatingArt9} className="inline-flex items-center rounded-lg border border-green-300 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-100 disabled:opacity-50">Approve</button>
+              <button onClick={() => handleArt9Review("BLOCKED")} disabled={updatingArt9} className="inline-flex items-center rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50">Block</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Response Draft */}
+      {run.responseDraft && (
+        <div className="card">
+          <h3 className="text-base font-semibold text-gray-900">Response Draft</h3>
+          <div className="mt-3 whitespace-pre-wrap rounded-lg bg-gray-50 p-4 text-sm text-gray-700">{run.responseDraft}</div>
         </div>
       )}
     </div>

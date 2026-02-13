@@ -11,7 +11,8 @@ type Resource =
   | "audit_logs"
   | "systems"
   | "export"
-  | "integrations";
+  | "integrations"
+  | "copilot";
 
 type Action = "create" | "read" | "update" | "delete" | "manage";
 
@@ -27,6 +28,7 @@ const PERMISSIONS: Record<UserRole, Partial<Record<Resource, Action[]>>> = {
     systems: ["create", "read", "update", "delete"],
     export: ["read"],
     integrations: ["create", "read", "update", "delete", "manage"],
+    copilot: ["create", "read", "update", "delete", "manage"],
   },
   TENANT_ADMIN: {
     cases: ["create", "read", "update", "delete"],
@@ -39,6 +41,7 @@ const PERMISSIONS: Record<UserRole, Partial<Record<Resource, Action[]>>> = {
     systems: ["create", "read", "update", "delete"],
     export: ["read"],
     integrations: ["create", "read", "update", "delete", "manage"],
+    copilot: ["create", "read", "update", "manage"],
   },
   DPO: {
     cases: ["create", "read", "update"],
@@ -51,6 +54,7 @@ const PERMISSIONS: Record<UserRole, Partial<Record<Resource, Action[]>>> = {
     systems: ["read"],
     export: ["read"],
     integrations: ["create", "read", "update", "delete"],
+    copilot: ["create", "read", "update", "manage"],
   },
   CASE_MANAGER: {
     cases: ["create", "read", "update"],
@@ -61,6 +65,7 @@ const PERMISSIONS: Record<UserRole, Partial<Record<Resource, Action[]>>> = {
     systems: ["read"],
     export: ["read"],
     integrations: ["read"],
+    copilot: ["create", "read"],
   },
   CONTRIBUTOR: {
     cases: ["read"],
@@ -69,6 +74,7 @@ const PERMISSIONS: Record<UserRole, Partial<Record<Resource, Action[]>>> = {
     comments: ["create", "read"],
     systems: ["read"],
     integrations: ["read"],
+    copilot: ["read"],
   },
   READ_ONLY: {
     cases: ["read"],
@@ -115,4 +121,12 @@ export function canExport(role: UserRole): boolean {
 
 export function canManageIntegrations(role: UserRole): boolean {
   return hasPermission(role, "integrations", "create");
+}
+
+export function canUseCopilot(role: UserRole): boolean {
+  return hasPermission(role, "copilot", "create");
+}
+
+export function canReadCopilot(role: UserRole): boolean {
+  return hasPermission(role, "copilot", "read");
 }
