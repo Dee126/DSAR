@@ -35,6 +35,10 @@ interface TaskItem {
     id: string;
     caseNumber: string;
   };
+  system?: {
+    id: string;
+    name: string;
+  } | null;
 }
 
 /* ── Component ────────────────────────────────────────────────────────── */
@@ -45,6 +49,7 @@ export default function TasksPage() {
   const [users, setUsers] = useState<CaseUser[]>([]);
   const [statusFilter, setStatusFilter] = useState("");
   const [assigneeFilter, setAssigneeFilter] = useState("");
+  const [dueDateFilter, setDueDateFilter] = useState<"all" | "overdue" | "due-soon" | "no-date">("all");
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async () => {
@@ -107,6 +112,35 @@ export default function TasksPage() {
     }
   }
 
+  const now = new Date();
+  const sevenDaysFromNow = new Date();
+  sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+
+  function isOverdue(task: TaskItem) {
+    return task.dueDate && task.status !== "DONE" && new Date(task.dueDate) < now;
+  }
+
+  function isDueSoon(task: TaskItem) {
+    if (!task.dueDate || task.status === "DONE") return false;
+    const due = new Date(task.dueDate);
+    return due >= now && due <= sevenDaysFromNow;
+  }
+
+  const filteredTasks = tasks.filter((t) => {
+    if (dueDateFilter === "overdue") return isOverdue(t);
+    if (dueDateFilter === "due-soon") return isDueSoon(t);
+    if (dueDateFilter === "no-date") return !t.dueDate;
+    return true;
+  });
+
+  // Stats
+  const totalTasks = tasks.length;
+  const openTasks = tasks.filter((t) => t.status === "OPEN").length;
+  const inProgressTasks = tasks.filter((t) => t.status === "IN_PROGRESS").length;
+  const blockedTasks = tasks.filter((t) => t.status === "BLOCKED").length;
+  const doneTasks = tasks.filter((t) => t.status === "DONE").length;
+  const overdueTasks = tasks.filter(isOverdue).length;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -116,6 +150,38 @@ export default function TasksPage() {
           View and manage all tasks across cases
         </p>
       </div>
+
+      {/* Stats */}
+      {!loading && totalTasks > 0 && (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="card text-center">
+            <p className="text-2xl font-bold text-gray-900">{totalTasks}</p>
+            <p className="text-xs text-gray-500">Total</p>
+          </div>
+          <div className="card text-center">
+            <p className="text-2xl font-bold text-blue-600">{openTasks}</p>
+            <p className="text-xs text-gray-500">Open</p>
+          </div>
+          <div className="card text-center">
+            <p className="text-2xl font-bold text-yellow-600">{inProgressTasks}</p>
+            <p className="text-xs text-gray-500">In Progress</p>
+          </div>
+          <div className="card text-center">
+            <p className="text-2xl font-bold text-red-600">{blockedTasks}</p>
+            <p className="text-xs text-gray-500">Blocked</p>
+          </div>
+          <div className="card text-center">
+            <p className="text-2xl font-bold text-green-600">{doneTasks}</p>
+            <p className="text-xs text-gray-500">Done</p>
+          </div>
+          <div className="card text-center">
+            <p className={`text-2xl font-bold ${overdueTasks > 0 ? "text-red-600" : "text-gray-400"}`}>
+              {overdueTasks}
+            </p>
+            <p className="text-xs text-gray-500">Overdue</p>
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="card">
@@ -156,12 +222,29 @@ export default function TasksPage() {
               ))}
             </select>
           </div>
-          {(statusFilter || assigneeFilter) && (
+          <div>
+            <label htmlFor="task-due-filter" className="label">
+              Due Date
+            </label>
+            <select
+              id="task-due-filter"
+              value={dueDateFilter}
+              onChange={(e) => setDueDateFilter(e.target.value as typeof dueDateFilter)}
+              className="input-field w-44"
+            >
+              <option value="all">All</option>
+              <option value="overdue">Overdue</option>
+              <option value="due-soon">Due Soon (7d)</option>
+              <option value="no-date">No Due Date</option>
+            </select>
+          </div>
+          {(statusFilter || assigneeFilter || dueDateFilter !== "all") && (
             <button
               type="button"
               onClick={() => {
                 setStatusFilter("");
                 setAssigneeFilter("");
+                setDueDateFilter("all");
               }}
               className="text-sm font-medium text-gray-500 hover:text-gray-700"
             >
@@ -182,7 +265,7 @@ export default function TasksPage() {
               />
             ))}
           </div>
-        ) : tasks.length === 0 ? (
+        ) : filteredTasks.length === 0 ? (
           <div className="px-6 py-16 text-center">
             <svg
               className="mx-auto h-12 w-12 text-gray-300"
@@ -198,7 +281,9 @@ export default function TasksPage() {
               />
             </svg>
             <p className="mt-2 text-sm text-gray-500">
-              No tasks found. Tasks are created from individual case pages.
+              {tasks.length === 0
+                ? "No tasks found. Tasks are created from individual case pages."
+                : "No tasks match the current filters."}
             </p>
           </div>
         ) : (
@@ -208,6 +293,7 @@ export default function TasksPage() {
                 <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                   <th className="px-6 py-3">Task</th>
                   <th className="px-6 py-3">Case</th>
+                  <th className="px-6 py-3">System</th>
                   <th className="px-6 py-3">Status</th>
                   <th className="px-6 py-3">Assignee</th>
                   <th className="px-6 py-3">Due Date</th>
@@ -215,10 +301,12 @@ export default function TasksPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {tasks.map((task) => (
+                {filteredTasks.map((task) => (
                   <tr
                     key={task.id}
-                    className="cursor-pointer transition-colors hover:bg-gray-50"
+                    className={`cursor-pointer transition-colors hover:bg-gray-50 ${
+                      isOverdue(task) ? "bg-red-50/50" : ""
+                    }`}
                     onClick={() =>
                       setExpandedTaskId(
                         expandedTaskId === task.id ? null : task.id
@@ -289,6 +377,11 @@ export default function TasksPage() {
                         <span className="text-sm text-gray-400">--</span>
                       )}
                     </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                      {task.system?.name ?? (
+                        <span className="text-gray-400">--</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4">
                       <span
                         className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -304,10 +397,25 @@ export default function TasksPage() {
                         <span className="text-gray-400">Unassigned</span>
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                      {task.dueDate
-                        ? new Date(task.dueDate).toLocaleDateString()
-                        : "--"}
+                    <td className="whitespace-nowrap px-6 py-4 text-sm">
+                      {task.dueDate ? (
+                        <span
+                          className={
+                            isOverdue(task)
+                              ? "font-medium text-red-600"
+                              : isDueSoon(task)
+                              ? "font-medium text-yellow-600"
+                              : "text-gray-500"
+                          }
+                        >
+                          {new Date(task.dueDate).toLocaleDateString()}
+                          {isOverdue(task) && (
+                            <span className="ml-1 text-xs">(overdue)</span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">--</span>
+                      )}
                     </td>
                     <td
                       className="px-6 py-4"

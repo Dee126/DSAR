@@ -10,6 +10,10 @@ interface TenantInfo {
   id: string;
   name: string;
   slaDefaultDays: number;
+  dueSoonDays: number;
+  retentionDays: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface UserItem {
@@ -64,6 +68,14 @@ export default function SettingsPage() {
   // Tenant
   const [tenant, setTenant] = useState<TenantInfo | null>(null);
   const [tenantLoading, setTenantLoading] = useState(true);
+  const [tenantEditing, setTenantEditing] = useState(false);
+  const [tenantSaving, setTenantSaving] = useState(false);
+  const [tenantError, setTenantError] = useState("");
+  const [tenantSuccess, setTenantSuccess] = useState("");
+  const [editName, setEditName] = useState("");
+  const [editSlaDays, setEditSlaDays] = useState(30);
+  const [editDueSoonDays, setEditDueSoonDays] = useState(7);
+  const [editRetentionDays, setEditRetentionDays] = useState(365);
 
   // Users
   const [users, setUsers] = useState<UserItem[]>([]);
@@ -75,6 +87,8 @@ export default function SettingsPage() {
   const [newUserRole, setNewUserRole] = useState("READ_ONLY");
   const [addingUser, setAddingUser] = useState(false);
   const [addUserError, setAddUserError] = useState("");
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editingUserRole, setEditingUserRole] = useState("");
 
   // Systems
   const [systems, setSystems] = useState<SystemItem[]>([]);
@@ -101,7 +115,12 @@ export default function SettingsPage() {
       try {
         const res = await fetch("/api/tenant");
         if (res.ok) {
-          setTenant(await res.json());
+          const data = await res.json();
+          setTenant(data);
+          setEditName(data.name);
+          setEditSlaDays(data.slaDefaultDays);
+          setEditDueSoonDays(data.dueSoonDays ?? 7);
+          setEditRetentionDays(data.retentionDays ?? 365);
         }
       } catch {
         /* silently fail */
@@ -150,6 +169,72 @@ export default function SettingsPage() {
     } finally {
       setSystemsLoading(false);
     }
+  }
+
+  function startEditTenant() {
+    if (tenant) {
+      setEditName(tenant.name);
+      setEditSlaDays(tenant.slaDefaultDays);
+      setEditDueSoonDays(tenant.dueSoonDays ?? 7);
+      setEditRetentionDays(tenant.retentionDays ?? 365);
+    }
+    setTenantEditing(true);
+    setTenantError("");
+    setTenantSuccess("");
+  }
+
+  async function handleSaveTenant(e: FormEvent) {
+    e.preventDefault();
+    setTenantSaving(true);
+    setTenantError("");
+    setTenantSuccess("");
+
+    try {
+      const res = await fetch("/api/tenant", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editName,
+          slaDefaultDays: editSlaDays,
+          dueSoonDays: editDueSoonDays,
+          retentionDays: editRetentionDays,
+        }),
+      });
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        setTenantError(json?.error ?? `Failed to update (${res.status})`);
+        return;
+      }
+
+      const updated = await res.json();
+      setTenant(updated);
+      setTenantEditing(false);
+      setTenantSuccess("Settings saved successfully.");
+      setTimeout(() => setTenantSuccess(""), 3000);
+    } catch {
+      setTenantError("An unexpected error occurred.");
+    } finally {
+      setTenantSaving(false);
+    }
+  }
+
+  async function handleUpdateUserRole(userId: string, newRole: string) {
+    try {
+      const res = await fetch(`/api/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: newRole }),
+      });
+      if (res.ok) {
+        setUsers((prev) =>
+          prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
+        );
+      }
+    } catch {
+      /* silently fail */
+    }
+    setEditingUserId(null);
   }
 
   async function handleAddUser(e: FormEvent) {
@@ -272,54 +357,201 @@ export default function SettingsPage() {
         </nav>
       </div>
 
-      {/* Tenant Profile Tab */}
+      {/* ── Tenant Profile Tab ─────────────────────────────────────────── */}
       {activeTab === "tenant" && (
-        <div className="card max-w-2xl">
-          <h2 className="text-lg font-semibold text-gray-900">
-            Tenant Profile
-          </h2>
-          {tenantLoading ? (
-            <div className="mt-4 space-y-3">
-              <div className="h-6 w-48 animate-pulse rounded bg-gray-200" />
-              <div className="h-6 w-32 animate-pulse rounded bg-gray-200" />
+        <div className="max-w-2xl space-y-4">
+          {tenantSuccess && (
+            <div className="rounded-md bg-green-50 p-3">
+              <p className="text-sm text-green-700">{tenantSuccess}</p>
             </div>
-          ) : tenant ? (
-            <dl className="mt-4 space-y-4 text-sm">
-              <div>
-                <dt className="font-medium text-gray-500">
-                  Organization Name
-                </dt>
-                <dd className="mt-1 text-lg font-medium text-gray-900">
-                  {tenant.name}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-medium text-gray-500">
-                  Default SLA (days)
-                </dt>
-                <dd className="mt-1">
-                  <span className="inline-flex items-center rounded-lg bg-brand-50 px-3 py-1 text-lg font-semibold text-brand-700">
-                    {tenant.slaDefaultDays}
-                  </span>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Number of days from receipt to respond to a DSAR
-                  </p>
-                </dd>
-              </div>
-            </dl>
-          ) : (
-            <p className="mt-4 text-sm text-gray-500">
-              Unable to load tenant information.
-            </p>
           )}
+          {tenantError && (
+            <div className="rounded-md bg-red-50 p-3">
+              <p className="text-sm text-red-700">{tenantError}</p>
+            </div>
+          )}
+
+          <div className="card">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Organization Settings
+              </h2>
+              {!tenantEditing && tenant && (
+                <button
+                  onClick={startEditTenant}
+                  className="btn-primary text-sm"
+                >
+                  Edit Settings
+                </button>
+              )}
+            </div>
+
+            {tenantLoading ? (
+              <div className="mt-4 space-y-3">
+                <div className="h-6 w-48 animate-pulse rounded bg-gray-200" />
+                <div className="h-6 w-32 animate-pulse rounded bg-gray-200" />
+              </div>
+            ) : tenant && !tenantEditing ? (
+              <dl className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">
+                    Organization Name
+                  </dt>
+                  <dd className="mt-1 text-lg font-medium text-gray-900">
+                    {tenant.name}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">
+                    Default SLA (days)
+                  </dt>
+                  <dd className="mt-1">
+                    <span className="inline-flex items-center rounded-lg bg-brand-50 px-3 py-1 text-lg font-semibold text-brand-700">
+                      {tenant.slaDefaultDays}
+                    </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">
+                    Due Soon Warning (days)
+                  </dt>
+                  <dd className="mt-1">
+                    <span className="inline-flex items-center rounded-lg bg-yellow-50 px-3 py-1 text-lg font-semibold text-yellow-700">
+                      {tenant.dueSoonDays ?? 7}
+                    </span>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Cases within this many days of their deadline are flagged
+                    </p>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">
+                    Data Retention (days)
+                  </dt>
+                  <dd className="mt-1">
+                    <span className="inline-flex items-center rounded-lg bg-gray-50 px-3 py-1 text-lg font-semibold text-gray-700">
+                      {tenant.retentionDays ?? 365}
+                    </span>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Closed case data retained for this duration
+                    </p>
+                  </dd>
+                </div>
+              </dl>
+            ) : tenant && tenantEditing ? (
+              <form onSubmit={handleSaveTenant} className="mt-4 space-y-4">
+                <div>
+                  <label htmlFor="tenant-name" className="label">
+                    Organization Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="tenant-name"
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="input-field max-w-md"
+                    required
+                    minLength={1}
+                    maxLength={200}
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div>
+                    <label htmlFor="tenant-sla" className="label">
+                      Default SLA (days)
+                    </label>
+                    <input
+                      id="tenant-sla"
+                      type="number"
+                      value={editSlaDays}
+                      onChange={(e) => setEditSlaDays(Number(e.target.value))}
+                      className="input-field"
+                      min={1}
+                      max={365}
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      GDPR default: 30 days
+                    </p>
+                  </div>
+                  <div>
+                    <label htmlFor="tenant-due-soon" className="label">
+                      Due Soon Warning (days)
+                    </label>
+                    <input
+                      id="tenant-due-soon"
+                      type="number"
+                      value={editDueSoonDays}
+                      onChange={(e) =>
+                        setEditDueSoonDays(Number(e.target.value))
+                      }
+                      className="input-field"
+                      min={1}
+                      max={90}
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Flag cases approaching deadline
+                    </p>
+                  </div>
+                  <div>
+                    <label htmlFor="tenant-retention" className="label">
+                      Data Retention (days)
+                    </label>
+                    <input
+                      id="tenant-retention"
+                      type="number"
+                      value={editRetentionDays}
+                      onChange={(e) =>
+                        setEditRetentionDays(Number(e.target.value))
+                      }
+                      className="input-field"
+                      min={30}
+                      max={3650}
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      How long to keep closed case data
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="submit"
+                    disabled={tenantSaving}
+                    className="btn-primary"
+                  >
+                    {tenantSaving ? "Saving..." : "Save Changes"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTenantEditing(false);
+                      setTenantError("");
+                    }}
+                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <p className="mt-4 text-sm text-gray-500">
+                Unable to load tenant information.
+              </p>
+            )}
+          </div>
         </div>
       )}
 
-      {/* User Management Tab */}
+      {/* ── User Management Tab ────────────────────────────────────────── */}
       {activeTab === "users" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Users</h2>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Users</h2>
+              <p className="text-sm text-gray-500">
+                {users.length} user{users.length !== 1 ? "s" : ""} in your
+                organization
+              </p>
+            </div>
             <button
               onClick={() => setShowAddUser(!showAddUser)}
               className="btn-primary"
@@ -484,6 +716,7 @@ export default function SettingsPage() {
                       <th className="px-6 py-3">Email</th>
                       <th className="px-6 py-3">Role</th>
                       <th className="px-6 py-3">Last Login</th>
+                      <th className="px-6 py-3">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -508,19 +741,51 @@ export default function SettingsPage() {
                           {user.email}
                         </td>
                         <td className="px-6 py-4">
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                              ROLE_COLORS[user.role] ??
-                              "bg-gray-100 text-gray-700"
-                            }`}
-                          >
-                            {user.role.replace(/_/g, " ")}
-                          </span>
+                          {editingUserId === user.id ? (
+                            <select
+                              value={editingUserRole}
+                              onChange={(e) => {
+                                setEditingUserRole(e.target.value);
+                                handleUpdateUserRole(user.id, e.target.value);
+                              }}
+                              className="rounded-md border border-gray-300 py-1 pl-2 pr-7 text-xs focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                              onBlur={() => setEditingUserId(null)}
+                              autoFocus
+                            >
+                              {USER_ROLES.map((r) => (
+                                <option key={r.value} value={r.value}>
+                                  {r.label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                                ROLE_COLORS[user.role] ??
+                                "bg-gray-100 text-gray-700"
+                              }`}
+                            >
+                              {user.role.replace(/_/g, " ")}
+                            </span>
+                          )}
                         </td>
                         <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
                           {user.lastLoginAt
                             ? new Date(user.lastLoginAt).toLocaleString()
                             : "Never"}
+                        </td>
+                        <td className="px-6 py-4">
+                          {editingUserId !== user.id && (
+                            <button
+                              onClick={() => {
+                                setEditingUserId(user.id);
+                                setEditingUserRole(user.role);
+                              }}
+                              className="text-sm font-medium text-brand-600 hover:text-brand-700"
+                            >
+                              Change Role
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -532,13 +797,19 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Systems Tab */}
+      {/* ── Systems Tab ────────────────────────────────────────────────── */}
       {activeTab === "systems" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Systems (Processor Map)
-            </h2>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">
+                Systems (Processor Map)
+              </h2>
+              <p className="text-sm text-gray-500">
+                {systems.length} system{systems.length !== 1 ? "s" : ""}{" "}
+                registered
+              </p>
+            </div>
             <button
               onClick={() => setShowAddSystem(!showAddSystem)}
               className="btn-primary"

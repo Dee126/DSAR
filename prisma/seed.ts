@@ -6,8 +6,11 @@ const prisma = new PrismaClient();
 async function main() {
   console.log("Seeding database...");
 
-  // Clean existing data
+  // Clean existing data (order matters for FK constraints)
   await prisma.auditLog.deleteMany();
+  await prisma.legalReview.deleteMany();
+  await prisma.dataCollectionItem.deleteMany();
+  await prisma.communicationLog.deleteMany();
   await prisma.comment.deleteMany();
   await prisma.document.deleteMany();
   await prisma.task.deleteMany();
@@ -23,6 +26,8 @@ async function main() {
     data: {
       name: "Acme Corp",
       slaDefaultDays: 30,
+      dueSoonDays: 7,
+      retentionDays: 365,
     },
   });
   console.log(`Created tenant: ${tenant.name} (${tenant.id})`);
@@ -127,7 +132,18 @@ async function main() {
     },
   });
 
-  console.log("Created 3 systems");
+  const emailSystem = await prisma.system.create({
+    data: {
+      tenantId: tenant.id,
+      name: "Email Marketing",
+      description: "Email marketing platform - Mailchimp",
+      owner: "Marketing Team",
+      contactEmail: "marketing@acme-corp.com",
+      tags: ["marketing", "email", "consent"],
+    },
+  });
+
+  console.log("Created 4 systems");
 
   // Create data subjects
   const subject1 = await prisma.dataSubject.create({
@@ -137,6 +153,7 @@ async function main() {
       email: "john.smith@example.com",
       phone: "+1-555-0101",
       address: "123 Main St, Springfield, IL 62701",
+      preferredLanguage: "en",
       notes: "Longtime customer since 2019",
     },
   });
@@ -148,6 +165,7 @@ async function main() {
       email: "jane.doe@example.com",
       phone: "+1-555-0102",
       address: "456 Oak Ave, Portland, OR 97201",
+      preferredLanguage: "en",
     },
   });
 
@@ -157,6 +175,7 @@ async function main() {
       fullName: "Robert Johnson",
       email: "rjohnson@example.com",
       phone: "+1-555-0103",
+      preferredLanguage: "en",
     },
   });
 
@@ -165,6 +184,7 @@ async function main() {
       tenantId: tenant.id,
       fullName: "Emily Chen",
       email: "emily.chen@example.com",
+      preferredLanguage: "de",
     },
   });
 
@@ -196,6 +216,7 @@ async function main() {
       channel: "Email",
       requesterType: "Data Subject",
       description: "Subject requests access to all personal data held by the company.",
+      identityVerified: true,
       dataSubjectId: subject1.id,
       createdByUserId: admin.id,
       assignedToUserId: caseManager.id,
@@ -214,6 +235,7 @@ async function main() {
       channel: "Web Portal",
       requesterType: "Data Subject",
       description: "Subject requests complete erasure of all personal data under right to be forgotten.",
+      identityVerified: true,
       dataSubjectId: subject2.id,
       createdByUserId: caseManager.id,
       assignedToUserId: dpo.id,
@@ -250,6 +272,7 @@ async function main() {
       channel: "Email",
       requesterType: "Data Subject",
       description: "Subject requests export of all data in machine-readable format.",
+      identityVerified: true,
       dataSubjectId: subject4.id,
       createdByUserId: caseManager.id,
       assignedToUserId: caseManager.id,
@@ -401,6 +424,16 @@ async function main() {
         dueDate: daysAgo(3),
         systemId: hrSystem.id,
       },
+      {
+        tenantId: tenant.id,
+        caseId: case1.id,
+        title: "Check email marketing lists",
+        description: "Look up subject in Mailchimp subscriber lists and campaigns",
+        status: TaskStatus.OPEN,
+        assigneeUserId: contributor.id,
+        dueDate: daysFromNow(6),
+        systemId: emailSystem.id,
+      },
     ],
   });
 
@@ -473,6 +506,189 @@ async function main() {
 
   console.log("Created comments");
 
+  // ── Communication Logs ──────────────────────────────────────────────
+
+  await prisma.communicationLog.createMany({
+    data: [
+      {
+        tenantId: tenant.id,
+        caseId: case1.id,
+        direction: "INBOUND",
+        channel: "EMAIL",
+        subject: "Data Access Request - John Smith",
+        body: "Dear Data Protection Team,\n\nI am writing to exercise my right of access under Article 15 of the GDPR. Please provide me with a copy of all personal data you hold about me.\n\nRegards,\nJohn Smith",
+        sentAt: daysAgo(15),
+      },
+      {
+        tenantId: tenant.id,
+        caseId: case1.id,
+        direction: "OUTBOUND",
+        channel: "EMAIL",
+        subject: "RE: Data Access Request - Acknowledgment",
+        body: "Dear Mr. Smith,\n\nThank you for your data access request. We have received your request and assigned it case number DSAR-2026-A1B2C3.\n\nWe will respond within the statutory 30-day period. To proceed, we require identity verification. Please provide a copy of a government-issued photo ID.\n\nBest regards,\nAcme Corp Privacy Team",
+        sentAt: daysAgo(14),
+      },
+      {
+        tenantId: tenant.id,
+        caseId: case1.id,
+        direction: "INBOUND",
+        channel: "EMAIL",
+        subject: "RE: Data Access Request - ID Verification",
+        body: "Please find attached a copy of my passport for identity verification purposes.\n\nRegards,\nJohn Smith",
+        sentAt: daysAgo(13),
+      },
+      {
+        tenantId: tenant.id,
+        caseId: case1.id,
+        direction: "OUTBOUND",
+        channel: "EMAIL",
+        subject: "RE: Data Access Request - Identity Confirmed",
+        body: "Dear Mr. Smith,\n\nYour identity has been verified. We are now collecting your personal data from our systems and will provide you with a comprehensive response.\n\nBest regards,\nAcme Corp Privacy Team",
+        sentAt: daysAgo(12),
+      },
+      {
+        tenantId: tenant.id,
+        caseId: case2.id,
+        direction: "INBOUND",
+        channel: "PORTAL",
+        subject: "Erasure Request",
+        body: "I request the complete deletion of all my personal data from your systems under Article 17 of the GDPR (Right to Erasure).",
+        sentAt: daysAgo(25),
+      },
+      {
+        tenantId: tenant.id,
+        caseId: case2.id,
+        direction: "OUTBOUND",
+        channel: "EMAIL",
+        subject: "Erasure Request - Under Review",
+        body: "Dear Ms. Doe,\n\nWe have received your erasure request (case DSAR-2026-D4E5F6). Please note that this request is currently under legal review as we need to assess potential retention obligations.\n\nWe will update you shortly.\n\nBest regards,\nAcme Corp Privacy Team",
+        sentAt: daysAgo(20),
+      },
+      {
+        tenantId: tenant.id,
+        caseId: case3.id,
+        direction: "INBOUND",
+        channel: "PHONE",
+        subject: "Rectification Request via Phone",
+        body: "Authorized agent called on behalf of Robert Johnson requesting correction of address and phone number in our records. New address: 789 Pine Rd, Austin, TX 78701. New phone: +1-555-0199.",
+        sentAt: daysAgo(2),
+      },
+    ],
+  });
+
+  console.log("Created communication logs");
+
+  // ── Data Collection Items ───────────────────────────────────────────
+
+  await prisma.dataCollectionItem.createMany({
+    data: [
+      {
+        tenantId: tenant.id,
+        caseId: case1.id,
+        systemId: crmSystem.id,
+        querySpec: "SELECT * FROM contacts WHERE email = 'john.smith@example.com'",
+        status: "IN_PROGRESS",
+        findingsSummary: "Customer record found with purchase history and support tickets",
+        recordsFound: 47,
+      },
+      {
+        tenantId: tenant.id,
+        caseId: case1.id,
+        systemId: hrSystem.id,
+        querySpec: "Search by name and email in employee directory",
+        status: "COMPLETED",
+        findingsSummary: "No employee records found for this data subject",
+        recordsFound: 0,
+        completedAt: daysAgo(5),
+      },
+      {
+        tenantId: tenant.id,
+        caseId: case1.id,
+        systemId: analyticsSystem.id,
+        querySpec: "Export user profile and event data for user ID matching john.smith@example.com",
+        status: "PENDING",
+      },
+      {
+        tenantId: tenant.id,
+        caseId: case1.id,
+        systemId: emailSystem.id,
+        querySpec: "Lookup subscriber lists and campaign interactions for john.smith@example.com",
+        status: "PENDING",
+      },
+      {
+        tenantId: tenant.id,
+        caseId: case2.id,
+        systemId: crmSystem.id,
+        querySpec: "Identify all records for jane.doe@example.com",
+        status: "COMPLETED",
+        findingsSummary: "Found 23 CRM records including contact info, purchase history, and support interactions",
+        recordsFound: 23,
+        completedAt: daysAgo(12),
+      },
+      {
+        tenantId: tenant.id,
+        caseId: case2.id,
+        systemId: analyticsSystem.id,
+        querySpec: "Export all event/session data for jane.doe@example.com",
+        status: "COMPLETED",
+        findingsSummary: "Found 156 analytics events spanning 8 months of activity",
+        recordsFound: 156,
+        completedAt: daysAgo(11),
+      },
+      {
+        tenantId: tenant.id,
+        caseId: case2.id,
+        systemId: emailSystem.id,
+        querySpec: "Find all email marketing data for jane.doe@example.com",
+        status: "COMPLETED",
+        findingsSummary: "Subscribed to 3 mailing lists, 12 campaigns delivered",
+        recordsFound: 15,
+        completedAt: daysAgo(11),
+      },
+    ],
+  });
+
+  console.log("Created data collection items");
+
+  // ── Legal Reviews ───────────────────────────────────────────────────
+
+  await prisma.legalReview.createMany({
+    data: [
+      {
+        tenantId: tenant.id,
+        caseId: case2.id,
+        status: "IN_REVIEW",
+        issues: "Financial transaction records may be subject to 7-year retention requirement under tax regulations. Marketing consent records must be retained for proof of consent compliance.",
+        exemptionsApplied: ["Tax regulation retention (7 years)", "Legal obligation - Article 17(3)(b)"],
+        redactions: null,
+        notes: "Need to check with finance department about specific transaction dates before proceeding with partial erasure.",
+        reviewerUserId: dpo.id,
+      },
+      {
+        tenantId: tenant.id,
+        caseId: case1.id,
+        status: "PENDING",
+        issues: null,
+        exemptionsApplied: [],
+        notes: "Standard access request - review pending until data collection is complete.",
+        reviewerUserId: dpo.id,
+      },
+      {
+        tenantId: tenant.id,
+        caseId: case4.id,
+        status: "APPROVED",
+        issues: "No exemptions needed for portability request.",
+        exemptionsApplied: [],
+        redactions: "Third-party email addresses redacted from exported communications.",
+        notes: "Data export approved. Machine-readable JSON format used as requested.",
+        reviewerUserId: dpo.id,
+        approvedAt: daysAgo(5),
+      },
+    ],
+  });
+
+  console.log("Created legal reviews");
+
   // Audit logs
   await prisma.auditLog.createMany({
     data: [
@@ -516,6 +732,22 @@ async function main() {
         entityId: case5.id,
         details: { from: "IDENTITY_VERIFICATION", to: "REJECTED" },
       },
+      {
+        tenantId: tenant.id,
+        actorUserId: dpo.id,
+        action: "legal_review.created",
+        entityType: "LegalReview",
+        entityId: case2.id,
+        details: { caseNumber: case2.caseNumber, status: "IN_REVIEW" },
+      },
+      {
+        tenantId: tenant.id,
+        actorUserId: caseManager.id,
+        action: "data_collection.created",
+        entityType: "DataCollectionItem",
+        entityId: case1.id,
+        details: { system: "CRM System", status: "IN_PROGRESS" },
+      },
     ],
   });
 
@@ -530,8 +762,11 @@ async function main() {
   console.log("  manager@acme-corp.com  (CASE_MANAGER) - password: admin123456");
   console.log("  contributor@acme-corp.com (CONTRIBUTOR) - password: admin123456");
   console.log("  viewer@acme-corp.com   (READ_ONLY) - password: admin123456");
-  console.log(`Cases: ${5} (various statuses)`);
-  console.log(`Systems: ${3}`);
+  console.log(`Cases: 5 (various statuses)`);
+  console.log(`Systems: 4`);
+  console.log(`Communication Logs: 7`);
+  console.log(`Data Collection Items: 7`);
+  console.log(`Legal Reviews: 3`);
 }
 
 main()

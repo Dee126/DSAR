@@ -61,14 +61,44 @@ enum DocumentClassification {
   RESTRICTED
 }
 
+enum CommunicationDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum CommunicationChannel {
+  EMAIL
+  LETTER
+  PORTAL
+  PHONE
+}
+
+enum DataCollectionStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  NOT_APPLICABLE
+}
+
+enum LegalReviewStatus {
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+}
+
 // ─── Models ─────────────────────────────────────────────────────────────────
 
 model Tenant {
-  id            String   @id @default(uuid())
-  name          String
-  slaDefaultDays Int     @default(30)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id              String   @id @default(uuid())
+  name            String
+  slaDefaultDays  Int      @default(30)
+  dueSoonDays     Int      @default(7)
+  retentionDays   Int      @default(365)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   users              User[]
   dataSubjects       DataSubject[]
@@ -79,6 +109,9 @@ model Tenant {
   auditLogs          AuditLog[]
   stateTransitions   DSARStateTransition[]
   systems            System[]
+  communicationLogs  CommunicationLog[]
+  dataCollectionItems DataCollectionItem[]
+  legalReviews       LegalReview[]
 
   @@map("tenants")
 }
@@ -102,6 +135,7 @@ model User {
   comments           Comment[]
   auditLogs          AuditLog[]
   stateTransitions   DSARStateTransition[]
+  legalReviews       LegalReview[]       @relation("LegalReviewReviewer")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -109,16 +143,17 @@ model User {
 }
 
 model DataSubject {
-  id          String   @id @default(uuid())
-  tenantId    String
-  fullName    String
-  email       String?
-  phone       String?
-  address     String?
-  identifiers Json?
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                String   @id @default(uuid())
+  tenantId          String
+  fullName          String
+  email             String?
+  phone             String?
+  address           String?
+  preferredLanguage String?  @default("en")
+  identifiers       Json?
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   cases  DSARCase[]
@@ -129,23 +164,28 @@ model DataSubject {
 }
 
 model DSARCase {
-  id              String       @id @default(uuid())
-  tenantId        String
-  caseNumber      String
-  type            DSARType
-  status          CaseStatus   @default(NEW)
-  priority        CasePriority @default(MEDIUM)
-  lawfulBasis     String?
-  receivedAt      DateTime     @default(now())
-  dueDate         DateTime
-  channel         String?
-  requesterType   String?
-  description     String?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  id                String       @id @default(uuid())
+  tenantId          String
+  caseNumber        String
+  type              DSARType
+  status            CaseStatus   @default(NEW)
+  priority          CasePriority @default(MEDIUM)
+  lawfulBasis       String?
+  receivedAt        DateTime     @default(now())
+  dueDate           DateTime
+  extendedDueDate   DateTime?
+  extensionReason   String?
+  channel           String?
+  requesterType     String?
+  description       String?
+  identityVerified  Boolean      @default(false)
+  tags              Json?
+  deletedAt         DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
-  dataSubjectId   String
-  createdByUserId String
+  dataSubjectId    String
+  createdByUserId  String
   assignedToUserId String?
 
   tenant          Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -153,10 +193,13 @@ model DSARCase {
   createdBy       User         @relation("CaseCreatedBy", fields: [createdByUserId], references: [id])
   assignedTo      User?        @relation("CaseAssignedTo", fields: [assignedToUserId], references: [id])
 
-  stateTransitions DSARStateTransition[]
-  tasks            Task[]
-  documents        Document[]
-  comments         Comment[]
+  stateTransitions    DSARStateTransition[]
+  tasks               Task[]
+  documents           Document[]
+  comments            Comment[]
+  communicationLogs   CommunicationLog[]
+  dataCollectionItems DataCollectionItem[]
+  legalReviews        LegalReview[]
 
   @@unique([tenantId, caseNumber])
   @@index([tenantId])
@@ -220,6 +263,7 @@ model Document {
   hash            String
   classification  DocumentClassification  @default(INTERNAL)
   tags            Json?
+  deletedAt       DateTime?
   uploadedAt      DateTime                @default(now())
 
   uploadedByUserId String
@@ -281,9 +325,74 @@ model System {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  tasks  Task[]
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tasks               Task[]
+  dataCollectionItems DataCollectionItem[]
 
   @@index([tenantId])
   @@map("systems")
+}
+
+// ─── New Models ─────────────────────────────────────────────────────────────
+
+model CommunicationLog {
+  id          String                 @id @default(uuid())
+  tenantId    String
+  caseId      String
+  direction   CommunicationDirection
+  channel     CommunicationChannel
+  subject     String?
+  body        String
+  attachments Json?
+  sentAt      DateTime               @default(now())
+  createdAt   DateTime               @default(now())
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case   DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, caseId])
+  @@map("communication_logs")
+}
+
+model DataCollectionItem {
+  id              String               @id @default(uuid())
+  tenantId        String
+  caseId          String
+  systemId        String
+  querySpec       String?
+  status          DataCollectionStatus @default(PENDING)
+  findingsSummary String?
+  recordsFound    Int?
+  completedAt     DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case   DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  system System   @relation(fields: [systemId], references: [id])
+
+  @@index([tenantId, caseId])
+  @@map("data_collection_items")
+}
+
+model LegalReview {
+  id                String            @id @default(uuid())
+  tenantId          String
+  caseId            String
+  status            LegalReviewStatus @default(PENDING)
+  issues            String?
+  exemptionsApplied Json?
+  redactions        String?
+  notes             String?
+  reviewerUserId    String?
+  approvedAt        DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case     DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  reviewer User?    @relation("LegalReviewReviewer", fields: [reviewerUserId], references: [id])
+
+  @@index([tenantId, caseId])
+  @@map("legal_reviews")
 }
