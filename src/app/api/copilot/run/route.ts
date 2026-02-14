@@ -5,83 +5,21 @@ import { logAudit, getClientInfo } from "@/lib/audit";
 import {
   runPreFlightChecks,
   enforceContentScanPermission,
-  enforceExportPermission,
   checkForAnomalies,
-  maskIdentifierForLog,
   DEFAULT_GOVERNANCE_SETTINGS,
 } from "@/lib/copilot/governance";
 import type {
   GovernanceSettings,
   CopilotRunRequest,
-  RateLimitState,
 } from "@/lib/copilot/governance";
-import { addActivityLogEntry } from "@/app/api/governance/activity-log/route";
+import { addActivityLogEntry } from "@/lib/copilot/activity-log-store";
 import { buildReportEntry } from "@/lib/copilot/governance-report";
-
-// ---------------------------------------------------------------------------
-// In-memory run store (production: CopilotRun table via Prisma)
-// ---------------------------------------------------------------------------
-
-interface CopilotRunRecord {
-  id: string;
-  caseId: string;
-  tenantId: string;
-  userId: string;
-  userRole: string;
-  userName: string;
-  justification: string;
-  status: "CREATED" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
-  contentScanRequested: boolean;
-  ocrRequested: boolean;
-  llmRequested: boolean;
-  totalFindings: number;
-  containsSpecialCategory: boolean;
-  legalApprovalStatus: string;
-  createdAt: string;
-  completedAt: string | null;
-  errorDetails: string | null;
-}
-
-const runStore: CopilotRunRecord[] = [];
-
-// In-memory rate limit tracking
-const rateLimitTracker = {
-  tenantRunsToday: new Map<string, number>(),
-  userRunsToday: new Map<string, number>(),
-  concurrentRuns: new Map<string, number>(),
-};
-
-function getRateLimitState(tenantId: string, userId: string): RateLimitState {
-  return {
-    tenantRunsToday: rateLimitTracker.tenantRunsToday.get(tenantId) ?? 0,
-    userRunsToday: rateLimitTracker.userRunsToday.get(userId) ?? 0,
-    concurrentRuns: rateLimitTracker.concurrentRuns.get(tenantId) ?? 0,
-  };
-}
-
-function incrementRateLimits(tenantId: string, userId: string): void {
-  rateLimitTracker.tenantRunsToday.set(
-    tenantId,
-    (rateLimitTracker.tenantRunsToday.get(tenantId) ?? 0) + 1,
-  );
-  rateLimitTracker.userRunsToday.set(
-    userId,
-    (rateLimitTracker.userRunsToday.get(userId) ?? 0) + 1,
-  );
-  rateLimitTracker.concurrentRuns.set(
-    tenantId,
-    (rateLimitTracker.concurrentRuns.get(tenantId) ?? 0) + 1,
-  );
-}
-
-function decrementConcurrent(tenantId: string): void {
-  const current = rateLimitTracker.concurrentRuns.get(tenantId) ?? 0;
-  rateLimitTracker.concurrentRuns.set(tenantId, Math.max(0, current - 1));
-}
-
-export function getRunStore(): CopilotRunRecord[] {
-  return runStore;
-}
+import {
+  runStore,
+  getRateLimitState,
+  incrementRateLimits,
+} from "@/lib/copilot/run-store";
+import type { CopilotRunRecord } from "@/lib/copilot/run-store";
 
 /**
  * POST /api/copilot/run

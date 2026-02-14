@@ -8,7 +8,7 @@ import {
   exportReportAsJSON,
   buildReportSummary,
 } from "@/lib/copilot/governance-report";
-import { getActivityLogEntries } from "@/app/api/governance/activity-log/route";
+import { getActivityLogEntries } from "@/lib/copilot/activity-log-store";
 
 /**
  * GET /api/governance/report-export?format=csv|json

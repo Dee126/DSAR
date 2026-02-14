@@ -5,25 +5,9 @@ import { handleApiError } from "@/lib/errors";
 import { logAudit, getClientInfo } from "@/lib/audit";
 import {
   canViewGovernanceReport,
-  buildReportEntry,
   buildReportSummary,
 } from "@/lib/copilot/governance-report";
-import type { GovernanceReportEntry } from "@/lib/copilot/governance-report";
-import { maskIdentifierForLog } from "@/lib/copilot/governance";
-
-/**
- * In-memory activity log store.
- * In production this is read from CopilotRun + AuditLog tables.
- */
-const activityLogStore: GovernanceReportEntry[] = [];
-
-export function addActivityLogEntry(entry: GovernanceReportEntry): void {
-  activityLogStore.push(entry);
-}
-
-export function getActivityLogEntries(): GovernanceReportEntry[] {
-  return [...activityLogStore];
-}
+import { getActivityLogEntries } from "@/lib/copilot/activity-log-store";
 
 /**
  * GET /api/governance/activity-log

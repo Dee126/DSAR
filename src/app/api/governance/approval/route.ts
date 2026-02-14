@@ -32,7 +32,7 @@ interface ApprovalRecord {
 
 const approvalStore: ApprovalRecord[] = [];
 
-export function getApprovalStore(): ApprovalRecord[] {
+function getApprovalStore(): ApprovalRecord[] {
   return approvalStore;
 }
 
