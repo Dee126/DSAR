@@ -190,19 +190,26 @@ export function MobileDrawer({
   );
 }
 
-/* ── Bottom Navigation (4 items: Home, Cases, Copilot, More) ─────────── */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/*  Bottom Navigation (4 items: Home, Cases, Copilot, More)                  */
+/* ═══════════════════════════════════════════════════════════════════════════ */
 
 /** Routes that live inside the "More" sheet — used for active-state detection */
 const MORE_ROUTES = ["/tasks", "/documents", "/integrations", "/governance", "/settings"];
 
+/* ── Menu item definition ────────────────────────────────────────────── */
+
 interface MoreMenuItem {
   label: string;
   href: string;
+  /** If set, item only visible when user role is in this list */
   requiresRole?: string[];
   icon: React.ReactNode;
 }
 
-const MORE_MENU_ITEMS: MoreMenuItem[] = [
+/* ── Group A: Work ───────────────────────────────────────────────────── */
+
+const GROUP_WORK: MoreMenuItem[] = [
   {
     label: "Tasks",
     href: "/tasks",
@@ -221,28 +228,30 @@ const MORE_MENU_ITEMS: MoreMenuItem[] = [
       </svg>
     ),
   },
+];
+
+/* ── Group B: Platform ───────────────────────────────────────────────── */
+
+const GROUP_PLATFORM: MoreMenuItem[] = [
   {
     label: "Integrations",
     href: "/integrations",
+    // INTEGRATIONS_VIEW is granted to every role in the RBAC matrix
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
       </svg>
     ),
   },
-  {
-    label: "Governance",
-    href: "/governance",
-    requiresRole: ["SUPER_ADMIN", "TENANT_ADMIN", "DPO", "CASE_MANAGER", "AUDITOR"],
-    icon: (
-      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-      </svg>
-    ),
-  },
+];
+
+/* ── Group C: Administration ─────────────────────────────────────────── */
+
+const GROUP_ADMIN: MoreMenuItem[] = [
   {
     label: "Settings",
     href: "/settings",
+    // TENANT_SETTINGS_EDIT: SUPER_ADMIN, TENANT_ADMIN
     requiresRole: ["SUPER_ADMIN", "TENANT_ADMIN"],
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -251,7 +260,34 @@ const MORE_MENU_ITEMS: MoreMenuItem[] = [
       </svg>
     ),
   },
+  {
+    label: "Governance",
+    href: "/governance",
+    // GOVERNANCE_VIEW: SUPER_ADMIN, TENANT_ADMIN, DPO, CASE_MANAGER, AUDITOR
+    requiresRole: ["SUPER_ADMIN", "TENANT_ADMIN", "DPO", "CASE_MANAGER", "AUDITOR"],
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+      </svg>
+    ),
+  },
 ];
+
+/* ── Group definition used by MoreSheet ──────────────────────────────── */
+
+interface MenuGroup {
+  id: string;
+  label: string;
+  items: MoreMenuItem[];
+}
+
+const MENU_GROUPS: MenuGroup[] = [
+  { id: "work", label: "Work", items: GROUP_WORK },
+  { id: "platform", label: "Platform", items: GROUP_PLATFORM },
+  { id: "admin", label: "Admin", items: GROUP_ADMIN },
+];
+
+/* ── BottomNav ───────────────────────────────────────────────────────── */
 
 export function BottomNav() {
   const pathname = usePathname();
@@ -368,7 +404,9 @@ function NavTab({
   );
 }
 
-/* ── More Bottom Sheet ───────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/*  More Bottom Sheet                                                        */
+/* ═══════════════════════════════════════════════════════════════════════════ */
 
 function MoreSheet({
   open,
@@ -386,6 +424,7 @@ function MoreSheet({
   const pathname = usePathname();
   const touchStartY = useRef(0);
   const sheetRef = useRef<HTMLDivElement>(null);
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 
   // Lock body scroll when open
   useEffect(() => {
@@ -395,6 +434,11 @@ function MoreSheet({
         document.body.style.overflow = "";
       };
     }
+  }, [open]);
+
+  // Reset sign-out confirmation when sheet closes
+  useEffect(() => {
+    if (!open) setConfirmingSignOut(false);
   }, [open]);
 
   // Close on ESC
@@ -421,10 +465,20 @@ function MoreSheet({
     return pathname.startsWith(href);
   }
 
-  const visibleItems = MORE_MENU_ITEMS.filter((item) => {
-    if (!item.requiresRole) return true;
-    return userRole && item.requiresRole.includes(userRole);
-  });
+  /** Filter items by role, return only groups that have visible items */
+  function visibleGroups(): MenuGroup[] {
+    return MENU_GROUPS
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) => {
+          if (!item.requiresRole) return true;
+          return userRole && item.requiresRole.includes(userRole);
+        }),
+      }))
+      .filter((group) => group.items.length > 0);
+  }
+
+  const groups = visibleGroups();
 
   return (
     <>
@@ -443,51 +497,84 @@ function MoreSheet({
         className={`fixed inset-x-0 bottom-0 z-40 rounded-t-2xl bg-white shadow-xl transition-transform duration-300 ease-out md:hidden ${
           open ? "translate-y-0" : "translate-y-full"
         }`}
-        style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)", marginBottom: 0 }}
+        style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
         role="dialog"
         aria-modal="true"
         aria-label="More navigation"
       >
-        {/* Handle */}
-        <div className="flex justify-center pt-3 pb-1">
-          <div className="h-1 w-10 rounded-full bg-gray-300" />
+        {/* Handle + header */}
+        <div className="flex items-center justify-between px-5 pt-3 pb-1">
+          <div className="flex-1">
+            {/* Drag handle */}
+            <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-gray-300" />
+            <h2 className="text-base font-semibold text-gray-900">More</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 active:bg-gray-100"
+            aria-label="Close menu"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
-        {/* Menu Items */}
-        <nav className="px-3 pb-2">
-          <ul className="space-y-0.5">
-            {visibleItems.map((item) => {
-              const active = isActive(item.href);
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className={`flex min-h-[48px] items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${
-                      active
-                        ? "bg-brand-50 text-brand-700"
-                        : "text-gray-700 active:bg-gray-100"
-                    }`}
-                  >
-                    <span className={active ? "text-brand-600" : "text-gray-400"}>
-                      {item.icon}
-                    </span>
-                    {item.label}
-                    {active && (
-                      <span className="ml-auto h-1.5 w-1.5 rounded-full bg-brand-500" />
-                    )}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+        {/* Grouped Navigation Items */}
+        <nav className="px-3 pb-1">
+          {groups.map((group, gi) => (
+            <div key={group.id}>
+              {/* Divider between groups (not before the first) */}
+              {gi > 0 && <div className="mx-2 my-1.5 border-t border-gray-100" />}
+
+              {/* Group label */}
+              <p className="px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                {group.label}
+              </p>
+
+              <ul>
+                {group.items.map((item) => {
+                  const active = isActive(item.href);
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        className={`flex min-h-[48px] items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${
+                          active
+                            ? "bg-brand-50 text-brand-700"
+                            : "text-gray-700 active:bg-gray-100"
+                        }`}
+                      >
+                        <span className={active ? "text-brand-600" : "text-gray-400"}>
+                          {item.icon}
+                        </span>
+                        <span className="flex-1">{item.label}</span>
+                        {active && (
+                          <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-semibold text-brand-700">
+                            Current
+                          </span>
+                        )}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
         </nav>
 
-        {/* Divider + Profile/Sign out */}
-        <div className="border-t border-gray-100 px-3 py-2">
+        {/* Divider + Account section */}
+        <div className="mx-5 border-t border-gray-100" />
+        <div className="px-3 pb-3 pt-1.5">
+          <p className="px-4 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+            Account
+          </p>
+
+          {/* Profile row */}
           {userName && (
-            <div className="flex items-center gap-3 px-4 py-2">
+            <div className="flex min-h-[48px] items-center gap-3 rounded-xl px-4 py-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
                 {userName
                   .split(" ")
@@ -506,15 +593,40 @@ function MoreSheet({
               </div>
             </div>
           )}
-          <button
-            onClick={() => signOut({ callbackUrl: "/login" })}
-            className="flex min-h-[48px] w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium text-gray-600 transition-colors active:bg-gray-100"
-          >
-            <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
-            </svg>
-            Sign out
-          </button>
+
+          {/* Sign out / confirmation */}
+          {confirmingSignOut ? (
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <p className="text-sm font-medium text-gray-900">Sign out?</p>
+              <p className="mt-0.5 text-xs text-gray-500">
+                You&apos;ll need to sign in again to access your account.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => setConfirmingSignOut(false)}
+                  className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 active:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => signOut({ callbackUrl: "/login" })}
+                  className="flex-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white active:bg-red-700"
+                >
+                  Sign out
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmingSignOut(true)}
+              className="flex min-h-[48px] w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium text-gray-600 transition-colors active:bg-gray-100"
+            >
+              <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+              </svg>
+              Sign out
+            </button>
+          )}
         </div>
       </div>
     </>
