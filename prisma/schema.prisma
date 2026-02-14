@@ -15,6 +15,8 @@ enum UserRole {
   TENANT_ADMIN
   DPO
   CASE_MANAGER
+  ANALYST
+  AUDITOR
   CONTRIBUTOR
   READ_ONLY
 }
@@ -265,6 +267,7 @@ model Tenant {
   redactionSuggestions RedactionSuggestion[]
   breakGlassEvents   BreakGlassEvent[]
   exportApprovals    ExportApproval[]
+  caseTeamMembers    CaseTeamMember[]
 
   @@map("tenants")
 }
@@ -301,6 +304,7 @@ model User {
   breakGlassEventsActor BreakGlassEvent[]   @relation("BreakGlassActor")
   breakGlassEventsAck   BreakGlassEvent[]   @relation("BreakGlassAcknowledgedBy")
   exportApprovals       ExportApproval[]    @relation("ExportApprovalApprover")
+  caseTeamMemberships   CaseTeamMember[]    @relation("CaseTeamMember")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -368,6 +372,7 @@ model DSARCase {
   copilotRuns         CopilotRun[]
   identityProfiles    IdentityProfile[]
   legalHolds          LegalHold[]
+  teamMembers         CaseTeamMember[]
 
   @@unique([tenantId, caseNumber])
   @@index([tenantId])
@@ -939,4 +944,23 @@ model ExportApproval {
 
   @@index([tenantId, exportArtifactId])
   @@map("export_approvals")
+}
+
+// ─── Case Team Members ──────────────────────────────────────────────────────
+
+model CaseTeamMember {
+  id        String   @id @default(uuid())
+  tenantId  String
+  caseId    String
+  userId    String
+  addedAt   DateTime @default(now())
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case   DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  user   User     @relation("CaseTeamMember", fields: [userId], references: [id])
+
+  @@unique([tenantId, caseId, userId])
+  @@index([tenantId, caseId])
+  @@index([tenantId, userId])
+  @@map("case_team_members")
 }

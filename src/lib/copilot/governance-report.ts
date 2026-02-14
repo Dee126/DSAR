@@ -75,6 +75,7 @@ const GOVERNANCE_REPORT_ROLES = new Set([
   "DPO",
   "TENANT_ADMIN",
   "SUPER_ADMIN",
+  "AUDITOR",
 ]);
 
 /**
