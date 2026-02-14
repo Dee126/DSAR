@@ -99,11 +99,11 @@ export default function DashboardLayout({
 
       {/* Main content */}
       <main className="w-full flex-1 md:ml-64">
-        <div className="px-4 pb-20 pt-[4.25rem] md:p-8">{children}</div>
+        <div className="px-4 pb-24 pt-[4.25rem] md:p-8 md:pb-8">{children}</div>
       </main>
 
       {/* Mobile bottom nav — visible below md */}
-      <BottomNav onMoreTap={handleDrawerOpen} />
+      <BottomNav />
     </div>
   );
 }
