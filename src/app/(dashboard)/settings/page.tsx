@@ -62,8 +62,17 @@ export default function SettingsPage() {
   const userRole = session?.user?.role ?? "";
 
   const [activeTab, setActiveTab] = useState<
-    "tenant" | "users" | "systems"
+    "tenant" | "users" | "systems" | "developer"
   >("tenant");
+
+  // Developer / Demo Data
+  const [demoIntensity, setDemoIntensity] = useState<"small" | "medium" | "large">("medium");
+  const [demoSpecialCat, setDemoSpecialCat] = useState(true);
+  const [demoCopilotRuns, setDemoCopilotRuns] = useState(true);
+  const [demoExports, setDemoExports] = useState(true);
+  const [demoPopulating, setDemoPopulating] = useState(false);
+  const [demoResetting, setDemoResetting] = useState(false);
+  const [demoMessage, setDemoMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Tenant
   const [tenant, setTenant] = useState<TenantInfo | null>(null);
@@ -322,10 +331,72 @@ export default function SettingsPage() {
     return null;
   }
 
+  async function handlePopulateDemo() {
+    setDemoPopulating(true);
+    setDemoMessage(null);
+    try {
+      const res = await fetch("/api/demo-data/populate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intensity: demoIntensity,
+          includeSpecialCategory: demoSpecialCat,
+          generateCopilotRuns: demoCopilotRuns,
+          generateExports: demoExports,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setDemoMessage({ type: "error", text: json.error ?? `Failed (${res.status})` });
+        return;
+      }
+      const r = json.result;
+      setDemoMessage({
+        type: "success",
+        text: `Populated ${r.casesProcessed} cases: ${r.evidenceItemsCreated} evidence items, ${r.findingsCreated} findings, ${r.copilotRunsCreated} copilot runs, ${r.tasksCreated} tasks, ${r.dataCollectionItemsCreated} data collections, ${r.documentsCreated} documents.`,
+      });
+    } catch {
+      setDemoMessage({ type: "error", text: "An unexpected error occurred." });
+    } finally {
+      setDemoPopulating(false);
+    }
+  }
+
+  async function handleResetDemo() {
+    setDemoResetting(true);
+    setDemoMessage(null);
+    try {
+      const res = await fetch("/api/demo-data/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setDemoMessage({ type: "error", text: json.error ?? `Failed (${res.status})` });
+        return;
+      }
+      const r = json.result;
+      const total =
+        r.exportArtifactsDeleted + r.copilotSummariesDeleted + r.detectorResultsDeleted +
+        r.findingsDeleted + r.evidenceItemsDeleted + r.copilotQueriesDeleted +
+        r.copilotRunsDeleted + r.dataCollectionItemsDeleted + r.documentsDeleted +
+        r.auditLogsDeleted;
+      setDemoMessage({
+        type: "success",
+        text: `Reset complete. Removed ${total} demo artifacts. Cases preserved.`,
+      });
+    } catch {
+      setDemoMessage({ type: "error", text: "An unexpected error occurred." });
+    } finally {
+      setDemoResetting(false);
+    }
+  }
+
   const tabs = [
     { key: "tenant" as const, label: "Tenant Profile" },
     { key: "users" as const, label: "User Management" },
     { key: "systems" as const, label: "Systems (Processor Map)" },
+    { key: "developer" as const, label: "Developer / Test" },
   ];
 
   return (
@@ -1193,6 +1264,174 @@ export default function SettingsPage() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Developer / Test Tab ───────────────────────────────────────── */}
+      {activeTab === "developer" && (
+        <div className="space-y-6 max-w-full md:max-w-3xl">
+          {/* Warning banner */}
+          <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+            <div className="flex gap-3">
+              <svg className="h-5 w-5 shrink-0 text-yellow-600 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+              <div>
+                <h3 className="text-sm font-semibold text-yellow-800">Developer / Test Mode</h3>
+                <p className="mt-1 text-sm text-yellow-700">
+                  These tools generate synthetic demo data for testing. All data is fictional — no real personal data is created. Use in development and demo environments only.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Status message */}
+          {demoMessage && (
+            <div className={`rounded-md p-4 ${demoMessage.type === "success" ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"}`}>
+              <p className={`text-sm ${demoMessage.type === "success" ? "text-green-700" : "text-red-700"}`}>
+                {demoMessage.text}
+              </p>
+            </div>
+          )}
+
+          {/* Populate Card */}
+          <div className="card space-y-5">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Populate Cases with Demo Evidence</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Fills existing DSAR cases with synthetic evidence items, findings, copilot runs, data collection results, and audit events.
+              </p>
+            </div>
+
+            {/* Intensity */}
+            <div>
+              <label htmlFor="demo-intensity" className="label">Evidence Intensity</label>
+              <select
+                id="demo-intensity"
+                value={demoIntensity}
+                onChange={(e) => setDemoIntensity(e.target.value as "small" | "medium" | "large")}
+                className="input-field max-w-xs"
+              >
+                <option value="small">Small (5-10 items per case)</option>
+                <option value="medium">Medium (15-25 items per case)</option>
+                <option value="large">Large (30-50 items per case)</option>
+              </select>
+            </div>
+
+            {/* Checkboxes */}
+            <div className="space-y-3">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={demoSpecialCat}
+                  onChange={(e) => setDemoSpecialCat(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-900">Include Special Category (Art. 9) cases</span>
+                  <p className="text-xs text-gray-500">Injects health/medical keyword findings into ~40% of cases, triggers legal review gates</p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={demoCopilotRuns}
+                  onChange={(e) => setDemoCopilotRuns(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-900">Generate Copilot Runs automatically</span>
+                  <p className="text-xs text-gray-500">Creates completed copilot runs with queries, evidence items, findings, summaries, and detector results</p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={demoExports}
+                  onChange={(e) => setDemoExports(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-900">Generate Export artifacts (respect legal gate)</span>
+                  <p className="text-xs text-gray-500">Creates export artifacts — blocked for Art. 9 cases, allowed for others</p>
+                </div>
+              </label>
+            </div>
+
+            {/* Populate button */}
+            <button
+              onClick={handlePopulateDemo}
+              disabled={demoPopulating || demoResetting}
+              className="btn-primary w-full sm:w-auto"
+            >
+              {demoPopulating ? (
+                <span className="flex items-center gap-2">
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Populating cases...
+                </span>
+              ) : (
+                <>
+                  <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" />
+                  </svg>
+                  Populate existing cases with demo evidence
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Reset Card */}
+          <div className="card space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Reset Demo Evidence</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Removes all synthetic demo artifacts (evidence, findings, copilot runs, demo documents) while preserving the cases themselves.
+              </p>
+            </div>
+
+            <button
+              onClick={handleResetDemo}
+              disabled={demoPopulating || demoResetting}
+              className="btn-danger w-full sm:w-auto"
+            >
+              {demoResetting ? (
+                <span className="flex items-center gap-2">
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Resetting...
+                </span>
+              ) : (
+                <>
+                  <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                  </svg>
+                  Reset demo evidence for all cases
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Info */}
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <h3 className="text-sm font-semibold text-gray-700">What gets created?</h3>
+            <ul className="mt-2 space-y-1 text-sm text-gray-600">
+              <li>&#8226; <strong>Evidence Items</strong>: Email, file, and record evidence from M365, Exchange, SharePoint, OneDrive</li>
+              <li>&#8226; <strong>Detector Results</strong>: PII detection (email, phone, IBAN, address, IPs) with masked previews</li>
+              <li>&#8226; <strong>Findings</strong>: Categorized by data type (Identification, Contact, Payment, HR, etc.) with severity levels</li>
+              <li>&#8226; <strong>Data Collection Items</strong>: Per-source collection status and result metadata</li>
+              <li>&#8226; <strong>Copilot Runs</strong>: Completed runs with queries, summaries, and export artifacts</li>
+              <li>&#8226; <strong>Tasks</strong>: Case-type-specific tasks (legal review, verification, collection)</li>
+              <li>&#8226; <strong>Art. 9 Flags</strong>: Special category detection triggers legal gates and export blocks</li>
+              <li>&#8226; <strong>Audit Trail</strong>: Full audit log entries for all demo actions</li>
+            </ul>
           </div>
         </div>
       )}
