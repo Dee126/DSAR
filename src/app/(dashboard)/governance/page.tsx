@@ -143,7 +143,7 @@ export default function GovernancePage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Copilot Governance</h1>
+        <h1 className="text-xl font-bold text-gray-900 md:text-2xl">Copilot Governance</h1>
         <p className="mt-1 text-sm text-gray-500">
           Control access, scope, retention, and approvals for Privacy Copilot. All actions are audited.
         </p>
@@ -151,7 +151,7 @@ export default function GovernancePage() {
 
       {/* Tab Navigation */}
       <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
+        <nav className="-mb-px flex space-x-4 overflow-x-auto sm:space-x-8">
           {[
             { key: "activity" as const, label: "Activity" },
             { key: "approvals" as const, label: "Approvals" },
@@ -160,7 +160,7 @@ export default function GovernancePage() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`border-b-2 px-1 py-3 text-sm font-medium ${
+              className={`whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium ${
                 activeTab === tab.key
                   ? "border-brand-600 text-brand-600"
                   : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
@@ -310,7 +310,7 @@ function ActivityLogTab({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-end gap-2 sm:gap-3">
         <div>
           <label className="block text-xs font-medium text-gray-500">From</label>
           <input type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); setPage(1); }}
@@ -349,7 +349,7 @@ function ActivityLogTab({ isAdmin }: { isAdmin: boolean }) {
         <div className="relative">
           <label className="block text-xs font-medium text-gray-500">Search</label>
           <input type="text" placeholder="Case or subject..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-            className="mt-1 w-44 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+            className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 sm:w-44" />
         </div>
 
         <div className="flex-1" />
@@ -389,7 +389,9 @@ function ActivityLogTab({ isAdmin }: { isAdmin: boolean }) {
             <p className="mt-1 text-xs text-gray-400">Copilot run activity will appear here automatically.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Desktop: Table */}
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
@@ -442,15 +444,50 @@ function ActivityLogTab({ isAdmin }: { isAdmin: boolean }) {
               </tbody>
             </table>
           </div>
+
+          {/* Mobile: Card List */}
+          <div className="divide-y divide-gray-200 md:hidden">
+            {filtered.map((entry) => {
+              const exportStatus = getExportStatus(entry);
+              const ex = EXPORT_STATUS_LABELS[exportStatus] ?? EXPORT_STATUS_LABELS.NONE;
+              return (
+                <button
+                  key={entry.runId}
+                  onClick={() => setSelectedEntry(entry)}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-gray-50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-brand-600">{entry.caseNumber}</span>
+                      <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${STATUS_COLORS[entry.status] ?? "bg-gray-100 text-gray-600"}`}>{entry.status}</span>
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-gray-500">{entry.actorName} &middot; {entry.subjectIdentifier}</p>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="text-xs text-gray-400">{entry.totalEvidenceItems} evidence</span>
+                      {entry.art9Suspected && <span className="inline-flex rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">Art. 9</span>}
+                      {exportStatus !== "NONE" && <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${ex.color}`}>{ex.label}</span>}
+                    </div>
+                    <p className="mt-0.5 text-[10px] text-gray-400">
+                      {entry.startedAt ? new Date(entry.startedAt).toLocaleDateString() : "-"}
+                    </p>
+                  </div>
+                  <svg className="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                  </svg>
+                </button>
+              );
+            })}
+          </div>
+          </>
         )}
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-gray-200 px-4 py-3">
             <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}
-              className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">Previous</button>
-            <span className="text-sm text-gray-500">Page {page} of {totalPages}</span>
+              className="min-h-[44px] rounded-md border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">Prev</button>
+            <span className="text-sm text-gray-500">{page} / {totalPages}</span>
             <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-              className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">Next</button>
+              className="min-h-[44px] rounded-md border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">Next</button>
           </div>
         )}
       </div>
@@ -486,7 +523,7 @@ function RunDetailDrawer({ entry, isAdmin, onClose }: { entry: ActivityLogEntry;
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
 
       {/* Panel */}
-      <div className="relative z-10 flex h-full w-full max-w-lg flex-col bg-white shadow-xl">
+      <div className="relative z-10 flex h-full w-full flex-col bg-white shadow-xl md:max-w-lg">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
           <div>
@@ -521,15 +558,15 @@ function RunDetailDrawer({ entry, isAdmin, onClose }: { entry: ActivityLogEntry;
           {drawerTab === "overview" && (
             <div className="space-y-4">
               <dl className="space-y-3 text-sm">
-                <div className="flex justify-between"><dt className="font-medium text-gray-500">Run ID</dt><dd className="font-mono text-xs text-gray-700">{entry.runId}</dd></div>
-                <div className="flex justify-between"><dt className="font-medium text-gray-500">Case</dt><dd className="font-medium text-brand-600">{entry.caseNumber}</dd></div>
-                <div className="flex justify-between"><dt className="font-medium text-gray-500">User</dt><dd className="text-gray-700">{entry.actorName} <span className="text-xs text-gray-400">({entry.actorRole})</span></dd></div>
-                <div className="flex justify-between"><dt className="font-medium text-gray-500">Status</dt><dd><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[entry.status] ?? "bg-gray-100"}`}>{entry.status}</span></dd></div>
-                <div className="flex justify-between"><dt className="font-medium text-gray-500">Started</dt><dd className="text-gray-700">{entry.startedAt ? new Date(entry.startedAt).toLocaleString() : "-"}</dd></div>
-                <div className="flex justify-between"><dt className="font-medium text-gray-500">Completed</dt><dd className="text-gray-700">{entry.completedAt ? new Date(entry.completedAt).toLocaleString() : "-"}</dd></div>
-                <div className="flex justify-between"><dt className="font-medium text-gray-500">Evidence</dt><dd className="text-gray-700">{entry.totalEvidenceItems} items, {entry.totalFindings} findings</dd></div>
-                <div className="flex justify-between"><dt className="font-medium text-gray-500">Content scan</dt><dd className="text-gray-700">{entry.contentScanningUsed ? "Yes" : "No"}</dd></div>
-                <div className="flex justify-between"><dt className="font-medium text-gray-500">OCR</dt><dd className="text-gray-700">{entry.ocrUsed ? "Yes" : "No"}</dd></div>
+                <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between"><dt className="shrink-0 font-medium text-gray-500">Run ID</dt><dd className="truncate font-mono text-xs text-gray-700">{entry.runId}</dd></div>
+                <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between"><dt className="shrink-0 font-medium text-gray-500">Case</dt><dd className="font-medium text-brand-600">{entry.caseNumber}</dd></div>
+                <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between"><dt className="shrink-0 font-medium text-gray-500">User</dt><dd className="text-gray-700">{entry.actorName} <span className="text-xs text-gray-400">({entry.actorRole})</span></dd></div>
+                <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between"><dt className="shrink-0 font-medium text-gray-500">Status</dt><dd><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[entry.status] ?? "bg-gray-100"}`}>{entry.status}</span></dd></div>
+                <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between"><dt className="shrink-0 font-medium text-gray-500">Started</dt><dd className="text-gray-700">{entry.startedAt ? new Date(entry.startedAt).toLocaleString() : "-"}</dd></div>
+                <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between"><dt className="shrink-0 font-medium text-gray-500">Completed</dt><dd className="text-gray-700">{entry.completedAt ? new Date(entry.completedAt).toLocaleString() : "-"}</dd></div>
+                <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between"><dt className="shrink-0 font-medium text-gray-500">Evidence</dt><dd className="text-gray-700">{entry.totalEvidenceItems} items, {entry.totalFindings} findings</dd></div>
+                <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between"><dt className="shrink-0 font-medium text-gray-500">Content scan</dt><dd className="text-gray-700">{entry.contentScanningUsed ? "Yes" : "No"}</dd></div>
+                <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between"><dt className="shrink-0 font-medium text-gray-500">OCR</dt><dd className="text-gray-700">{entry.ocrUsed ? "Yes" : "No"}</dd></div>
               </dl>
 
               {/* Subject */}
@@ -734,9 +771,9 @@ function ApprovalsTab() {
         <div className="space-y-4">
           {pendingApprovals.map((approval) => (
             <div key={`${approval.runId}-${approval.type}`} className="card">
-              <div className="flex items-start justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
                       approval.type === "ART9_LEGAL_REVIEW" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
                     }`}>
@@ -758,7 +795,7 @@ function ApprovalsTab() {
                     {selectedRunId === approval.runId ? (
                       <div className="space-y-2">
                         <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comment (required)"
-                          className="w-48 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" rows={2} />
+                          className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 sm:w-48" rows={2} />
                         <div className="flex gap-2">
                           <button onClick={() => handleApprovalAction(approval.runId, approval.type, "APPROVE")}
                             disabled={actionLoading === approval.runId}
@@ -1010,11 +1047,11 @@ function SettingsTab({ isAdmin }: { isAdmin: boolean }) {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-gray-400">Changes are recorded in the audit trail.</p>
         <div className="flex gap-3">
-          <button onClick={handleReset} className="btn-secondary">Reset to Recommended Defaults</button>
-          <button onClick={handleSave} disabled={saving} className="btn-primary disabled:opacity-50">
+          <button onClick={handleReset} className="btn-secondary flex-1 sm:flex-none">Reset Defaults</button>
+          <button onClick={handleSave} disabled={saving} className="btn-primary flex-1 disabled:opacity-50 sm:flex-none">
             {saving ? "Saving..." : "Save"}
           </button>
         </div>
@@ -1037,8 +1074,8 @@ function ToggleField({
   disabled?: boolean;
 }) {
   return (
-    <div className={`flex items-center justify-between ${disabled ? "opacity-50" : ""}`}>
-      <div>
+    <div className={`flex items-start gap-3 sm:items-center sm:justify-between ${disabled ? "opacity-50" : ""}`}>
+      <div className="flex-1">
         <p className="text-sm font-medium text-gray-700">{label}</p>
         <p className="text-xs text-gray-500">{description}</p>
       </div>

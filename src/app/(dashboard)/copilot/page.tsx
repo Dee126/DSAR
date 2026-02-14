@@ -63,7 +63,7 @@ export default function CopilotPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Privacy Copilot</h1>
+          <h1 className="text-xl font-bold text-gray-900 md:text-2xl">Privacy Copilot</h1>
           <p className="mt-1 text-sm text-gray-500">AI-powered DSAR data discovery across all connected systems.</p>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
@@ -82,7 +82,7 @@ export default function CopilotPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Privacy Copilot</h1>
+        <h1 className="text-xl font-bold text-gray-900 md:text-2xl">Privacy Copilot</h1>
         <p className="mt-1 text-sm text-gray-500">
           AI-powered DSAR data discovery across all connected systems. Start a discovery run from any case&apos;s Copilot tab.
         </p>
@@ -176,60 +176,97 @@ export default function CopilotPage() {
             </Link>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  <th className="px-6 py-3">Case</th>
-                  <th className="px-6 py-3">Data Subject</th>
-                  <th className="px-6 py-3">Status</th>
-                  <th className="px-6 py-3">Findings</th>
-                  <th className="px-6 py-3">Art. 9</th>
-                  <th className="px-6 py-3">Started By</th>
-                  <th className="px-6 py-3">Date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {stats.recentRuns.map((run) => (
-                  <tr
-                    key={run.id}
-                    className="cursor-pointer transition-colors hover:bg-gray-50"
-                    onClick={() => window.location.href = `/cases/${run.case.id}?tab=copilot`}
-                  >
-                    <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-brand-600">
-                      {run.case.caseNumber}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
-                      {run.case.dataSubject.fullName}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[run.status] ?? "bg-gray-100 text-gray-700"}`}>
-                        {run.status}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
-                      {run.totalFindings}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      {run.containsSpecialCategory ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">
-                          {run.legalApprovalStatus === "APPROVED" ? "Approved" : run.legalApprovalStatus === "REJECTED" ? "Rejected" : "Pending Review"}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                      {run.createdBy.name}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                      {new Date(run.createdAt).toLocaleDateString()}
-                    </td>
+          <>
+            {/* Desktop Table */}
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    <th className="px-6 py-3">Case</th>
+                    <th className="px-6 py-3">Data Subject</th>
+                    <th className="px-6 py-3">Status</th>
+                    <th className="px-6 py-3">Findings</th>
+                    <th className="px-6 py-3">Art. 9</th>
+                    <th className="px-6 py-3">Started By</th>
+                    <th className="px-6 py-3">Date</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {stats.recentRuns.map((run) => (
+                    <tr
+                      key={run.id}
+                      className="cursor-pointer transition-colors hover:bg-gray-50"
+                      onClick={() => window.location.href = `/cases/${run.case.id}?tab=copilot`}
+                    >
+                      <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-brand-600">
+                        {run.case.caseNumber}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
+                        {run.case.dataSubject.fullName}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4">
+                        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[run.status] ?? "bg-gray-100 text-gray-700"}`}>
+                          {run.status}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
+                        {run.totalFindings}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4">
+                        {run.containsSpecialCategory ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">
+                            {run.legalApprovalStatus === "APPROVED" ? "Approved" : run.legalApprovalStatus === "REJECTED" ? "Rejected" : "Pending Review"}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                        {run.createdBy.name}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                        {new Date(run.createdAt).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Card List */}
+            <div className="divide-y divide-gray-200 md:hidden">
+              {stats.recentRuns.map((run) => (
+                <div
+                  key={run.id}
+                  className="cursor-pointer px-6 py-4 transition-colors hover:bg-gray-50"
+                  onClick={() => window.location.href = `/cases/${run.case.id}?tab=copilot`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-brand-600">{run.case.caseNumber}</span>
+                    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[run.status] ?? "bg-gray-100 text-gray-700"}`}>
+                      {run.status}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-sm text-gray-700">
+                    {run.case.dataSubject.fullName}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-500">
+                    <span>{run.totalFindings} findings</span>
+                    {run.containsSpecialCategory && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">
+                        {run.legalApprovalStatus === "APPROVED" ? "Approved" : run.legalApprovalStatus === "REJECTED" ? "Rejected" : "Pending Review"}
+                      </span>
+                    )}
+                    <span>·</span>
+                    <span>{run.createdBy.name}</span>
+                  </div>
+                  <div className="mt-1 text-xs text-gray-500">
+                    {new Date(run.createdAt).toLocaleDateString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>

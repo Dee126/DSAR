@@ -4,7 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 
-const NAV_ITEMS = [
+export interface NavItemDef {
+  label: string;
+  href: string;
+  requiresRole?: string[];
+  icon: React.ReactNode;
+}
+
+export const NAV_ITEMS: NavItemDef[] = [
   {
     label: "Dashboard",
     href: "/dashboard",

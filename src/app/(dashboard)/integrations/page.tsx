@@ -422,7 +422,7 @@ export default function IntegrationsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Integrations</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Integrations</h1>
           <p className="mt-1 text-sm text-gray-500">
             Manage data source connections for automated data collection
           </p>
@@ -535,71 +535,175 @@ export default function IntegrationsPage() {
             </button>
           </div>
         ) : (
-          /* Integration table */
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  <th className="px-6 py-3">Provider</th>
-                  <th className="px-6 py-3">Name</th>
-                  <th className="px-6 py-3">Status</th>
-                  <th className="px-6 py-3">Health</th>
-                  <th className="px-6 py-3">Last Success</th>
-                  <th className="px-6 py-3">Owner</th>
-                  <th className="px-6 py-3">Collections</th>
-                  <th className="px-6 py-3">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {integrations.map((integration) => {
-                  const icon = getProviderIcon(integration.provider);
-                  const isToggling = togglingId === integration.id;
+          <>
+            {/* Desktop table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    <th className="px-6 py-3">Provider</th>
+                    <th className="px-6 py-3">Name</th>
+                    <th className="px-6 py-3">Status</th>
+                    <th className="px-6 py-3">Health</th>
+                    <th className="px-6 py-3">Last Success</th>
+                    <th className="px-6 py-3">Owner</th>
+                    <th className="px-6 py-3">Collections</th>
+                    <th className="px-6 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {integrations.map((integration) => {
+                    const icon = getProviderIcon(integration.provider);
+                    const isToggling = togglingId === integration.id;
 
-                  return (
-                    <tr
-                      key={integration.id}
-                      className="transition-colors hover:bg-gray-50"
-                    >
-                      {/* Provider */}
-                      <td className="whitespace-nowrap px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`flex h-9 w-9 items-center justify-center rounded-full ${icon.bg} ${icon.text} text-xs font-bold`}
-                          >
-                            {icon.label}
+                    return (
+                      <tr
+                        key={integration.id}
+                        className="transition-colors hover:bg-gray-50"
+                      >
+                        {/* Provider */}
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`flex h-9 w-9 items-center justify-center rounded-full ${icon.bg} ${icon.text} text-xs font-bold`}
+                            >
+                              {icon.label}
+                            </div>
+                            <span className="text-sm text-gray-700">
+                              {getProviderDisplayName(integration.provider)}
+                            </span>
                           </div>
-                          <span className="text-sm text-gray-700">
-                            {getProviderDisplayName(integration.provider)}
-                          </span>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Name */}
-                      <td className="px-6 py-4">
+                        {/* Name */}
+                        <td className="px-6 py-4">
+                          <span className="text-sm font-medium text-gray-900">
+                            {integration.name}
+                          </span>
+                        </td>
+
+                        {/* Status */}
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                              STATUS_COLORS[integration.status] ?? "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            {integration.status === "ENABLED" ? "Enabled" : "Disabled"}
+                          </span>
+                        </td>
+
+                        {/* Health */}
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                              HEALTH_COLORS[integration.healthStatus] ?? "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            {/* Health dot indicator */}
+                            <span
+                              className={`inline-block h-1.5 w-1.5 rounded-full ${
+                                integration.healthStatus === "HEALTHY"
+                                  ? "bg-green-500"
+                                  : integration.healthStatus === "DEGRADED"
+                                  ? "bg-yellow-500"
+                                  : integration.healthStatus === "FAILED"
+                                  ? "bg-red-500"
+                                  : "bg-gray-400"
+                              }`}
+                            />
+                            {HEALTH_LABELS[integration.healthStatus] ?? integration.healthStatus}
+                          </span>
+                        </td>
+
+                        {/* Last Success */}
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                          {formatTimestamp(integration.lastSuccessAt)}
+                        </td>
+
+                        {/* Owner */}
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
+                          {integration.owner?.name ?? (
+                            <span className="text-gray-400">Unassigned</span>
+                          )}
+                        </td>
+
+                        {/* Data Collection Count */}
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
+                          <span className="inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-200">
+                            {integration._count.dataCollectionItems}
+                          </span>
+                        </td>
+
+                        {/* Actions */}
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <Link
+                              href={`/integrations/${integration.id}`}
+                              className="text-sm font-medium text-brand-600 hover:text-brand-700"
+                            >
+                              Configure
+                            </Link>
+                            <button
+                              onClick={() => handleToggleStatus(integration)}
+                              disabled={isToggling}
+                              className={`text-sm font-medium transition-colors disabled:opacity-50 ${
+                                integration.status === "ENABLED"
+                                  ? "text-gray-500 hover:text-gray-700"
+                                  : "text-green-600 hover:text-green-700"
+                              }`}
+                            >
+                              {isToggling
+                                ? "..."
+                                : integration.status === "ENABLED"
+                                ? "Disable"
+                                : "Enable"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile card list */}
+            <div className="divide-y divide-gray-200 md:hidden">
+              {integrations.map((integration) => {
+                const icon = getProviderIcon(integration.provider);
+                const isToggling = togglingId === integration.id;
+
+                return (
+                  <div key={integration.id} className="flex items-center gap-4 p-4">
+                    {/* Left: Provider icon */}
+                    <div className="flex-shrink-0">
+                      <div
+                        className={`flex h-10 w-10 items-center justify-center rounded-full ${icon.bg} ${icon.text} text-xs font-bold`}
+                      >
+                        {icon.label}
+                      </div>
+                    </div>
+
+                    {/* Middle: Info */}
+                    <div className="min-w-0 flex-1">
+                      {/* Line 1: Provider display name + Integration name */}
+                      <div className="flex items-baseline gap-2">
                         <span className="text-sm font-medium text-gray-900">
+                          {getProviderDisplayName(integration.provider)}
+                        </span>
+                        <span className="text-sm text-gray-500 truncate">
                           {integration.name}
                         </span>
-                      </td>
+                      </div>
 
-                      {/* Status */}
-                      <td className="whitespace-nowrap px-6 py-4">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                            STATUS_COLORS[integration.status] ?? "bg-gray-100 text-gray-600"
-                          }`}
-                        >
-                          {integration.status === "ENABLED" ? "Enabled" : "Disabled"}
-                        </span>
-                      </td>
-
-                      {/* Health */}
-                      <td className="whitespace-nowrap px-6 py-4">
+                      {/* Line 2: Health status badge + Status badge */}
+                      <div className="mt-1 flex items-center gap-2">
                         <span
                           className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
                             HEALTH_COLORS[integration.healthStatus] ?? "bg-gray-100 text-gray-600"
                           }`}
                         >
-                          {/* Health dot indicator */}
                           <span
                             className={`inline-block h-1.5 w-1.5 rounded-full ${
                               integration.healthStatus === "HEALTHY"
@@ -613,59 +717,50 @@ export default function IntegrationsPage() {
                           />
                           {HEALTH_LABELS[integration.healthStatus] ?? integration.healthStatus}
                         </span>
-                      </td>
-
-                      {/* Last Success */}
-                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                        {formatTimestamp(integration.lastSuccessAt)}
-                      </td>
-
-                      {/* Owner */}
-                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
-                        {integration.owner?.name ?? (
-                          <span className="text-gray-400">Unassigned</span>
-                        )}
-                      </td>
-
-                      {/* Data Collection Count */}
-                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
-                        <span className="inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-200">
-                          {integration._count.dataCollectionItems}
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                            STATUS_COLORS[integration.status] ?? "bg-gray-100 text-gray-600"
+                          }`}
+                        >
+                          {integration.status === "ENABLED" ? "Enabled" : "Disabled"}
                         </span>
-                      </td>
+                      </div>
 
-                      {/* Actions */}
-                      <td className="whitespace-nowrap px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <Link
-                            href={`/integrations/${integration.id}`}
-                            className="text-sm font-medium text-brand-600 hover:text-brand-700"
-                          >
-                            Configure
-                          </Link>
-                          <button
-                            onClick={() => handleToggleStatus(integration)}
-                            disabled={isToggling}
-                            className={`text-sm font-medium transition-colors disabled:opacity-50 ${
-                              integration.status === "ENABLED"
-                                ? "text-gray-500 hover:text-gray-700"
-                                : "text-green-600 hover:text-green-700"
-                            }`}
-                          >
-                            {isToggling
-                              ? "..."
-                              : integration.status === "ENABLED"
-                              ? "Disable"
-                              : "Enable"}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      {/* Line 3: Last success timestamp */}
+                      <div className="mt-1 text-xs text-gray-500">
+                        Last: {formatTimestamp(integration.lastSuccessAt)}
+                      </div>
+                    </div>
+
+                    {/* Right: Actions */}
+                    <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                      <Link
+                        href={`/integrations/${integration.id}`}
+                        className="text-sm font-medium text-brand-600 hover:text-brand-700 min-h-[44px] flex items-center"
+                      >
+                        Configure
+                      </Link>
+                      <button
+                        onClick={() => handleToggleStatus(integration)}
+                        disabled={isToggling}
+                        className={`text-sm font-medium transition-colors disabled:opacity-50 min-h-[44px] px-3 ${
+                          integration.status === "ENABLED"
+                            ? "text-gray-500 hover:text-gray-700"
+                            : "text-green-600 hover:text-green-700"
+                        }`}
+                      >
+                        {isToggling
+                          ? "..."
+                          : integration.status === "ENABLED"
+                          ? "Disable"
+                          : "Enable"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 
@@ -679,9 +774,9 @@ export default function IntegrationsPage() {
           />
 
           {/* Modal panel */}
-          <div className="relative z-10 w-full max-w-2xl rounded-lg bg-white shadow-xl">
+          <div className="relative z-10 mx-4 w-full max-w-2xl max-h-[90vh] rounded-lg bg-white shadow-xl sm:mx-auto md:mx-auto flex flex-col">
             {/* Modal header */}
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 flex-shrink-0">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">
                   Add Integration
@@ -713,7 +808,7 @@ export default function IntegrationsPage() {
             </div>
 
             {/* Step indicator */}
-            <div className="border-b border-gray-200 px-6 py-3">
+            <div className="border-b border-gray-200 px-6 py-3 flex-shrink-0">
               <div className="flex items-center gap-3 text-sm">
                 <span
                   className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${
@@ -768,7 +863,7 @@ export default function IntegrationsPage() {
             </div>
 
             {/* Modal body */}
-            <div className="max-h-[60vh] overflow-y-auto px-6 py-5">
+            <div className="overflow-y-auto px-6 py-5 flex-1">
               {addStep === 1 && renderPhaseGroupedProviders()}
 
               {addStep === 2 && (

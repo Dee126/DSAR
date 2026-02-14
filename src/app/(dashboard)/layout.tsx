@@ -1,17 +1,47 @@
 "use client";
 
+import { useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
-import Sidebar from "@/components/Sidebar";
+import Sidebar, { NAV_ITEMS } from "@/components/Sidebar";
+import { MobileHeader, MobileDrawer, BottomNav } from "@/components/MobileNav";
+
+/* ── Page title from pathname ──────────────────────────────────────── */
+
+const PAGE_TITLES: Record<string, string> = {
+  "/dashboard": "Dashboard",
+  "/cases": "Cases",
+  "/cases/new": "New Case",
+  "/tasks": "Tasks",
+  "/documents": "Documents",
+  "/copilot": "Privacy Copilot",
+  "/integrations": "Integrations",
+  "/governance": "Governance",
+  "/settings": "Settings",
+};
+
+function getPageTitle(pathname: string): string {
+  if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
+  if (pathname.startsWith("/cases/")) return "Case Detail";
+  if (pathname.startsWith("/integrations/")) return "Integration";
+  return "PrivacyPilot";
+}
+
+/* ── Layout ────────────────────────────────────────────────────────── */
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const { data: session, status } = useSession();
   const router = useRouter();
+  const pathname = usePathname();
+
+  const handleDrawerClose = useCallback(() => setDrawerOpen(false), []);
+  const handleDrawerOpen = useCallback(() => setDrawerOpen(true), []);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -52,14 +82,28 @@ export default function DashboardLayout({
     return null;
   }
 
+  const pageTitle = getPageTitle(pathname);
+
   return (
     <div className="flex min-h-screen bg-gray-50">
-      <div className="fixed inset-y-0 left-0 z-30 w-64">
+      {/* Desktop sidebar — hidden on mobile */}
+      <div className="fixed inset-y-0 left-0 z-30 hidden w-64 md:block">
         <Sidebar />
       </div>
-      <main className="ml-64 flex-1">
-        <div className="p-8">{children}</div>
+
+      {/* Mobile header — visible below md */}
+      <MobileHeader onMenuOpen={handleDrawerOpen} pageTitle={pageTitle} />
+
+      {/* Mobile drawer overlay */}
+      <MobileDrawer open={drawerOpen} onClose={handleDrawerClose} navItems={NAV_ITEMS} />
+
+      {/* Main content */}
+      <main className="w-full flex-1 md:ml-64">
+        <div className="px-4 pb-20 pt-[4.25rem] md:p-8">{children}</div>
       </main>
+
+      {/* Mobile bottom nav — visible below md */}
+      <BottomNav onMoreTap={handleDrawerOpen} />
     </div>
   );
 }

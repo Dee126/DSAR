@@ -332,7 +332,7 @@ export default function SettingsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+        <h1 className="text-xl md:text-2xl font-bold text-gray-900">Settings</h1>
         <p className="mt-1 text-sm text-gray-500">
           Manage your organization settings, users, and integrated systems
         </p>
@@ -340,7 +340,7 @@ export default function SettingsPage() {
 
       {/* Tabs */}
       <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
+        <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto">
           {tabs.map((tab) => (
             <button
               key={tab.key}
@@ -359,7 +359,7 @@ export default function SettingsPage() {
 
       {/* ── Tenant Profile Tab ─────────────────────────────────────────── */}
       {activeTab === "tenant" && (
-        <div className="max-w-2xl space-y-4">
+        <div className="max-w-full md:max-w-2xl space-y-4">
           {tenantSuccess && (
             <div className="rounded-md bg-green-50 p-3">
               <p className="text-sm text-green-700">{tenantSuccess}</p>
@@ -544,7 +544,7 @@ export default function SettingsPage() {
       {/* ── User Management Tab ────────────────────────────────────────── */}
       {activeTab === "users" && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Users</h2>
               <p className="text-sm text-gray-500">
@@ -554,7 +554,7 @@ export default function SettingsPage() {
             </div>
             <button
               onClick={() => setShowAddUser(!showAddUser)}
-              className="btn-primary"
+              className="btn-primary w-full sm:w-auto"
             >
               {showAddUser ? (
                 "Cancel"
@@ -708,90 +708,173 @@ export default function SettingsPage() {
                 <p className="text-sm text-gray-500">No users found.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                      <th className="px-6 py-3">Name</th>
-                      <th className="px-6 py-3">Email</th>
-                      <th className="px-6 py-3">Role</th>
-                      <th className="px-6 py-3">Last Login</th>
-                      <th className="px-6 py-3">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {users.map((user) => (
-                      <tr key={user.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
-                              {user.name
-                                .split(" ")
-                                .map((n) => n[0])
-                                .join("")
-                                .toUpperCase()
-                                .slice(0, 2)}
+              <>
+                {/* Desktop table */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        <th className="px-6 py-3">Name</th>
+                        <th className="px-6 py-3">Email</th>
+                        <th className="px-6 py-3">Role</th>
+                        <th className="px-6 py-3">Last Login</th>
+                        <th className="px-6 py-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {users.map((user) => (
+                        <tr key={user.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
+                                {user.name
+                                  .split(" ")
+                                  .map((n) => n[0])
+                                  .join("")
+                                  .toUpperCase()
+                                  .slice(0, 2)}
+                              </div>
+                              <span className="text-sm font-medium text-gray-900">
+                                {user.name}
+                              </span>
                             </div>
-                            <span className="text-sm font-medium text-gray-900">
-                              {user.name}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">
-                          {user.email}
-                        </td>
-                        <td className="px-6 py-4">
-                          {editingUserId === user.id ? (
-                            <select
-                              value={editingUserRole}
-                              onChange={(e) => {
-                                setEditingUserRole(e.target.value);
-                                handleUpdateUserRole(user.id, e.target.value);
-                              }}
-                              className="rounded-md border border-gray-300 py-1 pl-2 pr-7 text-xs focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                              onBlur={() => setEditingUserId(null)}
-                              autoFocus
-                            >
-                              {USER_ROLES.map((r) => (
-                                <option key={r.value} value={r.value}>
-                                  {r.label}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span
-                              className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                                ROLE_COLORS[user.role] ??
-                                "bg-gray-100 text-gray-700"
-                              }`}
-                            >
-                              {user.role.replace(/_/g, " ")}
-                            </span>
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-500">
+                            {user.email}
+                          </td>
+                          <td className="px-6 py-4">
+                            {editingUserId === user.id ? (
+                              <select
+                                value={editingUserRole}
+                                onChange={(e) => {
+                                  setEditingUserRole(e.target.value);
+                                  handleUpdateUserRole(user.id, e.target.value);
+                                }}
+                                className="rounded-md border border-gray-300 py-1 pl-2 pr-7 text-xs focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                                onBlur={() => setEditingUserId(null)}
+                                autoFocus
+                              >
+                                {USER_ROLES.map((r) => (
+                                  <option key={r.value} value={r.value}>
+                                    {r.label}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span
+                                className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                                  ROLE_COLORS[user.role] ??
+                                  "bg-gray-100 text-gray-700"
+                                }`}
+                              >
+                                {user.role.replace(/_/g, " ")}
+                              </span>
+                            )}
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                            {user.lastLoginAt
+                              ? new Date(user.lastLoginAt).toLocaleString()
+                              : "Never"}
+                          </td>
+                          <td className="px-6 py-4">
+                            {editingUserId !== user.id && (
+                              <button
+                                onClick={() => {
+                                  setEditingUserId(user.id);
+                                  setEditingUserRole(user.role);
+                                }}
+                                className="text-sm font-medium text-brand-600 hover:text-brand-700"
+                              >
+                                Change Role
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile card list */}
+                <div className="divide-y divide-gray-200 md:hidden">
+                  {users.map((user) => (
+                    <div key={user.id} className="px-4 py-4 space-y-3">
+                      {/* Avatar + Name */}
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
+                          {user.name
+                            .split(" ")
+                            .map((n) => n[0])
+                            .join("")
+                            .toUpperCase()
+                            .slice(0, 2)}
+                        </div>
+                        <span className="text-base font-medium text-gray-900">
+                          {user.name}
+                        </span>
+                      </div>
+
+                      {/* Email */}
+                      <div>
+                        <p className="text-sm text-gray-500">{user.email}</p>
+                      </div>
+
+                      {/* Role badge */}
+                      <div>
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                            ROLE_COLORS[user.role] ?? "bg-gray-100 text-gray-700"
+                          }`}
+                        >
+                          {user.role.replace(/_/g, " ")}
+                        </span>
+                      </div>
+
+                      {/* Last login */}
+                      <div>
+                        <p className="text-xs text-gray-500">
+                          Last login:{" "}
                           {user.lastLoginAt
                             ? new Date(user.lastLoginAt).toLocaleString()
                             : "Never"}
-                        </td>
-                        <td className="px-6 py-4">
-                          {editingUserId !== user.id && (
-                            <button
-                              onClick={() => {
-                                setEditingUserId(user.id);
-                                setEditingUserRole(user.role);
-                              }}
-                              className="text-sm font-medium text-brand-600 hover:text-brand-700"
-                            >
-                              Change Role
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                        </p>
+                      </div>
+
+                      {/* Change Role button */}
+                      <div>
+                        {editingUserId === user.id ? (
+                          <select
+                            value={editingUserRole}
+                            onChange={(e) => {
+                              setEditingUserRole(e.target.value);
+                              handleUpdateUserRole(user.id, e.target.value);
+                            }}
+                            className="w-full rounded-md border border-gray-300 py-2 pl-3 pr-10 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                            onBlur={() => setEditingUserId(null)}
+                            autoFocus
+                          >
+                            {USER_ROLES.map((r) => (
+                              <option key={r.value} value={r.value}>
+                                {r.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setEditingUserId(user.id);
+                              setEditingUserRole(user.role);
+                            }}
+                            className="text-sm font-medium text-brand-600 hover:text-brand-700"
+                          >
+                            Change Role
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -800,7 +883,7 @@ export default function SettingsPage() {
       {/* ── Systems Tab ────────────────────────────────────────────────── */}
       {activeTab === "systems" && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">
                 Systems (Processor Map)
@@ -812,7 +895,7 @@ export default function SettingsPage() {
             </div>
             <button
               onClick={() => setShowAddSystem(!showAddSystem)}
-              className="btn-primary"
+              className="btn-primary w-full sm:w-auto"
             >
               {showAddSystem ? (
                 "Cancel"
@@ -988,68 +1071,127 @@ export default function SettingsPage() {
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                      <th className="px-6 py-3">Name</th>
-                      <th className="px-6 py-3">Owner</th>
-                      <th className="px-6 py-3">Contact</th>
-                      <th className="px-6 py-3">Tags</th>
-                      <th className="px-6 py-3">Created</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {systems.map((sys) => (
-                      <tr key={sys.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4">
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">
-                              {sys.name}
-                            </p>
-                            {sys.description && (
-                              <p className="mt-0.5 text-xs text-gray-500 line-clamp-1">
-                                {sys.description}
-                              </p>
-                            )}
-                          </div>
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
-                          {sys.owner || (
-                            <span className="text-gray-400">--</span>
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                          {sys.contactEmail || (
-                            <span className="text-gray-400">--</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4">
-                          {sys.tags &&
-                          Array.isArray(sys.tags) &&
-                          sys.tags.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {sys.tags.map((tag, idx) => (
-                                <span
-                                  key={idx}
-                                  className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-sm text-gray-400">--</span>
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                          {new Date(sys.createdAt).toLocaleDateString()}
-                        </td>
+              <>
+                {/* Desktop table */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        <th className="px-6 py-3">Name</th>
+                        <th className="px-6 py-3">Owner</th>
+                        <th className="px-6 py-3">Contact</th>
+                        <th className="px-6 py-3">Tags</th>
+                        <th className="px-6 py-3">Created</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {systems.map((sys) => (
+                        <tr key={sys.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4">
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">
+                                {sys.name}
+                              </p>
+                              {sys.description && (
+                                <p className="mt-0.5 text-xs text-gray-500 line-clamp-1">
+                                  {sys.description}
+                                </p>
+                              )}
+                            </div>
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
+                            {sys.owner || (
+                              <span className="text-gray-400">--</span>
+                            )}
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                            {sys.contactEmail || (
+                              <span className="text-gray-400">--</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            {sys.tags &&
+                            Array.isArray(sys.tags) &&
+                            sys.tags.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {sys.tags.map((tag, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-sm text-gray-400">--</span>
+                            )}
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                            {new Date(sys.createdAt).toLocaleDateString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile card list */}
+                <div className="divide-y divide-gray-200 md:hidden">
+                  {systems.map((sys) => (
+                    <div key={sys.id} className="px-4 py-4 space-y-2">
+                      {/* System name + description */}
+                      <div>
+                        <p className="text-base font-medium text-gray-900">
+                          {sys.name}
+                        </p>
+                        {sys.description && (
+                          <p className="mt-1 text-sm text-gray-500">
+                            {sys.description}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Owner */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-gray-500">Owner:</span>
+                        <span className="text-sm text-gray-700">
+                          {sys.owner || <span className="text-gray-400">--</span>}
+                        </span>
+                      </div>
+
+                      {/* Contact email */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-gray-500">Contact:</span>
+                        <span className="text-sm text-gray-500">
+                          {sys.contactEmail || <span className="text-gray-400">--</span>}
+                        </span>
+                      </div>
+
+                      {/* Tags */}
+                      {sys.tags && Array.isArray(sys.tags) && sys.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {sys.tags.map((tag, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Created date */}
+                      <div>
+                        <p className="text-xs text-gray-500">
+                          Created: {new Date(sys.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </div>

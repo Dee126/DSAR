@@ -602,16 +602,16 @@ export default function CaseDetailPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Link href="/cases" className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3 sm:items-center sm:gap-4">
+          <Link href="/cases" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50">
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
           </Link>
           <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-gray-900">{caseData.caseNumber}</h1>
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <h1 className="text-xl font-bold text-gray-900 md:text-2xl">{caseData.caseNumber}</h1>
               <span data-testid="case-status" className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[caseData.status] ?? "bg-gray-100 text-gray-800"}`}>{STATUS_LABELS[caseData.status] ?? caseData.status}</span>
               <span data-testid="case-type" className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${PRIORITY_COLORS[caseData.priority] ?? "bg-gray-100 text-gray-700"}`}>{caseData.priority}</span>
               {caseData.identityVerified && <span className="inline-flex rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">ID Verified</span>}
@@ -635,9 +635,9 @@ export default function CaseDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-4">
         {/* Main Content */}
-        <div className="space-y-6 lg:col-span-3">
+        <div className="space-y-4 md:space-y-6 lg:col-span-3">
           {/* Status Transitions */}
           {canManage && allowedTransitions.length > 0 && (
             <div className="card">
@@ -656,7 +656,7 @@ export default function CaseDetailPage() {
 
           {/* Tabs */}
           <div className="border-b border-gray-200">
-            <nav className="-mb-px flex gap-6 overflow-x-auto">
+            <nav className="-mb-px flex gap-3 overflow-x-auto sm:gap-6">
               {tabs.map((tab) => (
                 <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                   className={`whitespace-nowrap border-b-2 py-3 text-sm font-medium transition-colors ${activeTab === tab.key ? "border-brand-600 text-brand-600" : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"}`}>
@@ -683,7 +683,7 @@ export default function CaseDetailPage() {
                 </div>
                 {editing ? (
                   <div className="mt-4 space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div><label className="label">Priority</label><select value={editPriority} onChange={(e) => setEditPriority(e.target.value)} className="input-field">{["LOW", "MEDIUM", "HIGH", "CRITICAL"].map((p) => <option key={p} value={p}>{p}</option>)}</select></div>
                       <div><label className="label">Assignee</label><select value={editAssignee} onChange={(e) => setEditAssignee(e.target.value)} className="input-field"><option value="">Unassigned</option>{users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
                     </div>
@@ -692,7 +692,7 @@ export default function CaseDetailPage() {
                   </div>
                 ) : (
                   <div className="mt-4">
-                    <dl className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
+                    <dl className="grid grid-cols-1 gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
                       <div><dt className="font-medium text-gray-500">Type</dt><dd className="mt-1 text-gray-900">{caseData.type}</dd></div>
                       <div><dt className="font-medium text-gray-500">Channel</dt><dd className="mt-1 text-gray-900">{caseData.channel || <span className="text-gray-400">N/A</span>}</dd></div>
                       <div><dt className="font-medium text-gray-500">Requester Type</dt><dd className="mt-1 text-gray-900">{caseData.requesterType || <span className="text-gray-400">N/A</span>}</dd></div>

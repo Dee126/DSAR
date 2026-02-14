@@ -223,7 +223,7 @@ export default function DashboardPage() {
     <div className="space-y-8">
       {/* Welcome Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">
+        <h1 className="text-xl md:text-2xl font-bold text-gray-900">
           Welcome back, {session?.user?.name?.split(" ")[0] ?? "User"}
         </h1>
         <p className="mt-1 text-sm text-gray-500">
@@ -262,7 +262,7 @@ export default function DashboardPage() {
       {/* Integration Health Widget */}
       {integrationHealth && integrationHealth.total > 0 && (
         <div className="card">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
               <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${
                 integrationHealth.issues > 0 ? "bg-red-100" : "bg-green-100"
@@ -292,7 +292,7 @@ export default function DashboardPage() {
             </div>
             <Link
               href="/integrations"
-              className="text-sm font-medium text-brand-600 hover:text-brand-700"
+              className="text-sm font-medium text-brand-600 hover:text-brand-700 sm:w-auto w-full text-center"
             >
               Manage Integrations
             </Link>
@@ -336,7 +336,7 @@ export default function DashboardPage() {
                 <Link
                   key={run.id}
                   href={`/cases/${run.case.id}?tab=copilot`}
-                  className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 transition-colors hover:bg-gray-50"
+                  className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-gray-100 px-3 py-2 transition-colors hover:bg-gray-50"
                 >
                   <div className="flex items-center gap-3">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -403,55 +403,127 @@ export default function DashboardPage() {
             </Link>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  <th className="px-6 py-3">Case #</th>
-                  <th className="px-6 py-3">Type</th>
-                  <th className="px-6 py-3">Status</th>
-                  <th className="px-6 py-3">Priority</th>
-                  <th className="px-6 py-3">Due Date</th>
-                  <th className="px-6 py-3">Assignee</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {recentCases.map((c) => {
-                  const sla = getSlaIndicator(c.dueDate);
-                  return (
-                    <tr
-                      key={c.id}
-                      className="cursor-pointer transition-colors hover:bg-gray-50"
-                      onClick={() =>
-                        (window.location.href = `/cases/${c.id}`)
-                      }
-                    >
-                      <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-brand-600">
+          <>
+            {/* Desktop Table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    <th className="px-6 py-3">Case #</th>
+                    <th className="px-6 py-3">Type</th>
+                    <th className="px-6 py-3">Status</th>
+                    <th className="px-6 py-3">Priority</th>
+                    <th className="px-6 py-3">Due Date</th>
+                    <th className="px-6 py-3">Assignee</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {recentCases.map((c) => {
+                    const sla = getSlaIndicator(c.dueDate);
+                    return (
+                      <tr
+                        key={c.id}
+                        className="cursor-pointer transition-colors hover:bg-gray-50"
+                        onClick={() =>
+                          (window.location.href = `/cases/${c.id}`)
+                        }
+                      >
+                        <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-brand-600">
+                          {c.caseNumber}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
+                          {c.type}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                              STATUS_COLORS[c.status] ?? "bg-gray-100 text-gray-800"
+                            }`}
+                          >
+                            {STATUS_LABELS[c.status] ?? c.status}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                              PRIORITY_COLORS[c.priority] ??
+                              "bg-gray-100 text-gray-700"
+                            }`}
+                          >
+                            {c.priority}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm">
+                          <span
+                            className={`flex items-center gap-1.5 ${
+                              sla === "overdue"
+                                ? "text-red-600"
+                                : sla === "due_soon"
+                                ? "text-yellow-600"
+                                : "text-gray-700"
+                            }`}
+                          >
+                            {sla === "overdue" && (
+                              <span className="inline-block h-2 w-2 rounded-full bg-red-500" />
+                            )}
+                            {sla === "due_soon" && (
+                              <span className="inline-block h-2 w-2 rounded-full bg-yellow-500" />
+                            )}
+                            {new Date(c.dueDate).toLocaleDateString()}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
+                          {c.assignedTo?.name ?? (
+                            <span className="text-gray-400">Unassigned</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Card List */}
+            <div className="divide-y divide-gray-200 md:hidden">
+              {recentCases.map((c) => {
+                const sla = getSlaIndicator(c.dueDate);
+                return (
+                  <div
+                    key={c.id}
+                    className="cursor-pointer px-6 py-4 transition-colors hover:bg-gray-50"
+                    onClick={() => (window.location.href = `/cases/${c.id}`)}
+                  >
+                    {/* Row 1: Case Number + Status Badge */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-brand-600">
                         {c.caseNumber}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
-                        {c.type}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                            STATUS_COLORS[c.status] ?? "bg-gray-100 text-gray-800"
-                          }`}
-                        >
-                          {STATUS_LABELS[c.status] ?? c.status}
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                            PRIORITY_COLORS[c.priority] ??
-                            "bg-gray-100 text-gray-700"
-                          }`}
-                        >
-                          {c.priority}
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm">
+                      </span>
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          STATUS_COLORS[c.status] ?? "bg-gray-100 text-gray-800"
+                        }`}
+                      >
+                        {STATUS_LABELS[c.status] ?? c.status}
+                      </span>
+                    </div>
+
+                    {/* Row 2: Type + Priority */}
+                    <div className="mt-2 flex items-center gap-3 text-sm">
+                      <span className="text-gray-700">{c.type}</span>
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          PRIORITY_COLORS[c.priority] ??
+                          "bg-gray-100 text-gray-700"
+                        }`}
+                      >
+                        {c.priority}
+                      </span>
+                    </div>
+
+                    {/* Row 3: Due Date + Assignee + Chevron */}
+                    <div className="mt-2 flex items-center justify-between">
+                      <div className="flex items-center gap-4 text-xs">
                         <span
                           className={`flex items-center gap-1.5 ${
                             sla === "overdue"
@@ -469,18 +541,31 @@ export default function DashboardPage() {
                           )}
                           {new Date(c.dueDate).toLocaleDateString()}
                         </span>
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
-                        {c.assignedTo?.name ?? (
-                          <span className="text-gray-400">Unassigned</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        <span className="text-gray-700">
+                          {c.assignedTo?.name ?? (
+                            <span className="text-gray-400">Unassigned</span>
+                          )}
+                        </span>
+                      </div>
+                      <svg
+                        className="h-5 w-5 text-gray-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={1.5}
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
     </div>

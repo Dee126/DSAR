@@ -170,7 +170,7 @@ export default function CasesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Cases</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Cases</h1>
           <p className="mt-1 text-sm text-gray-500">
             Manage all data subject access requests
           </p>
@@ -196,7 +196,7 @@ export default function CasesPage() {
       {/* Filter Bar */}
       <div className="card">
         <div className="flex flex-wrap items-end gap-4">
-          <div>
+          <div className="w-full sm:w-auto">
             <label htmlFor="filter-status" className="label">
               Status
             </label>
@@ -207,7 +207,7 @@ export default function CasesPage() {
                 setStatusFilter(e.target.value);
                 setPage(1);
               }}
-              className="input-field w-48"
+              className="input-field w-full sm:w-48"
             >
               <option value="">All Statuses</option>
               {CASE_STATUSES.map((s) => (
@@ -218,7 +218,7 @@ export default function CasesPage() {
             </select>
           </div>
 
-          <div>
+          <div className="w-full sm:w-auto">
             <label htmlFor="filter-type" className="label">
               Type
             </label>
@@ -229,7 +229,7 @@ export default function CasesPage() {
                 setTypeFilter(e.target.value);
                 setPage(1);
               }}
-              className="input-field w-44"
+              className="input-field w-full sm:w-44"
             >
               <option value="">All Types</option>
               {DSAR_TYPES.map((t) => (
@@ -240,7 +240,7 @@ export default function CasesPage() {
             </select>
           </div>
 
-          <div>
+          <div className="w-full sm:w-auto">
             <label htmlFor="filter-assignee" className="label">
               Assignee
             </label>
@@ -251,7 +251,7 @@ export default function CasesPage() {
                 setAssigneeFilter(e.target.value);
                 setPage(1);
               }}
-              className="input-field w-48"
+              className="input-field w-full sm:w-48"
             >
               <option value="">All Assignees</option>
               {users.map((u) => (
@@ -262,8 +262,8 @@ export default function CasesPage() {
             </select>
           </div>
 
-          <form onSubmit={handleSearchSubmit} className="flex items-end gap-2">
-            <div>
+          <form onSubmit={handleSearchSubmit} className="flex items-end gap-2 w-full sm:w-auto">
+            <div className="flex-1 sm:flex-none">
               <label htmlFor="search" className="label">
                 Search
               </label>
@@ -273,7 +273,7 @@ export default function CasesPage() {
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 placeholder="Case #, subject name, email..."
-                className="input-field w-64"
+                className="input-field w-full sm:w-64"
               />
             </div>
             <button type="submit" className="btn-secondary">
@@ -331,46 +331,120 @@ export default function CasesPage() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  <th className="px-6 py-3">Case #</th>
-                  <th className="px-6 py-3">Type</th>
-                  <th className="px-6 py-3">Subject</th>
-                  <th className="px-6 py-3">Status</th>
-                  <th className="px-6 py-3">Priority</th>
-                  <th className="px-6 py-3">Due Date</th>
-                  <th className="px-6 py-3">Assignee</th>
-                  <th className="px-6 py-3">Created</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {cases.map((c) => {
-                  const sla = getSlaIndicator(c.dueDate);
-                  return (
-                    <tr
-                      key={c.id}
-                      className="cursor-pointer transition-colors hover:bg-gray-50"
-                      onClick={() => router.push(`/cases/${c.id}`)}
-                    >
-                      <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-brand-600">
-                        {c.caseNumber}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
-                        {c.type}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-gray-900">
-                          {c.dataSubject.fullName}
-                        </div>
-                        {c.dataSubject.email && (
-                          <div className="text-xs text-gray-500">
-                            {c.dataSubject.email}
+          <>
+            {/* Desktop Table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    <th className="px-6 py-3">Case #</th>
+                    <th className="px-6 py-3">Type</th>
+                    <th className="px-6 py-3">Subject</th>
+                    <th className="px-6 py-3">Status</th>
+                    <th className="px-6 py-3">Priority</th>
+                    <th className="px-6 py-3">Due Date</th>
+                    <th className="px-6 py-3">Assignee</th>
+                    <th className="px-6 py-3">Created</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {cases.map((c) => {
+                    const sla = getSlaIndicator(c.dueDate);
+                    return (
+                      <tr
+                        key={c.id}
+                        className="cursor-pointer transition-colors hover:bg-gray-50"
+                        onClick={() => router.push(`/cases/${c.id}`)}
+                      >
+                        <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-brand-600">
+                          {c.caseNumber}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
+                          {c.type}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm font-medium text-gray-900">
+                            {c.dataSubject.fullName}
                           </div>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4">
+                          {c.dataSubject.email && (
+                            <div className="text-xs text-gray-500">
+                              {c.dataSubject.email}
+                            </div>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                              STATUS_COLORS[c.status] ??
+                              "bg-gray-100 text-gray-800"
+                            }`}
+                          >
+                            {STATUS_LABELS[c.status] ?? c.status}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                              PRIORITY_COLORS[c.priority] ??
+                              "bg-gray-100 text-gray-700"
+                            }`}
+                          >
+                            {c.priority}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm">
+                          <span
+                            className={`flex items-center gap-1.5 ${
+                              sla === "overdue"
+                                ? "font-medium text-red-600"
+                                : sla === "due_soon"
+                                ? "font-medium text-yellow-600"
+                                : "text-gray-700"
+                            }`}
+                          >
+                            {sla !== "ok" && (
+                              <span
+                                className={`inline-block h-2 w-2 rounded-full ${
+                                  sla === "overdue"
+                                    ? "bg-red-500"
+                                    : "bg-yellow-500"
+                                }`}
+                              />
+                            )}
+                            {new Date(c.dueDate).toLocaleDateString()}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
+                          {c.assignedTo?.name ?? (
+                            <span className="text-gray-400">Unassigned</span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                          {new Date(c.createdAt).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Card List */}
+            <div className="divide-y divide-gray-200 md:hidden">
+              {cases.map((c) => {
+                const sla = getSlaIndicator(c.dueDate);
+                return (
+                  <div
+                    key={c.id}
+                    className="cursor-pointer p-4 transition-colors hover:bg-gray-50 relative"
+                    onClick={() => router.push(`/cases/${c.id}`)}
+                  >
+                    <div className="pr-6">
+                      {/* Line 1: Case Number + Status */}
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="text-sm font-medium text-brand-600">
+                          {c.caseNumber}
+                        </span>
                         <span
                           className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
                             STATUS_COLORS[c.status] ??
@@ -379,25 +453,44 @@ export default function CasesPage() {
                         >
                           {STATUS_LABELS[c.status] ?? c.status}
                         </span>
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4">
+                      </div>
+
+                      {/* Line 2: Subject Name */}
+                      <div className="mb-2">
+                        <div className="text-sm font-medium text-gray-900">
+                          {c.dataSubject.fullName}
+                        </div>
+                        {c.dataSubject.email && (
+                          <div className="text-xs text-gray-500">
+                            {c.dataSubject.email}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Line 3: Type + Priority */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs text-gray-600">
+                          {c.type}
+                        </span>
                         <span
-                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
                             PRIORITY_COLORS[c.priority] ??
                             "bg-gray-100 text-gray-700"
                           }`}
                         >
                           {c.priority}
                         </span>
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm">
+                      </div>
+
+                      {/* Line 4: Due Date + Assignee */}
+                      <div className="flex items-center justify-between text-xs">
                         <span
                           className={`flex items-center gap-1.5 ${
                             sla === "overdue"
                               ? "font-medium text-red-600"
                               : sla === "due_soon"
                               ? "font-medium text-yellow-600"
-                              : "text-gray-700"
+                              : "text-gray-600"
                           }`}
                         >
                           {sla !== "ok" && (
@@ -409,28 +502,42 @@ export default function CasesPage() {
                               }`}
                             />
                           )}
-                          {new Date(c.dueDate).toLocaleDateString()}
+                          Due: {new Date(c.dueDate).toLocaleDateString()}
                         </span>
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
-                        {c.assignedTo?.name ?? (
-                          <span className="text-gray-400">Unassigned</span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                        {new Date(c.createdAt).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        <span className="text-gray-600">
+                          {c.assignedTo?.name ?? (
+                            <span className="text-gray-400">Unassigned</span>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Chevron */}
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                      <svg
+                        className="h-5 w-5 text-gray-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
 
         {/* Pagination */}
         {pagination.totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-gray-200 px-6 py-4">
             <p className="text-sm text-gray-500">
               Showing{" "}
               <span className="font-medium">
