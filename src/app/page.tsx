@@ -94,6 +94,9 @@ export default function LandingPage() {
       {/* How it Works */}
       <HowItWorksSection />
 
+      {/* Interactive Demo CTA */}
+      <DemoSection />
+
       {/* Pricing */}
       <PricingSection />
 
@@ -181,10 +184,13 @@ function HeroSection() {
               >
                 Start Free Trial
               </Link>
-              <button className="inline-flex items-center gap-2 rounded-lg border border-gray-600 px-6 py-3 text-sm font-semibold text-white hover:border-gray-400 transition-colors">
+              <Link
+                href="/demo"
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-600 px-6 py-3 text-sm font-semibold text-white hover:border-gray-400 transition-colors"
+              >
                 <PlayIcon className="h-4 w-4" />
-                Watch Demo
-              </button>
+                Start Interactive Demo
+              </Link>
             </div>
             <div className="mt-12">
               <p className="text-sm text-gray-400">Trusted by 500+ companies worldwide</p>
@@ -433,6 +439,61 @@ function HowItWorksSection() {
   );
 }
 
+/* ─── Interactive Demo Section ───────────────────────────────────────────── */
+
+function DemoSection() {
+  const scenarios = [
+    { name: "Access Request", article: "Art. 15", href: "/demo/access" },
+    { name: "Erasure Request", article: "Art. 17", href: "/demo/erasure" },
+    { name: "Objection", article: "Art. 21", href: "/demo/objection" },
+  ];
+
+  return (
+    <section className="bg-white py-20 lg:py-28">
+      <div className="mx-auto max-w-7xl px-6">
+        <div className="mx-auto max-w-3xl text-center">
+          <h2 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
+            See it in action — no sign-up needed
+          </h2>
+          <p className="mt-4 text-lg text-gray-600">
+            Walk through a real DSAR workflow with synthetic data.
+            Experience every step from intake to export in under 5 minutes.
+          </p>
+        </div>
+
+        <div className="mt-12 grid gap-6 sm:grid-cols-3">
+          {scenarios.map((s) => (
+            <Link
+              key={s.href}
+              href={s.href}
+              className="group flex flex-col items-center rounded-2xl border border-gray-200 bg-gray-50 p-8 text-center shadow-sm transition-all hover:border-brand-300 hover:shadow-md"
+            >
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-50 group-hover:bg-brand-100 transition-colors">
+                <PlayIcon className="h-5 w-5 text-brand-600" />
+              </div>
+              <h3 className="mt-4 text-lg font-semibold text-gray-900">{s.name}</h3>
+              <p className="mt-1 text-sm text-gray-500">GDPR {s.article}</p>
+              <span className="mt-4 text-sm font-semibold text-brand-600 group-hover:text-brand-700">
+                Start Demo &rarr;
+              </span>
+            </Link>
+          ))}
+        </div>
+
+        <div className="mt-8 text-center">
+          <Link
+            href="/demo"
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 transition-colors"
+          >
+            <PlayIcon className="h-4 w-4" />
+            View All Demo Scenarios
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ─── Pricing Section ────────────────────────────────────────────────────── */
 
 function PricingSection() {
@@ -606,9 +667,12 @@ function CTASection() {
           >
             Start Free Trial
           </Link>
-          <button className="rounded-lg border border-white/30 px-6 py-3 text-sm font-semibold text-white hover:bg-white/10 transition-colors">
-            Schedule Demo
-          </button>
+          <Link
+            href="/demo"
+            className="rounded-lg border border-white/30 px-6 py-3 text-sm font-semibold text-white hover:bg-white/10 transition-colors"
+          >
+            Start Interactive Demo
+          </Link>
         </div>
       </div>
     </section>
