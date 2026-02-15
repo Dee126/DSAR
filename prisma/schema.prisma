@@ -230,6 +230,48 @@ enum IntegrationHealthStatus {
   NOT_CONFIGURED
 }
 
+// ─── Data Inventory Enums ───────────────────────────────────────────────────
+
+enum SystemCriticality {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum SystemStatus {
+  ACTIVE
+  RETIRED
+}
+
+enum AutomationReadiness {
+  MANUAL
+  SEMI_AUTOMATED
+  API_AVAILABLE
+}
+
+enum ConnectorType {
+  NONE
+  MOCK
+  M365
+  GOOGLE
+  SALESFORCE
+  CUSTOM
+}
+
+enum LawfulBasis {
+  CONSENT
+  CONTRACT
+  LEGAL_OBLIGATION
+  VITAL_INTERESTS
+  PUBLIC_INTEREST
+  LEGITIMATE_INTERESTS
+}
+
+enum ProcessorRole {
+  PROCESSOR
+  SUBPROCESSOR
+}
+
 // ─── Models ─────────────────────────────────────────────────────────────────
 
 model Tenant {
@@ -268,6 +310,10 @@ model Tenant {
   breakGlassEvents   BreakGlassEvent[]
   exportApprovals    ExportApproval[]
   caseTeamMembers    CaseTeamMember[]
+  systemDataCategories SystemDataCategory[]
+  systemProcessors     SystemProcessor[]
+  discoveryRules       DiscoveryRule[]
+  caseSystemLinks      CaseSystemLink[]
 
   @@map("tenants")
 }
@@ -305,6 +351,7 @@ model User {
   breakGlassEventsAck   BreakGlassEvent[]   @relation("BreakGlassAcknowledgedBy")
   exportApprovals       ExportApproval[]    @relation("ExportApprovalApprover")
   caseTeamMemberships   CaseTeamMember[]    @relation("CaseTeamMember")
+  ownedSystems          System[]            @relation("SystemOwner")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -373,6 +420,7 @@ model DSARCase {
   identityProfiles    IdentityProfile[]
   legalHolds          LegalHold[]
   teamMembers         CaseTeamMember[]
+  caseSystemLinks     CaseSystemLink[]
 
   @@unique([tenantId, caseNumber])
   @@index([tenantId])
@@ -498,12 +546,135 @@ model System {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  // Data Inventory fields
+  ownerUserId               String?
+  criticality               SystemCriticality    @default(MEDIUM)
+  systemStatus              SystemStatus         @default(ACTIVE)
+  containsSpecialCategories Boolean              @default(false)
+  inScopeForDsar            Boolean              @default(true)
+  notes                     String?
+
+  // Automation / Connector profile
+  automationReadiness              AutomationReadiness @default(MANUAL)
+  connectorType                    ConnectorType       @default(NONE)
+  exportFormats                    String[]            @default([])
+  estimatedCollectionTimeMinutes   Int?
+
+  // Location
+  dataResidencyPrimary      String?
+  processingRegions         String[]  @default([])
+  thirdCountryTransfers     Boolean   @default(false)
+  thirdCountryTransferDetails String?
+
+  // Identifier types this system uses (email, phone, customerId, employeeId, etc.)
+  identifierTypes           String[]  @default([])
+
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ownerUser           User?                @relation("SystemOwner", fields: [ownerUserId], references: [id])
   tasks               Task[]
   dataCollectionItems DataCollectionItem[]
+  dataCategories      SystemDataCategory[]
+  processors          SystemProcessor[]
+  discoveryRules      DiscoveryRule[]
+  caseSystemLinks     CaseSystemLink[]
 
   @@index([tenantId])
   @@map("systems")
+}
+
+// ─── Data Inventory Models ──────────────────────────────────────────────────
+
+model SystemDataCategory {
+  id                       String       @id @default(uuid())
+  tenantId                 String
+  systemId                 String
+  category                 DataCategory
+  customCategoryName       String?
+  processingPurpose        String?
+  lawfulBasis              LawfulBasis  @default(LEGITIMATE_INTERESTS)
+  retentionPeriod          String?
+  retentionDays            Int?
+  dsarRelevanceAccess      Boolean      @default(true)
+  dsarRelevanceErasure     Boolean      @default(true)
+  dsarRelevanceRectification Boolean    @default(false)
+  dsarRelevancePortability Boolean      @default(false)
+  dsarRelevanceRestriction Boolean      @default(false)
+  dsarRelevanceObjection   Boolean      @default(false)
+  notes                    String?
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  system System @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  @@unique([systemId, category])
+  @@index([tenantId])
+  @@map("system_data_categories")
+}
+
+model SystemProcessor {
+  id                String        @id @default(uuid())
+  tenantId          String
+  systemId          String
+  vendorName        String
+  role              ProcessorRole @default(PROCESSOR)
+  contractReference String?
+  dpaOnFile         Boolean       @default(false)
+  contactEmail      String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  system System @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([systemId])
+  @@map("system_processors")
+}
+
+model DiscoveryRule {
+  id               String     @id @default(uuid())
+  tenantId         String
+  name             String
+  dsarTypes        DSARType[]
+  dataSubjectTypes String[]   @default([])
+  identifierTypes  String[]   @default([])
+  conditions       Json?
+  systemId         String
+  weight           Int        @default(50)
+  active           Boolean    @default(true)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  system System @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, active])
+  @@map("discovery_rules")
+}
+
+model CaseSystemLink {
+  id                    String               @id @default(uuid())
+  tenantId              String
+  caseId                String
+  systemId              String
+  collectionStatus      DataCollectionStatus @default(PENDING)
+  suggestedByDiscovery  Boolean              @default(false)
+  discoveryScore        Float?
+  discoveryReason       String?
+  notes                 String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case   DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  system System   @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  @@unique([caseId, systemId])
+  @@index([tenantId])
+  @@index([tenantId, caseId])
+  @@map("case_system_links")
 }
 
 // ─── New Models ─────────────────────────────────────────────────────────────

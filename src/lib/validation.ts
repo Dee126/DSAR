@@ -84,3 +84,96 @@ export const updateSystemSchema = z.object({
   contactEmail: z.string().email().optional().or(z.literal("")),
   tags: z.array(z.string()).optional(),
 });
+
+// ─── Data Inventory Schemas ─────────────────────────────────────────────────
+
+const CRITICALITY_VALUES = ["LOW", "MEDIUM", "HIGH"] as const;
+const SYSTEM_STATUS_VALUES = ["ACTIVE", "RETIRED"] as const;
+const AUTOMATION_READINESS_VALUES = ["MANUAL", "SEMI_AUTOMATED", "API_AVAILABLE"] as const;
+const CONNECTOR_TYPE_VALUES = ["NONE", "MOCK", "M365", "GOOGLE", "SALESFORCE", "CUSTOM"] as const;
+const LAWFUL_BASIS_VALUES = ["CONSENT", "CONTRACT", "LEGAL_OBLIGATION", "VITAL_INTERESTS", "PUBLIC_INTEREST", "LEGITIMATE_INTERESTS"] as const;
+const PROCESSOR_ROLE_VALUES = ["PROCESSOR", "SUBPROCESSOR"] as const;
+const DATA_CATEGORY_VALUES = ["IDENTIFICATION", "CONTACT", "CONTRACT", "PAYMENT", "COMMUNICATION", "HR", "CREDITWORTHINESS", "ONLINE_TECHNICAL", "HEALTH", "RELIGION", "UNION", "POLITICAL_OPINION", "OTHER_SPECIAL_CATEGORY", "OTHER"] as const;
+const DSAR_TYPE_VALUES = ["ACCESS", "ERASURE", "RECTIFICATION", "RESTRICTION", "PORTABILITY", "OBJECTION"] as const;
+const DC_STATUS_VALUES = ["PENDING", "IN_PROGRESS", "COMPLETED", "FAILED", "NOT_APPLICABLE"] as const;
+
+export const createInventorySystemSchema = z.object({
+  name: z.string().min(1, "System name is required"),
+  description: z.string().optional(),
+  ownerUserId: z.string().uuid().nullable().optional(),
+  contactEmail: z.string().email().optional().or(z.literal("")),
+  tags: z.array(z.string()).optional(),
+  criticality: z.enum(CRITICALITY_VALUES).optional(),
+  systemStatus: z.enum(SYSTEM_STATUS_VALUES).optional(),
+  containsSpecialCategories: z.boolean().optional(),
+  inScopeForDsar: z.boolean().optional(),
+  notes: z.string().optional(),
+  automationReadiness: z.enum(AUTOMATION_READINESS_VALUES).optional(),
+  connectorType: z.enum(CONNECTOR_TYPE_VALUES).optional(),
+  exportFormats: z.array(z.string()).optional(),
+  estimatedCollectionTimeMinutes: z.number().int().min(0).nullable().optional(),
+  dataResidencyPrimary: z.string().optional(),
+  processingRegions: z.array(z.string()).optional(),
+  thirdCountryTransfers: z.boolean().optional(),
+  thirdCountryTransferDetails: z.string().optional(),
+  identifierTypes: z.array(z.string()).optional(),
+});
+
+export const updateInventorySystemSchema = createInventorySystemSchema.partial();
+
+export const createSystemDataCategorySchema = z.object({
+  category: z.enum(DATA_CATEGORY_VALUES),
+  customCategoryName: z.string().optional(),
+  processingPurpose: z.string().optional(),
+  lawfulBasis: z.enum(LAWFUL_BASIS_VALUES).optional(),
+  retentionPeriod: z.string().optional(),
+  retentionDays: z.number().int().min(0).nullable().optional(),
+  dsarRelevanceAccess: z.boolean().optional(),
+  dsarRelevanceErasure: z.boolean().optional(),
+  dsarRelevanceRectification: z.boolean().optional(),
+  dsarRelevancePortability: z.boolean().optional(),
+  dsarRelevanceRestriction: z.boolean().optional(),
+  dsarRelevanceObjection: z.boolean().optional(),
+  notes: z.string().optional(),
+});
+
+export const createSystemProcessorSchema = z.object({
+  vendorName: z.string().min(1, "Vendor name is required"),
+  role: z.enum(PROCESSOR_ROLE_VALUES).optional(),
+  contractReference: z.string().optional(),
+  dpaOnFile: z.boolean().optional(),
+  contactEmail: z.string().email().optional().or(z.literal("")),
+});
+
+export const createDiscoveryRuleSchema = z.object({
+  name: z.string().min(1, "Rule name is required"),
+  dsarTypes: z.array(z.enum(DSAR_TYPE_VALUES)).min(1, "At least one DSAR type required"),
+  dataSubjectTypes: z.array(z.string()).optional(),
+  identifierTypes: z.array(z.string()).optional(),
+  conditions: z.record(z.unknown()).nullable().optional(),
+  systemId: z.string().uuid("Valid system ID is required"),
+  weight: z.number().int().min(1).max(100).optional().default(50),
+  active: z.boolean().optional(),
+});
+
+export const updateDiscoveryRuleSchema = createDiscoveryRuleSchema.partial();
+
+export const runDiscoverySchema = z.object({
+  dsarType: z.enum(DSAR_TYPE_VALUES),
+  dataSubjectType: z.string().optional(),
+  identifierTypes: z.array(z.string()).optional().default([]),
+});
+
+export const createCaseSystemLinkSchema = z.object({
+  systemId: z.string().uuid("Valid system ID is required"),
+  collectionStatus: z.enum(DC_STATUS_VALUES).optional(),
+  suggestedByDiscovery: z.boolean().optional(),
+  discoveryScore: z.number().min(0).max(100).optional(),
+  discoveryReason: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const updateCaseSystemLinkSchema = z.object({
+  collectionStatus: z.enum(DC_STATUS_VALUES).optional(),
+  notes: z.string().optional(),
+});

@@ -64,7 +64,12 @@ export type Permission =
   | "LEGAL_HOLD_MANAGE"
   | "REDACTION_REVIEW"
   // J) Case Team
-  | "CASE_TEAM_MANAGE";
+  | "CASE_TEAM_MANAGE"
+  // K) Data Inventory
+  | "DATA_INVENTORY_VIEW"
+  | "DATA_INVENTORY_MANAGE"
+  | "DISCOVERY_RULES_VIEW"
+  | "DISCOVERY_RULES_MANAGE";
 
 // ─── Role → Permission Matrix ──────────────────────────────────────────────
 
@@ -85,6 +90,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "SYSTEMS_CREATE", "SYSTEMS_READ", "SYSTEMS_UPDATE", "SYSTEMS_DELETE",
     "AUDIT_LOGS_READ", "LEGAL_HOLD_MANAGE", "REDACTION_REVIEW",
     "CASE_TEAM_MANAGE",
+    "DATA_INVENTORY_VIEW", "DATA_INVENTORY_MANAGE", "DISCOVERY_RULES_VIEW", "DISCOVERY_RULES_MANAGE",
   ]),
 
   TENANT_ADMIN: new Set<Permission>([
@@ -103,6 +109,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "SYSTEMS_CREATE", "SYSTEMS_READ", "SYSTEMS_UPDATE", "SYSTEMS_DELETE",
     "AUDIT_LOGS_READ", "LEGAL_HOLD_MANAGE", "REDACTION_REVIEW",
     "CASE_TEAM_MANAGE",
+    "DATA_INVENTORY_VIEW", "DATA_INVENTORY_MANAGE", "DISCOVERY_RULES_VIEW", "DISCOVERY_RULES_MANAGE",
   ]),
 
   DPO: new Set<Permission>([
@@ -127,6 +134,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "SYSTEMS_READ",
     "AUDIT_LOGS_READ", "LEGAL_HOLD_MANAGE", "REDACTION_REVIEW",
     "CASE_TEAM_MANAGE",
+    "DATA_INVENTORY_VIEW", "DATA_INVENTORY_MANAGE", "DISCOVERY_RULES_VIEW", "DISCOVERY_RULES_MANAGE",
   ]),
 
   CASE_MANAGER: new Set<Permission>([
@@ -150,6 +158,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "SYSTEMS_READ",
     // Case team: can manage members for accessible cases
     "CASE_TEAM_MANAGE",
+    "DATA_INVENTORY_VIEW", "DATA_INVENTORY_MANAGE", "DISCOVERY_RULES_VIEW", "DISCOVERY_RULES_MANAGE",
   ]),
 
   ANALYST: new Set<Permission>([
@@ -168,6 +177,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "TASKS_READ", "TASKS_UPDATE",
     "COMMENTS_CREATE", "COMMENTS_READ",
     "SYSTEMS_READ",
+    "DATA_INVENTORY_VIEW",
   ]),
 
   AUDITOR: new Set<Permission>([
@@ -188,6 +198,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "COMMENTS_READ",
     "SYSTEMS_READ",
     "AUDIT_LOGS_READ",
+    "DATA_INVENTORY_VIEW", "DISCOVERY_RULES_VIEW",
   ]),
 
   // Legacy roles mapped for backward compatibility
@@ -265,7 +276,8 @@ type Resource =
   | "cases" | "tasks" | "documents" | "comments" | "users"
   | "settings" | "audit_logs" | "systems" | "export"
   | "integrations" | "copilot" | "copilot_governance"
-  | "legal_hold" | "redaction" | "governance_report";
+  | "legal_hold" | "redaction" | "governance_report"
+  | "data_inventory" | "discovery_rules";
 
 type Action = "create" | "read" | "update" | "delete" | "manage";
 
@@ -354,6 +366,20 @@ const LEGACY_MAP: Record<string, Record<string, Permission[]>> = {
   governance_report: {
     read: ["GOVERNANCE_EXPORT_REPORT"],
   },
+  data_inventory: {
+    read: ["DATA_INVENTORY_VIEW"],
+    create: ["DATA_INVENTORY_MANAGE"],
+    update: ["DATA_INVENTORY_MANAGE"],
+    delete: ["DATA_INVENTORY_MANAGE"],
+    manage: ["DATA_INVENTORY_MANAGE"],
+  },
+  discovery_rules: {
+    read: ["DISCOVERY_RULES_VIEW"],
+    create: ["DISCOVERY_RULES_MANAGE"],
+    update: ["DISCOVERY_RULES_MANAGE"],
+    delete: ["DISCOVERY_RULES_MANAGE"],
+    manage: ["DISCOVERY_RULES_MANAGE"],
+  },
 };
 
 /**
@@ -441,6 +467,14 @@ export function canApproveExportStep1(role: UserRole | string): boolean {
 
 export function canApproveExportStep2(role: UserRole | string): boolean {
   return has(String(role), "EXPORT_APPROVE_STEP2");
+}
+
+export function canViewDataInventory(role: UserRole | string): boolean {
+  return has(String(role), "DATA_INVENTORY_VIEW");
+}
+
+export function canManageDataInventory(role: UserRole | string): boolean {
+  return has(String(role), "DATA_INVENTORY_MANAGE");
 }
 
 // ─── Export Gate Conditions ────────────────────────────────────────────────

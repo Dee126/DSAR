@@ -16,6 +16,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/tasks": "Tasks",
   "/documents": "Documents",
   "/copilot": "Privacy Copilot",
+  "/data-inventory": "Data Inventory",
   "/integrations": "Integrations",
   "/governance": "Governance",
   "/settings": "Settings",
@@ -24,6 +25,7 @@ const PAGE_TITLES: Record<string, string> = {
 function getPageTitle(pathname: string): string {
   if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
   if (pathname.startsWith("/cases/")) return "Case Detail";
+  if (pathname.startsWith("/data-inventory/")) return "System Detail";
   if (pathname.startsWith("/integrations/")) return "Integration";
   return "PrivacyPilot";
 }

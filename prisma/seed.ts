@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory } from "@prisma/client";
+import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -7,6 +7,10 @@ async function main() {
   console.log("Seeding database...");
 
   // Clean existing data (order matters for FK constraints)
+  await prisma.caseSystemLink.deleteMany();
+  await prisma.discoveryRule.deleteMany();
+  await prisma.systemProcessor.deleteMany();
+  await prisma.systemDataCategory.deleteMany();
   await prisma.exportArtifact.deleteMany();
   await prisma.copilotSummary.deleteMany();
   await prisma.detectorResult.deleteMany();
@@ -107,52 +111,216 @@ async function main() {
 
   console.log("Created 6 users");
 
-  // Create systems (processor map)
+  // Create systems (Data Inventory — 10 realistic systems)
   const crmSystem = await prisma.system.create({
     data: {
-      tenantId: tenant.id,
-      name: "CRM System",
-      description: "Customer relationship management - Salesforce",
-      owner: "Sales Department",
-      contactEmail: "crm-admin@acme-corp.com",
-      tags: ["customer-data", "salesforce"],
+      tenantId: tenant.id, name: "CRM System", description: "Customer relationship management - Salesforce",
+      owner: "Sales Department", contactEmail: "crm-admin@acme-corp.com", tags: ["customer-data", "salesforce"],
+      ownerUserId: admin.id, criticality: SystemCriticality.HIGH, systemStatus: SystemStatus.ACTIVE,
+      containsSpecialCategories: false, inScopeForDsar: true,
+      automationReadiness: AutomationReadiness.API_AVAILABLE, connectorType: ConnectorType.SALESFORCE,
+      exportFormats: ["csv", "json"], estimatedCollectionTimeMinutes: 15,
+      dataResidencyPrimary: "EU", processingRegions: ["EU", "US-East"],
+      identifierTypes: ["email", "phone", "customerId"],
     },
   });
 
   const hrSystem = await prisma.system.create({
     data: {
-      tenantId: tenant.id,
-      name: "HR Platform",
-      description: "Employee data management - Workday",
-      owner: "Human Resources",
-      contactEmail: "hr-admin@acme-corp.com",
-      tags: ["employee-data", "workday"],
+      tenantId: tenant.id, name: "HR Platform", description: "Employee data management - Workday",
+      owner: "Human Resources", contactEmail: "hr-admin@acme-corp.com", tags: ["employee-data", "workday"],
+      ownerUserId: dpo.id, criticality: SystemCriticality.HIGH, systemStatus: SystemStatus.ACTIVE,
+      containsSpecialCategories: true, inScopeForDsar: true,
+      automationReadiness: AutomationReadiness.SEMI_AUTOMATED, connectorType: ConnectorType.NONE,
+      exportFormats: ["csv", "pdf"], estimatedCollectionTimeMinutes: 60,
+      dataResidencyPrimary: "EU", processingRegions: ["EU"],
+      identifierTypes: ["email", "employeeId"],
     },
   });
 
   const analyticsSystem = await prisma.system.create({
     data: {
-      tenantId: tenant.id,
-      name: "Analytics Platform",
-      description: "User behavior analytics - Mixpanel",
-      owner: "Product Team",
-      contactEmail: "analytics@acme-corp.com",
-      tags: ["analytics", "behavioral-data"],
+      tenantId: tenant.id, name: "Analytics Platform", description: "User behavior analytics - Mixpanel",
+      owner: "Product Team", contactEmail: "analytics@acme-corp.com", tags: ["analytics", "behavioral-data"],
+      criticality: SystemCriticality.MEDIUM, systemStatus: SystemStatus.ACTIVE,
+      containsSpecialCategories: false, inScopeForDsar: true,
+      automationReadiness: AutomationReadiness.API_AVAILABLE, connectorType: ConnectorType.CUSTOM,
+      exportFormats: ["json", "csv"], estimatedCollectionTimeMinutes: 10,
+      dataResidencyPrimary: "US", processingRegions: ["US", "EU"],
+      identifierTypes: ["email", "customerId"],
     },
   });
 
   const emailSystem = await prisma.system.create({
     data: {
-      tenantId: tenant.id,
-      name: "Email Marketing",
-      description: "Email marketing platform - Mailchimp",
-      owner: "Marketing Team",
-      contactEmail: "marketing@acme-corp.com",
-      tags: ["marketing", "email", "consent"],
+      tenantId: tenant.id, name: "Email Marketing", description: "Email marketing platform - Mailchimp",
+      owner: "Marketing Team", contactEmail: "marketing@acme-corp.com", tags: ["marketing", "email", "consent"],
+      criticality: SystemCriticality.MEDIUM, systemStatus: SystemStatus.ACTIVE,
+      inScopeForDsar: true,
+      automationReadiness: AutomationReadiness.API_AVAILABLE, connectorType: ConnectorType.CUSTOM,
+      exportFormats: ["csv"], estimatedCollectionTimeMinutes: 5,
+      dataResidencyPrimary: "US", processingRegions: ["US"],
+      identifierTypes: ["email"],
     },
   });
 
-  console.log("Created 4 systems");
+  const m365System = await prisma.system.create({
+    data: {
+      tenantId: tenant.id, name: "Microsoft 365", description: "Email, files, collaboration - Exchange, SharePoint, OneDrive, Teams",
+      owner: "IT Department", contactEmail: "it-admin@acme-corp.com", tags: ["m365", "email", "files"],
+      ownerUserId: admin.id, criticality: SystemCriticality.HIGH, systemStatus: SystemStatus.ACTIVE,
+      containsSpecialCategories: false, inScopeForDsar: true,
+      automationReadiness: AutomationReadiness.API_AVAILABLE, connectorType: ConnectorType.M365,
+      exportFormats: ["json", "csv", "pdf"], estimatedCollectionTimeMinutes: 30,
+      dataResidencyPrimary: "EU", processingRegions: ["EU"],
+      identifierTypes: ["email", "employeeId"],
+    },
+  });
+
+  const financeSystem = await prisma.system.create({
+    data: {
+      tenantId: tenant.id, name: "Finance (SAP)", description: "Financial ERP - SAP S/4HANA",
+      owner: "Finance Department", contactEmail: "finance-admin@acme-corp.com", tags: ["finance", "sap", "billing"],
+      criticality: SystemCriticality.HIGH, systemStatus: SystemStatus.ACTIVE,
+      containsSpecialCategories: false, inScopeForDsar: true,
+      automationReadiness: AutomationReadiness.MANUAL, connectorType: ConnectorType.NONE,
+      exportFormats: ["csv", "pdf"], estimatedCollectionTimeMinutes: 120,
+      dataResidencyPrimary: "EU", processingRegions: ["EU"],
+      identifierTypes: ["email", "customerId"],
+    },
+  });
+
+  const supportSystem = await prisma.system.create({
+    data: {
+      tenantId: tenant.id, name: "Support (Zendesk)", description: "Customer support ticketing - Zendesk",
+      owner: "Support Team", contactEmail: "support-admin@acme-corp.com", tags: ["support", "zendesk", "tickets"],
+      criticality: SystemCriticality.MEDIUM, systemStatus: SystemStatus.ACTIVE,
+      inScopeForDsar: true,
+      automationReadiness: AutomationReadiness.API_AVAILABLE, connectorType: ConnectorType.CUSTOM,
+      exportFormats: ["json", "csv"], estimatedCollectionTimeMinutes: 10,
+      dataResidencyPrimary: "US", processingRegions: ["US", "EU"],
+      identifierTypes: ["email", "phone"],
+    },
+  });
+
+  const iamSystem = await prisma.system.create({
+    data: {
+      tenantId: tenant.id, name: "IAM (Okta)", description: "Identity and access management - Okta",
+      owner: "IT Security", contactEmail: "iam-admin@acme-corp.com", tags: ["iam", "okta", "identity"],
+      ownerUserId: admin.id, criticality: SystemCriticality.HIGH, systemStatus: SystemStatus.ACTIVE,
+      inScopeForDsar: true,
+      automationReadiness: AutomationReadiness.API_AVAILABLE, connectorType: ConnectorType.CUSTOM,
+      exportFormats: ["json"], estimatedCollectionTimeMinutes: 5,
+      dataResidencyPrimary: "US", processingRegions: ["US", "EU"],
+      identifierTypes: ["email", "employeeId"],
+    },
+  });
+
+  const marketingSystem = await prisma.system.create({
+    data: {
+      tenantId: tenant.id, name: "Marketing (HubSpot)", description: "Marketing automation and CRM - HubSpot",
+      owner: "Marketing Team", contactEmail: "hubspot-admin@acme-corp.com", tags: ["marketing", "hubspot"],
+      criticality: SystemCriticality.MEDIUM, systemStatus: SystemStatus.ACTIVE,
+      inScopeForDsar: true,
+      automationReadiness: AutomationReadiness.API_AVAILABLE, connectorType: ConnectorType.CUSTOM,
+      exportFormats: ["csv", "json"], estimatedCollectionTimeMinutes: 10,
+      dataResidencyPrimary: "EU", processingRegions: ["EU", "US"],
+      identifierTypes: ["email", "phone", "customerId"],
+    },
+  });
+
+  const fileShareSystem = await prisma.system.create({
+    data: {
+      tenantId: tenant.id, name: "File Share (Legacy)", description: "Legacy on-premises file server",
+      owner: "IT Department", contactEmail: "it-admin@acme-corp.com", tags: ["legacy", "files"],
+      criticality: SystemCriticality.LOW, systemStatus: SystemStatus.RETIRED,
+      inScopeForDsar: false,
+      automationReadiness: AutomationReadiness.MANUAL, connectorType: ConnectorType.NONE,
+      dataResidencyPrimary: "EU", processingRegions: ["EU"],
+      identifierTypes: ["employeeId"],
+    },
+  });
+
+  console.log("Created 10 systems");
+
+  // ── System Data Categories ────────────────────────────────────────────
+  await prisma.systemDataCategory.createMany({
+    data: [
+      // CRM
+      { tenantId: tenant.id, systemId: crmSystem.id, category: "IDENTIFICATION", processingPurpose: "Customer identification and account management", lawfulBasis: LawfulBasis.CONTRACT, retentionPeriod: "Duration of contract + 3 years", retentionDays: 1095 },
+      { tenantId: tenant.id, systemId: crmSystem.id, category: "CONTACT", processingPurpose: "Customer communication", lawfulBasis: LawfulBasis.CONTRACT },
+      { tenantId: tenant.id, systemId: crmSystem.id, category: "CONTRACT", processingPurpose: "Contract management", lawfulBasis: LawfulBasis.CONTRACT, retentionPeriod: "7 years", retentionDays: 2555 },
+      { tenantId: tenant.id, systemId: crmSystem.id, category: "COMMUNICATION", processingPurpose: "Sales communications", lawfulBasis: LawfulBasis.LEGITIMATE_INTERESTS },
+      // HR
+      { tenantId: tenant.id, systemId: hrSystem.id, category: "IDENTIFICATION", processingPurpose: "Employee identification", lawfulBasis: LawfulBasis.CONTRACT },
+      { tenantId: tenant.id, systemId: hrSystem.id, category: "CONTACT", processingPurpose: "Employee communication", lawfulBasis: LawfulBasis.CONTRACT },
+      { tenantId: tenant.id, systemId: hrSystem.id, category: "HR", processingPurpose: "Employment management, payroll", lawfulBasis: LawfulBasis.CONTRACT, retentionPeriod: "Employment + 10 years", retentionDays: 3650 },
+      { tenantId: tenant.id, systemId: hrSystem.id, category: "HEALTH", processingPurpose: "Occupational health records", lawfulBasis: LawfulBasis.LEGAL_OBLIGATION, retentionPeriod: "Employment + 10 years", retentionDays: 3650 },
+      { tenantId: tenant.id, systemId: hrSystem.id, category: "PAYMENT", processingPurpose: "Payroll processing", lawfulBasis: LawfulBasis.CONTRACT },
+      // Analytics
+      { tenantId: tenant.id, systemId: analyticsSystem.id, category: "ONLINE_TECHNICAL", processingPurpose: "Product analytics and improvement", lawfulBasis: LawfulBasis.LEGITIMATE_INTERESTS, retentionPeriod: "24 months", retentionDays: 730 },
+      { tenantId: tenant.id, systemId: analyticsSystem.id, category: "IDENTIFICATION", processingPurpose: "User identification for analytics", lawfulBasis: LawfulBasis.LEGITIMATE_INTERESTS },
+      // Email Marketing
+      { tenantId: tenant.id, systemId: emailSystem.id, category: "CONTACT", processingPurpose: "Marketing email delivery", lawfulBasis: LawfulBasis.CONSENT },
+      { tenantId: tenant.id, systemId: emailSystem.id, category: "ONLINE_TECHNICAL", processingPurpose: "Email engagement tracking", lawfulBasis: LawfulBasis.CONSENT },
+      // M365
+      { tenantId: tenant.id, systemId: m365System.id, category: "IDENTIFICATION", processingPurpose: "User directory management", lawfulBasis: LawfulBasis.CONTRACT },
+      { tenantId: tenant.id, systemId: m365System.id, category: "COMMUNICATION", processingPurpose: "Business email and collaboration", lawfulBasis: LawfulBasis.CONTRACT, retentionPeriod: "5 years", retentionDays: 1825 },
+      { tenantId: tenant.id, systemId: m365System.id, category: "CONTACT", processingPurpose: "Employee contacts", lawfulBasis: LawfulBasis.CONTRACT },
+      // Finance
+      { tenantId: tenant.id, systemId: financeSystem.id, category: "PAYMENT", processingPurpose: "Billing and payment processing", lawfulBasis: LawfulBasis.CONTRACT, retentionPeriod: "7 years (tax)", retentionDays: 2555 },
+      { tenantId: tenant.id, systemId: financeSystem.id, category: "IDENTIFICATION", processingPurpose: "Customer billing identification", lawfulBasis: LawfulBasis.CONTRACT },
+      { tenantId: tenant.id, systemId: financeSystem.id, category: "CREDITWORTHINESS", processingPurpose: "Credit assessment", lawfulBasis: LawfulBasis.LEGITIMATE_INTERESTS },
+      // Support
+      { tenantId: tenant.id, systemId: supportSystem.id, category: "IDENTIFICATION", processingPurpose: "Ticket resolution", lawfulBasis: LawfulBasis.CONTRACT },
+      { tenantId: tenant.id, systemId: supportSystem.id, category: "CONTACT", processingPurpose: "Support communication", lawfulBasis: LawfulBasis.CONTRACT },
+      { tenantId: tenant.id, systemId: supportSystem.id, category: "COMMUNICATION", processingPurpose: "Support ticket history", lawfulBasis: LawfulBasis.LEGITIMATE_INTERESTS, retentionPeriod: "3 years", retentionDays: 1095 },
+      // HubSpot
+      { tenantId: tenant.id, systemId: marketingSystem.id, category: "CONTACT", processingPurpose: "Marketing outreach", lawfulBasis: LawfulBasis.CONSENT },
+      { tenantId: tenant.id, systemId: marketingSystem.id, category: "ONLINE_TECHNICAL", processingPurpose: "Website tracking", lawfulBasis: LawfulBasis.CONSENT },
+    ],
+  });
+
+  console.log("Created system data categories");
+
+  // ── System Processors (Vendors) ───────────────────────────────────────
+  await prisma.systemProcessor.createMany({
+    data: [
+      { tenantId: tenant.id, systemId: crmSystem.id, vendorName: "Salesforce Inc.", role: ProcessorRole.PROCESSOR, dpaOnFile: true, contractReference: "DPA-2024-001" },
+      { tenantId: tenant.id, systemId: hrSystem.id, vendorName: "Workday Inc.", role: ProcessorRole.PROCESSOR, dpaOnFile: true, contractReference: "DPA-2024-002" },
+      { tenantId: tenant.id, systemId: analyticsSystem.id, vendorName: "Mixpanel Inc.", role: ProcessorRole.PROCESSOR, dpaOnFile: true, contractReference: "DPA-2024-003" },
+      { tenantId: tenant.id, systemId: emailSystem.id, vendorName: "Intuit (Mailchimp)", role: ProcessorRole.PROCESSOR, dpaOnFile: true, contractReference: "DPA-2024-004" },
+      { tenantId: tenant.id, systemId: m365System.id, vendorName: "Microsoft Corporation", role: ProcessorRole.PROCESSOR, dpaOnFile: true, contractReference: "DPA-2024-005" },
+      { tenantId: tenant.id, systemId: financeSystem.id, vendorName: "SAP SE", role: ProcessorRole.PROCESSOR, dpaOnFile: true, contractReference: "DPA-2024-006" },
+      { tenantId: tenant.id, systemId: supportSystem.id, vendorName: "Zendesk Inc.", role: ProcessorRole.PROCESSOR, dpaOnFile: true, contractReference: "DPA-2024-007" },
+      { tenantId: tenant.id, systemId: supportSystem.id, vendorName: "AWS (Zendesk hosting)", role: ProcessorRole.SUBPROCESSOR, dpaOnFile: true },
+      { tenantId: tenant.id, systemId: iamSystem.id, vendorName: "Okta Inc.", role: ProcessorRole.PROCESSOR, dpaOnFile: true, contractReference: "DPA-2024-008" },
+      { tenantId: tenant.id, systemId: marketingSystem.id, vendorName: "HubSpot Inc.", role: ProcessorRole.PROCESSOR, dpaOnFile: true, contractReference: "DPA-2024-009" },
+    ],
+  });
+
+  console.log("Created system processors");
+
+  // ── Discovery Rules ───────────────────────────────────────────────────
+  await prisma.discoveryRule.createMany({
+    data: [
+      // Customer-facing systems → ACCESS/ERASURE/PORTABILITY for customer subjects
+      { tenantId: tenant.id, name: "CRM: Customer data (all DSAR types)", dsarTypes: [DSARType.ACCESS, DSARType.ERASURE, DSARType.RECTIFICATION, DSARType.PORTABILITY], dataSubjectTypes: ["customer"], identifierTypes: ["email", "customerId", "phone"], systemId: crmSystem.id, weight: 90, active: true },
+      { tenantId: tenant.id, name: "Support: Customer tickets", dsarTypes: [DSARType.ACCESS, DSARType.ERASURE], dataSubjectTypes: ["customer"], identifierTypes: ["email", "phone"], systemId: supportSystem.id, weight: 75, active: true },
+      { tenantId: tenant.id, name: "Email Marketing: Subscriber data", dsarTypes: [DSARType.ACCESS, DSARType.ERASURE, DSARType.OBJECTION], dataSubjectTypes: ["customer"], identifierTypes: ["email"], systemId: emailSystem.id, weight: 70, active: true },
+      { tenantId: tenant.id, name: "Analytics: Behavioral data", dsarTypes: [DSARType.ACCESS, DSARType.ERASURE], dataSubjectTypes: ["customer", "visitor"], identifierTypes: ["email", "customerId"], systemId: analyticsSystem.id, weight: 60, active: true },
+      { tenantId: tenant.id, name: "HubSpot: Marketing data", dsarTypes: [DSARType.ACCESS, DSARType.ERASURE, DSARType.OBJECTION], dataSubjectTypes: ["customer"], identifierTypes: ["email", "phone", "customerId"], systemId: marketingSystem.id, weight: 65, active: true },
+      { tenantId: tenant.id, name: "Finance: Billing records", dsarTypes: [DSARType.ACCESS, DSARType.RECTIFICATION], dataSubjectTypes: ["customer"], identifierTypes: ["email", "customerId"], systemId: financeSystem.id, weight: 80, active: true },
+      // Employee-facing systems
+      { tenantId: tenant.id, name: "HR: Employee data (all types)", dsarTypes: [DSARType.ACCESS, DSARType.ERASURE, DSARType.RECTIFICATION, DSARType.PORTABILITY], dataSubjectTypes: ["employee"], identifierTypes: ["email", "employeeId"], systemId: hrSystem.id, weight: 95, active: true },
+      { tenantId: tenant.id, name: "M365: Employee mailbox & files", dsarTypes: [DSARType.ACCESS, DSARType.ERASURE, DSARType.PORTABILITY], dataSubjectTypes: ["employee"], identifierTypes: ["email", "employeeId"], systemId: m365System.id, weight: 85, active: true },
+      { tenantId: tenant.id, name: "IAM: Identity records", dsarTypes: [DSARType.ACCESS, DSARType.ERASURE], dataSubjectTypes: ["employee", "customer"], identifierTypes: ["email", "employeeId"], systemId: iamSystem.id, weight: 70, active: true },
+      // CRM also relevant for employee DSARs (internal contacts)
+      { tenantId: tenant.id, name: "CRM: Employee contact data", dsarTypes: [DSARType.ACCESS], dataSubjectTypes: ["employee"], identifierTypes: ["email"], systemId: crmSystem.id, weight: 40, active: true },
+    ],
+  });
+
+  console.log("Created discovery rules");
 
   // Helper for due dates
   const daysFromNow = (days: number) => {
@@ -396,6 +564,26 @@ async function main() {
   });
 
   console.log("Created 5 DSAR cases");
+
+  // ── Case-System Links ─────────────────────────────────────────────────
+  await prisma.caseSystemLink.createMany({
+    data: [
+      // Case 1 (ACCESS, John Smith — customer)
+      { tenantId: tenant.id, caseId: case1.id, systemId: crmSystem.id, collectionStatus: "IN_PROGRESS", suggestedByDiscovery: true, discoveryScore: 95, discoveryReason: "CRM: Customer data rule matched (email + customerId)" },
+      { tenantId: tenant.id, caseId: case1.id, systemId: analyticsSystem.id, collectionStatus: "PENDING", suggestedByDiscovery: true, discoveryScore: 72, discoveryReason: "Analytics: Behavioral data rule matched (email)" },
+      { tenantId: tenant.id, caseId: case1.id, systemId: emailSystem.id, collectionStatus: "PENDING", suggestedByDiscovery: true, discoveryScore: 68, discoveryReason: "Email Marketing: Subscriber data rule matched (email)" },
+      { tenantId: tenant.id, caseId: case1.id, systemId: supportSystem.id, collectionStatus: "COMPLETED", suggestedByDiscovery: true, discoveryScore: 78, discoveryReason: "Support: Customer tickets rule matched (email)" },
+      { tenantId: tenant.id, caseId: case1.id, systemId: hrSystem.id, collectionStatus: "NOT_APPLICABLE", suggestedByDiscovery: false, notes: "No employee records found for this data subject" },
+      // Case 2 (ERASURE, Jane Doe — customer)
+      { tenantId: tenant.id, caseId: case2.id, systemId: crmSystem.id, collectionStatus: "COMPLETED", suggestedByDiscovery: true, discoveryScore: 95 },
+      { tenantId: tenant.id, caseId: case2.id, systemId: emailSystem.id, collectionStatus: "COMPLETED", suggestedByDiscovery: true, discoveryScore: 70 },
+      { tenantId: tenant.id, caseId: case2.id, systemId: m365System.id, collectionStatus: "COMPLETED", suggestedByDiscovery: false },
+      // Case 3 (RECTIFICATION, Robert Johnson)
+      { tenantId: tenant.id, caseId: case3.id, systemId: crmSystem.id, collectionStatus: "PENDING", suggestedByDiscovery: true, discoveryScore: 90 },
+    ],
+  });
+
+  console.log("Created case-system links");
 
   // State transitions for case1
   await prisma.dSARStateTransition.createMany({
