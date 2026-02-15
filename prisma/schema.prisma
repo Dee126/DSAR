@@ -404,6 +404,11 @@ model Tenant {
   idvDecisions         IdvDecision[]
   idvRiskAssessments   IdvRiskAssessment[]
   idvSettings          IdvSettings?
+  responseTemplates    ResponseTemplate[]
+  responseDocuments    ResponseDocument[]
+  responseApprovals    ResponseApproval[]
+  deliveryRecords      DeliveryRecord[]
+  redactionEntries     RedactionEntry[]
 
   @@map("tenants")
 }
@@ -446,6 +451,12 @@ model User {
   escalationsCreated    Escalation[]        @relation("EscalationCreatedBy")
   deadlineEventsActor   DeadlineEvent[]     @relation("DeadlineEventActor")
   idvDecisions          IdvDecision[]       @relation("IdvDecisionReviewer")
+  responseDocsCreated   ResponseDocument[]  @relation("ResponseDocCreatedBy")
+  responseDocsEdited    ResponseDocument[]  @relation("ResponseDocEditedBy")
+  responseDocsApproved  ResponseDocument[]  @relation("ResponseDocApprovedBy")
+  responseApprovals     ResponseApproval[]  @relation("ResponseApprovalReviewer")
+  deliveryRecords       DeliveryRecord[]    @relation("DeliveryRecordCreatedBy")
+  redactionEntries      RedactionEntry[]    @relation("RedactionEntryCreatedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -520,6 +531,7 @@ model DSARCase {
   milestones          CaseMilestone[]
   escalations         Escalation[]
   idvRequest          IdvRequest?
+  responseDocuments   ResponseDocument[]
 
   @@unique([tenantId, caseNumber])
   @@index([tenantId])
@@ -1514,4 +1526,165 @@ model IdvSettings {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("idv_settings")
+}
+
+// ─── Response Generator Enums ───────────────────────────────────────────────
+
+enum ResponseDocStatus {
+  DRAFT
+  IN_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  SENT
+}
+
+enum DeliveryMethod {
+  EMAIL
+  POSTAL
+  PORTAL
+  API
+}
+
+// ─── Response Generator Models ──────────────────────────────────────────────
+
+model ResponseTemplate {
+  id                String     @id @default(uuid())
+  tenantId          String?    // null = system default (read-only baseline)
+  name              String
+  language          String     @default("en")
+  jurisdiction      String     @default("GDPR")
+  dsarTypes         DSARType[]
+  subjectTypes      String[]   @default([])
+  sections          Json       // Array of { key, title, body (HTML with placeholders) }
+  placeholders      Json?      // Array of { key, label, description }
+  conditionals      Json?      // Array of { condition, sectionKey, show }
+  disclaimerText    String?
+  isBaseline        Boolean    @default(false) // true = system-provided read-only
+  clonedFromId      String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  tenant            Tenant?    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clonedFrom        ResponseTemplate?  @relation("TemplateClones", fields: [clonedFromId], references: [id])
+  clones            ResponseTemplate[] @relation("TemplateClones")
+  versions          ResponseTemplateVersion[]
+  responseDocuments ResponseDocument[]
+
+  @@index([tenantId])
+  @@index([tenantId, language])
+  @@map("response_templates")
+}
+
+model ResponseTemplateVersion {
+  id          String   @id @default(uuid())
+  templateId  String
+  version     Int
+  sections    Json     // Snapshot of sections at this version
+  changedBy   String?
+  changeNote  String?
+  createdAt   DateTime @default(now())
+
+  template ResponseTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, version])
+  @@index([templateId])
+  @@map("response_template_versions")
+}
+
+model ResponseDocument {
+  id              String          @id @default(uuid())
+  tenantId        String
+  caseId          String
+  templateId      String?
+  version         Int             @default(1)
+  status          ResponseDocStatus @default(DRAFT)
+  language        String          @default("en")
+  sections        Json            // Array of { key, title, renderedHtml }
+  fullHtml        String          // Rendered full document HTML
+  factPackSnapshot Json?          // Snapshot of data used for generation
+  aiAssisted      Boolean         @default(false)
+  aiModelUsed     String?
+  aiWarnings      String[]        @default([])
+  storageKeyPdf   String?
+  storageKeyDocx  String?
+  createdByUserId String
+  editedByUserId  String?
+  editedAt        DateTime?
+  approvedByUserId String?
+  approvedAt      DateTime?
+  sentAt          DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case       DSARCase          @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  template   ResponseTemplate? @relation(fields: [templateId], references: [id])
+  createdBy  User              @relation("ResponseDocCreatedBy", fields: [createdByUserId], references: [id])
+  editedBy   User?             @relation("ResponseDocEditedBy", fields: [editedByUserId], references: [id])
+  approvedBy User?             @relation("ResponseDocApprovedBy", fields: [approvedByUserId], references: [id])
+  approvals  ResponseApproval[]
+  deliveries DeliveryRecord[]
+  redactions RedactionEntry[]
+
+  @@index([tenantId, caseId])
+  @@index([tenantId, status])
+  @@map("response_documents")
+}
+
+model ResponseApproval {
+  id                String   @id @default(uuid())
+  tenantId          String
+  responseDocId     String
+  reviewerUserId    String
+  action            String   // "approve", "request_changes", "reject"
+  comments          String?
+  createdAt         DateTime @default(now())
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  responseDoc  ResponseDocument @relation(fields: [responseDocId], references: [id], onDelete: Cascade)
+  reviewer     User             @relation("ResponseApprovalReviewer", fields: [reviewerUserId], references: [id])
+
+  @@index([tenantId, responseDocId])
+  @@map("response_approvals")
+}
+
+model DeliveryRecord {
+  id              String         @id @default(uuid())
+  tenantId        String
+  responseDocId   String
+  method          DeliveryMethod
+  recipientRef    String?        // email address, postal ref, etc.
+  proofStorageKey String?        // pointer to uploaded proof file
+  sentAt          DateTime       @default(now())
+  notes           String?
+  createdByUserId String
+  createdAt       DateTime       @default(now())
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  responseDoc ResponseDocument @relation(fields: [responseDocId], references: [id], onDelete: Cascade)
+  createdBy   User             @relation("DeliveryRecordCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([tenantId, responseDocId])
+  @@map("delivery_records")
+}
+
+model RedactionEntry {
+  id              String   @id @default(uuid())
+  tenantId        String
+  responseDocId   String
+  caseId          String
+  sectionKey      String?
+  documentRef     String?  // reference to external doc/attachment
+  redactedContent String?  // description of what was redacted
+  reason          String
+  createdByUserId String
+  createdAt       DateTime @default(now())
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  responseDoc ResponseDocument @relation(fields: [responseDocId], references: [id], onDelete: Cascade)
+  createdBy   User             @relation("RedactionEntryCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([tenantId, responseDocId])
+  @@index([tenantId, caseId])
+  @@map("redaction_entries")
 }

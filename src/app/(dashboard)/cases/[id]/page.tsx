@@ -7,6 +7,7 @@ import Link from "next/link";
 import CopilotRunDialog from "@/components/CopilotRunDialog";
 import DeadlinePanel from "@/components/DeadlinePanel";
 import IdvPanel from "@/components/IdvPanel";
+import ResponsePanel from "@/components/ResponsePanel";
 
 /* ── Display helpers ──────────────────────────────────────────────────── */
 
@@ -212,7 +213,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   OTHER: "bg-gray-100 text-gray-600",
 };
 
-type TabKey = "overview" | "tasks" | "documents" | "communications" | "data-collection" | "legal-review" | "copilot" | "timeline" | "deadlines" | "idv";
+type TabKey = "overview" | "tasks" | "documents" | "communications" | "data-collection" | "legal-review" | "copilot" | "response" | "timeline" | "deadlines" | "idv";
 
 /* ── Component ────────────────────────────────────────────────────────── */
 
@@ -600,6 +601,7 @@ export default function CaseDetailPage() {
     { key: "data-collection", label: "Data Collection", count: caseData.dataCollectionItems?.length ?? 0 },
     { key: "legal-review", label: "Legal Review", count: caseData.legalReviews?.length ?? 0 },
     { key: "copilot", label: "Copilot", count: copilotRuns.length },
+    { key: "response", label: "Response" },
     { key: "idv", label: "Identity" },
     { key: "deadlines", label: "Deadlines" },
     { key: "timeline", label: "Timeline" },
@@ -1096,6 +1098,10 @@ export default function CaseDetailPage() {
                 />
               )}
             </>
+          )}
+
+          {activeTab === "response" && (
+            <ResponsePanel caseId={caseId} userRole={session?.user?.role} />
           )}
 
           {activeTab === "idv" && (

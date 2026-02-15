@@ -84,7 +84,16 @@ export type Permission =
   | "IDV_DECIDE"
   | "IDV_VIEW_ARTIFACTS"
   | "IDV_SETTINGS_VIEW"
-  | "IDV_SETTINGS_EDIT";
+  | "IDV_SETTINGS_EDIT"
+  // N) Response Generator
+  | "RESPONSE_VIEW"
+  | "RESPONSE_GENERATE"
+  | "RESPONSE_EDIT"
+  | "RESPONSE_SUBMIT_REVIEW"
+  | "RESPONSE_APPROVE"
+  | "RESPONSE_SEND"
+  | "RESPONSE_TEMPLATE_VIEW"
+  | "RESPONSE_TEMPLATE_MANAGE";
 
 // ─── Role → Permission Matrix ──────────────────────────────────────────────
 
@@ -109,6 +118,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "DEADLINES_VIEW", "DEADLINES_EXTEND", "DEADLINES_PAUSE", "ESCALATIONS_VIEW",
     "SLA_CONFIG_VIEW", "SLA_CONFIG_EDIT", "NOTIFICATIONS_VIEW",
     "IDV_VIEW", "IDV_MANAGE", "IDV_DECIDE", "IDV_VIEW_ARTIFACTS", "IDV_SETTINGS_VIEW", "IDV_SETTINGS_EDIT",
+    "RESPONSE_VIEW", "RESPONSE_GENERATE", "RESPONSE_EDIT", "RESPONSE_SUBMIT_REVIEW", "RESPONSE_APPROVE", "RESPONSE_SEND",
+    "RESPONSE_TEMPLATE_VIEW", "RESPONSE_TEMPLATE_MANAGE",
   ]),
 
   TENANT_ADMIN: new Set<Permission>([
@@ -131,6 +142,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "DEADLINES_VIEW", "DEADLINES_EXTEND", "DEADLINES_PAUSE", "ESCALATIONS_VIEW",
     "SLA_CONFIG_VIEW", "SLA_CONFIG_EDIT", "NOTIFICATIONS_VIEW",
     "IDV_VIEW", "IDV_MANAGE", "IDV_DECIDE", "IDV_VIEW_ARTIFACTS", "IDV_SETTINGS_VIEW", "IDV_SETTINGS_EDIT",
+    "RESPONSE_VIEW", "RESPONSE_GENERATE", "RESPONSE_EDIT", "RESPONSE_SUBMIT_REVIEW", "RESPONSE_APPROVE", "RESPONSE_SEND",
+    "RESPONSE_TEMPLATE_VIEW", "RESPONSE_TEMPLATE_MANAGE",
   ]),
 
   DPO: new Set<Permission>([
@@ -159,6 +172,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "DEADLINES_VIEW", "DEADLINES_EXTEND", "ESCALATIONS_VIEW",
     "SLA_CONFIG_VIEW", "SLA_CONFIG_EDIT", "NOTIFICATIONS_VIEW",
     "IDV_VIEW", "IDV_MANAGE", "IDV_DECIDE", "IDV_VIEW_ARTIFACTS", "IDV_SETTINGS_VIEW", "IDV_SETTINGS_EDIT",
+    "RESPONSE_VIEW", "RESPONSE_GENERATE", "RESPONSE_EDIT", "RESPONSE_SUBMIT_REVIEW", "RESPONSE_APPROVE", "RESPONSE_SEND",
+    "RESPONSE_TEMPLATE_VIEW", "RESPONSE_TEMPLATE_MANAGE",
   ]),
 
   CASE_MANAGER: new Set<Permission>([
@@ -186,6 +201,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "DEADLINES_VIEW", "DEADLINES_EXTEND", "ESCALATIONS_VIEW",
     "SLA_CONFIG_VIEW", "NOTIFICATIONS_VIEW",
     "IDV_VIEW", "IDV_MANAGE", "IDV_VIEW_ARTIFACTS",
+    "RESPONSE_VIEW", "RESPONSE_GENERATE", "RESPONSE_EDIT", "RESPONSE_SUBMIT_REVIEW",
+    "RESPONSE_TEMPLATE_VIEW",
   ]),
 
   ANALYST: new Set<Permission>([
@@ -207,6 +224,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "DATA_INVENTORY_VIEW",
     "DEADLINES_VIEW", "NOTIFICATIONS_VIEW",
     "IDV_VIEW",
+    "RESPONSE_VIEW", "RESPONSE_TEMPLATE_VIEW",
   ]),
 
   AUDITOR: new Set<Permission>([
@@ -230,6 +248,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "DATA_INVENTORY_VIEW", "DISCOVERY_RULES_VIEW",
     "DEADLINES_VIEW", "ESCALATIONS_VIEW", "SLA_CONFIG_VIEW", "NOTIFICATIONS_VIEW",
     "IDV_VIEW", "IDV_VIEW_ARTIFACTS", "IDV_SETTINGS_VIEW",
+    "RESPONSE_VIEW", "RESPONSE_TEMPLATE_VIEW",
   ]),
 
   // Legacy roles mapped for backward compatibility
@@ -308,7 +327,8 @@ type Resource =
   | "settings" | "audit_logs" | "systems" | "export"
   | "integrations" | "copilot" | "copilot_governance"
   | "legal_hold" | "redaction" | "governance_report"
-  | "data_inventory" | "discovery_rules";
+  | "data_inventory" | "discovery_rules"
+  | "response" | "response_templates";
 
 type Action = "create" | "read" | "update" | "delete" | "manage";
 
@@ -410,6 +430,19 @@ const LEGACY_MAP: Record<string, Record<string, Permission[]>> = {
     update: ["DISCOVERY_RULES_MANAGE"],
     delete: ["DISCOVERY_RULES_MANAGE"],
     manage: ["DISCOVERY_RULES_MANAGE"],
+  },
+  response: {
+    read: ["RESPONSE_VIEW"],
+    create: ["RESPONSE_GENERATE"],
+    update: ["RESPONSE_EDIT"],
+    manage: ["RESPONSE_GENERATE", "RESPONSE_EDIT", "RESPONSE_APPROVE", "RESPONSE_SEND"],
+  },
+  response_templates: {
+    read: ["RESPONSE_TEMPLATE_VIEW"],
+    create: ["RESPONSE_TEMPLATE_MANAGE"],
+    update: ["RESPONSE_TEMPLATE_MANAGE"],
+    delete: ["RESPONSE_TEMPLATE_MANAGE"],
+    manage: ["RESPONSE_TEMPLATE_MANAGE"],
   },
 };
 

@@ -460,6 +460,9 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Response Generator Widget */}
+      <ResponseWidget />
+
       {/* Recent Cases Table */}
       <div className="card p-0">
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
@@ -666,6 +669,101 @@ export default function DashboardPage() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ── Response Generator Widget ──────────────────────────────────── */
+
+function ResponseWidget() {
+  const [stats, setStats] = useState<{
+    counts: { drafts: number; inReview: number; approved: number; sent: number };
+    awaitingReview: Array<{
+      id: string; version: number; status: string; createdAt: string;
+      case: { caseNumber: string; dataSubject: { fullName: string } };
+      createdBy: { name: string };
+    }>;
+    awaitingSend: Array<{
+      id: string; version: number; status: string; approvedAt: string | null;
+      case: { caseNumber: string; dataSubject: { fullName: string } };
+      createdBy: { name: string };
+    }>;
+  } | null>(null);
+
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const res = await fetch("/api/response-stats");
+        if (res.ok) setStats(await res.json());
+      } catch { /* silent */ }
+    }
+    fetchStats();
+  }, []);
+
+  if (!stats || (stats.counts.drafts + stats.counts.inReview + stats.counts.approved + stats.counts.sent) === 0) {
+    return null;
+  }
+
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-100">
+            <svg className="h-5 w-5 text-cyan-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Response Generator</h3>
+            <p className="mt-0.5 text-xs text-gray-500">
+              {stats.counts.drafts} drafts &middot; {stats.counts.inReview} awaiting review &middot; {stats.counts.approved} ready to send &middot; {stats.counts.sent} sent
+            </p>
+          </div>
+        </div>
+        <Link href="/governance/templates" className="text-sm font-medium text-brand-600 hover:text-brand-700">
+          Templates
+        </Link>
+      </div>
+
+      {/* Awaiting review */}
+      {stats.awaitingReview.length > 0 && (
+        <div className="mt-4">
+          <h4 className="text-xs font-semibold text-yellow-600 uppercase tracking-wider mb-2">Awaiting Review</h4>
+          <div className="space-y-1.5">
+            {stats.awaitingReview.map((doc) => (
+              <Link key={doc.id} href={`/cases/${doc.case.caseNumber}?tab=response`}
+                className="flex items-center justify-between rounded-lg border border-yellow-100 bg-yellow-50 px-3 py-2 text-xs hover:bg-yellow-100 transition-colors">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-gray-900">{doc.case.caseNumber}</span>
+                  <span className="text-gray-500">{doc.case.dataSubject.fullName}</span>
+                  <span className="text-gray-400">v{doc.version}</span>
+                </div>
+                <span className="text-gray-400">{new Date(doc.createdAt).toLocaleDateString()}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Approved, awaiting send */}
+      {stats.awaitingSend.length > 0 && (
+        <div className="mt-3">
+          <h4 className="text-xs font-semibold text-green-600 uppercase tracking-wider mb-2">Approved, Awaiting Send</h4>
+          <div className="space-y-1.5">
+            {stats.awaitingSend.map((doc) => (
+              <Link key={doc.id} href={`/cases/${doc.case.caseNumber}?tab=response`}
+                className="flex items-center justify-between rounded-lg border border-green-100 bg-green-50 px-3 py-2 text-xs hover:bg-green-100 transition-colors">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-gray-900">{doc.case.caseNumber}</span>
+                  <span className="text-gray-500">{doc.case.dataSubject.fullName}</span>
+                  <span className="text-gray-400">v{doc.version}</span>
+                </div>
+                <span className="text-gray-400">{doc.approvedAt ? new Date(doc.approvedAt).toLocaleDateString() : ""}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

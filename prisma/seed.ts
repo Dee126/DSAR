@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole, RiskLevel, EscalationSeverity, DeadlineEventType, MilestoneType, NotificationType, IdvRequestStatus, IdvMethod, IdvArtifactType, IdvDecisionOutcome } from "@prisma/client";
+import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole, RiskLevel, EscalationSeverity, DeadlineEventType, MilestoneType, NotificationType, IdvRequestStatus, IdvMethod, IdvArtifactType, IdvDecisionOutcome, ResponseDocStatus, DeliveryMethod } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -7,6 +7,12 @@ async function main() {
   console.log("Seeding database...");
 
   // Clean existing data (order matters for FK constraints)
+  await prisma.redactionEntry.deleteMany();
+  await prisma.deliveryRecord.deleteMany();
+  await prisma.responseApproval.deleteMany();
+  await prisma.responseDocument.deleteMany();
+  await prisma.responseTemplateVersion.deleteMany();
+  await prisma.responseTemplate.deleteMany();
   await prisma.idvRiskAssessment.deleteMany();
   await prisma.idvDecision.deleteMany();
   await prisma.idvCheck.deleteMany();
@@ -2026,6 +2032,298 @@ async function main() {
   console.log(`Identity Profiles: 1`);
   console.log(`Copilot Summaries: 1 (LOCATION_OVERVIEW)`);
   console.log(`Export Artifacts: 1 (JSON, ALLOWED)`);
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // MODULE 4: Response Generator — Default Templates + Demo Data
+  // ═══════════════════════════════════════════════════════════════════════
+
+  console.log("\n--- MODULE 4: Response Generator ---");
+
+  // ── Default Baseline Templates ─────────────────────────────────────────
+
+  const art15TemplateEn = await prisma.responseTemplate.create({
+    data: {
+      tenantId: null, // system baseline
+      name: "Art. 15 Access Response (EN)",
+      language: "en",
+      jurisdiction: "GDPR",
+      dsarTypes: [DSARType.ACCESS],
+      isBaseline: true,
+      disclaimerText: "This response has been generated from a template and reviewed case data. It does not constitute legal advice. Please have this document reviewed by your Data Protection Officer or legal counsel before sending to the data subject.",
+      sections: [
+        { key: "intro", title: "Introduction", body: "<p>Dear {{subject.name}},</p><p>We refer to your data subject access request received on <strong>{{case.received_date}}</strong> (Reference: <strong>{{case.number}}</strong>). In accordance with Article 15 of the General Data Protection Regulation (GDPR), we have processed your request and provide the following information.</p>" },
+        { key: "identity", title: "Identity Verification", body: "<p>Your identity has been <strong>{{idv.status}}</strong> as required under Article 12(6) GDPR prior to processing your request.</p>" },
+        { key: "scope", title: "Scope of Processing", body: "<p>Following a thorough search of our systems, we can confirm that we process your personal data across <strong>{{systems.count}}</strong> system(s): {{systems.names}}.</p>" },
+        { key: "categories", title: "Categories of Personal Data", body: "<p>The categories of personal data we process about you include: <strong>{{data.categories}}</strong>.</p><p>A total of <strong>{{data.total_records}}</strong> records were identified across our systems.</p>" },
+        { key: "purposes", title: "Purposes and Legal Basis", body: "<p>We process your personal data for the following purposes and legal bases: <strong>{{legal.lawful_basis}}</strong>.</p>" },
+        { key: "recipients", title: "Recipients", body: "<p>Your personal data has been shared with or may be accessible to the following categories of recipients: <strong>{{recipients.categories}}</strong>.</p>" },
+        { key: "retention", title: "Retention Periods", body: "<p>We retain your personal data in accordance with our data retention policy: <strong>{{retention.summary}}</strong>.</p>" },
+        { key: "data_copy", title: "Copy of Your Data", body: "<p>Please find attached a copy of the personal data we hold about you. The data has been provided in a structured, commonly used format.</p>" },
+        { key: "exemptions", title: "Exemptions Applied", body: "<p>Exemptions applied: <strong>{{legal.exemptions}}</strong>.</p>" },
+        { key: "rights", title: "Your Rights", body: "<p>Under the GDPR, you have additional rights including the right to rectification (Art. 16), erasure (Art. 17), restriction of processing (Art. 18), data portability (Art. 20), and the right to object (Art. 21). You also have the right to lodge a complaint with your local supervisory authority.</p>" },
+        { key: "contact", title: "Contact", body: "<p>If you have any questions regarding this response, please contact our Data Protection Officer at <strong>{{tenant.name}}</strong>.</p><p>Yours sincerely,<br/>Data Protection Office<br/>{{tenant.name}}</p>" },
+      ],
+      conditionals: [
+        { condition: "extensionUsed", sectionKey: "extension", show: true },
+      ],
+      placeholders: [
+        { key: "subject.name", label: "Subject Name", description: "Full name of the data subject" },
+        { key: "case.number", label: "Case Reference", description: "DSAR case number" },
+        { key: "case.received_date", label: "Received Date", description: "Date the request was received" },
+        { key: "systems.count", label: "System Count", description: "Number of systems searched" },
+        { key: "data.categories", label: "Data Categories", description: "Categories of personal data found" },
+      ],
+    },
+  });
+
+  await prisma.responseTemplateVersion.create({
+    data: { templateId: art15TemplateEn.id, version: 1, sections: art15TemplateEn.sections as any, changeNote: "Initial baseline version" },
+  });
+
+  const art15TemplateDe = await prisma.responseTemplate.create({
+    data: {
+      tenantId: null,
+      name: "Art. 15 Auskunftsantwort (DE)",
+      language: "de",
+      jurisdiction: "GDPR",
+      dsarTypes: [DSARType.ACCESS],
+      isBaseline: true,
+      disclaimerText: "Diese Antwort wurde aus einer Vorlage und Falldaten generiert. Sie stellt keine Rechtsberatung dar. Bitte lassen Sie dieses Dokument von Ihrem Datenschutzbeauftragten oder Rechtsberater prüfen, bevor Sie es an die betroffene Person senden.",
+      sections: [
+        { key: "intro", title: "Einleitung", body: "<p>Sehr geehrte/r {{subject.name}},</p><p>wir beziehen uns auf Ihren Auskunftsantrag gemäß Art. 15 DSGVO, eingegangen am <strong>{{case.received_date}}</strong> (Referenz: <strong>{{case.number}}</strong>). Wir haben Ihren Antrag bearbeitet und teilen Ihnen Folgendes mit.</p>" },
+        { key: "identity", title: "Identitätsprüfung", body: "<p>Ihre Identität wurde gemäß Art. 12 Abs. 6 DSGVO <strong>{{idv.status}}</strong>.</p>" },
+        { key: "scope", title: "Umfang der Verarbeitung", body: "<p>Wir verarbeiten Ihre personenbezogenen Daten in <strong>{{systems.count}}</strong> System(en): {{systems.names}}.</p>" },
+        { key: "categories", title: "Kategorien personenbezogener Daten", body: "<p>Folgende Kategorien personenbezogener Daten werden verarbeitet: <strong>{{data.categories}}</strong>.</p><p>Insgesamt wurden <strong>{{data.total_records}}</strong> Datensätze identifiziert.</p>" },
+        { key: "purposes", title: "Zwecke und Rechtsgrundlage", body: "<p>Rechtsgrundlage: <strong>{{legal.lawful_basis}}</strong>.</p>" },
+        { key: "recipients", title: "Empfänger", body: "<p>Ihre Daten wurden an folgende Empfängerkategorien übermittelt: <strong>{{recipients.categories}}</strong>.</p>" },
+        { key: "retention", title: "Speicherdauer", body: "<p>Speicherfristen: <strong>{{retention.summary}}</strong>.</p>" },
+        { key: "rights", title: "Ihre Rechte", body: "<p>Gemäß DSGVO haben Sie weitere Rechte: Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung (Art. 18), Datenübertragbarkeit (Art. 20), Widerspruch (Art. 21). Sie können sich auch bei Ihrer zuständigen Aufsichtsbehörde beschweren.</p>" },
+        { key: "contact", title: "Kontakt", body: "<p>Bei Fragen wenden Sie sich bitte an unseren Datenschutzbeauftragten bei <strong>{{tenant.name}}</strong>.</p><p>Mit freundlichen Grüßen,<br/>Datenschutzabteilung<br/>{{tenant.name}}</p>" },
+      ],
+    },
+  });
+  await prisma.responseTemplateVersion.create({
+    data: { templateId: art15TemplateDe.id, version: 1, sections: art15TemplateDe.sections as any, changeNote: "Initial baseline version" },
+  });
+
+  const art17TemplateEn = await prisma.responseTemplate.create({
+    data: {
+      tenantId: null,
+      name: "Art. 17 Erasure Response (EN)",
+      language: "en",
+      jurisdiction: "GDPR",
+      dsarTypes: [DSARType.ERASURE],
+      isBaseline: true,
+      disclaimerText: "This response has been generated from a template. It does not constitute legal advice.",
+      sections: [
+        { key: "intro", title: "Introduction", body: "<p>Dear {{subject.name}},</p><p>We refer to your erasure request received on <strong>{{case.received_date}}</strong> (Reference: <strong>{{case.number}}</strong>). We have assessed your request under Article 17 GDPR.</p>" },
+        { key: "decision", title: "Our Decision", body: "<p>After careful review, we have processed your erasure request across <strong>{{systems.count}}</strong> system(s).</p>" },
+        { key: "scope", title: "Systems Affected", body: "<p>Systems: {{systems.names}}.</p><p>Data categories erased: <strong>{{data.categories}}</strong>.</p>" },
+        { key: "exemptions", title: "Exemptions", body: "<p>The following exemptions under Art. 17(3) were applied where applicable: <strong>{{legal.exemptions}}</strong>.</p>" },
+        { key: "rights", title: "Your Rights", body: "<p>If you disagree with our decision, you have the right to lodge a complaint with the competent supervisory authority.</p>" },
+        { key: "contact", title: "Contact", body: "<p>For questions, please contact our Data Protection Officer at <strong>{{tenant.name}}</strong>.</p>" },
+      ],
+    },
+  });
+  await prisma.responseTemplateVersion.create({
+    data: { templateId: art17TemplateEn.id, version: 1, sections: art17TemplateEn.sections as any, changeNote: "Initial baseline version" },
+  });
+
+  const art17TemplateDe = await prisma.responseTemplate.create({
+    data: {
+      tenantId: null,
+      name: "Art. 17 Löschungsantwort (DE)",
+      language: "de",
+      jurisdiction: "GDPR",
+      dsarTypes: [DSARType.ERASURE],
+      isBaseline: true,
+      disclaimerText: "Diese Antwort wurde aus einer Vorlage generiert und stellt keine Rechtsberatung dar.",
+      sections: [
+        { key: "intro", title: "Einleitung", body: "<p>Sehr geehrte/r {{subject.name}},</p><p>wir beziehen uns auf Ihren Löschungsantrag gemäß Art. 17 DSGVO vom <strong>{{case.received_date}}</strong> (Referenz: <strong>{{case.number}}</strong>).</p>" },
+        { key: "decision", title: "Unsere Entscheidung", body: "<p>Nach sorgfältiger Prüfung haben wir Ihren Löschungsantrag in <strong>{{systems.count}}</strong> System(en) bearbeitet.</p>" },
+        { key: "exemptions", title: "Ausnahmen", body: "<p>Angewandte Ausnahmen gemäß Art. 17 Abs. 3: <strong>{{legal.exemptions}}</strong>.</p>" },
+        { key: "rights", title: "Ihre Rechte", body: "<p>Sie haben das Recht, Beschwerde bei der zuständigen Aufsichtsbehörde einzulegen.</p>" },
+        { key: "contact", title: "Kontakt", body: "<p>Bei Fragen wenden Sie sich an unseren Datenschutzbeauftragten bei <strong>{{tenant.name}}</strong>.</p>" },
+      ],
+    },
+  });
+  await prisma.responseTemplateVersion.create({
+    data: { templateId: art17TemplateDe.id, version: 1, sections: art17TemplateDe.sections as any, changeNote: "Initial baseline version" },
+  });
+
+  const art16TemplateEn = await prisma.responseTemplate.create({
+    data: {
+      tenantId: null,
+      name: "Art. 16 Rectification Response (EN)",
+      language: "en",
+      jurisdiction: "GDPR",
+      dsarTypes: [DSARType.RECTIFICATION],
+      isBaseline: true,
+      sections: [
+        { key: "intro", title: "Introduction", body: "<p>Dear {{subject.name}},</p><p>We refer to your rectification request received on <strong>{{case.received_date}}</strong> (Reference: <strong>{{case.number}}</strong>).</p>" },
+        { key: "changes", title: "Changes Made", body: "<p>We have updated your personal data in <strong>{{systems.count}}</strong> system(s) as requested.</p>" },
+        { key: "contact", title: "Contact", body: "<p>For questions, please contact our Data Protection Officer at <strong>{{tenant.name}}</strong>.</p>" },
+      ],
+    },
+  });
+  await prisma.responseTemplateVersion.create({
+    data: { templateId: art16TemplateEn.id, version: 1, sections: art16TemplateEn.sections as any, changeNote: "Initial baseline version" },
+  });
+
+  const art16TemplateDe = await prisma.responseTemplate.create({
+    data: {
+      tenantId: null,
+      name: "Art. 16 Berichtigungsantwort (DE)",
+      language: "de",
+      jurisdiction: "GDPR",
+      dsarTypes: [DSARType.RECTIFICATION],
+      isBaseline: true,
+      sections: [
+        { key: "intro", title: "Einleitung", body: "<p>Sehr geehrte/r {{subject.name}},</p><p>wir beziehen uns auf Ihren Berichtigungsantrag vom <strong>{{case.received_date}}</strong> (Referenz: <strong>{{case.number}}</strong>).</p>" },
+        { key: "changes", title: "Vorgenommene Änderungen", body: "<p>Wir haben Ihre Daten in <strong>{{systems.count}}</strong> System(en) korrigiert.</p>" },
+        { key: "contact", title: "Kontakt", body: "<p>Bei Fragen wenden Sie sich an unseren Datenschutzbeauftragten bei <strong>{{tenant.name}}</strong>.</p>" },
+      ],
+    },
+  });
+  await prisma.responseTemplateVersion.create({
+    data: { templateId: art16TemplateDe.id, version: 1, sections: art16TemplateDe.sections as any, changeNote: "Initial baseline version" },
+  });
+
+  const art12ExtensionEn = await prisma.responseTemplate.create({
+    data: {
+      tenantId: null,
+      name: "Art. 12 Extension Notice (EN)",
+      language: "en",
+      jurisdiction: "GDPR",
+      dsarTypes: [DSARType.ACCESS, DSARType.ERASURE, DSARType.RECTIFICATION, DSARType.RESTRICTION, DSARType.PORTABILITY, DSARType.OBJECTION],
+      isBaseline: true,
+      sections: [
+        { key: "intro", title: "Extension Notice", body: "<p>Dear {{subject.name}},</p><p>We refer to your request received on <strong>{{case.received_date}}</strong> (Reference: <strong>{{case.number}}</strong>).</p><p>In accordance with Article 12(3) GDPR, we wish to inform you that due to the complexity of your request, we require an extension of the response deadline.</p>" },
+        { key: "reason", title: "Reason for Extension", body: "<p>Reason: <strong>{{deadlines.extension_reason}}</strong>.</p><p>The new deadline for our response is <strong>{{deadlines.effective_due_date}}</strong>.</p>" },
+        { key: "rights", title: "Your Rights", body: "<p>You retain all your rights under the GDPR, including the right to lodge a complaint with the supervisory authority.</p>" },
+        { key: "contact", title: "Contact", body: "<p>For questions, please contact <strong>{{tenant.name}}</strong>.</p>" },
+      ],
+    },
+  });
+  await prisma.responseTemplateVersion.create({
+    data: { templateId: art12ExtensionEn.id, version: 1, sections: art12ExtensionEn.sections as any, changeNote: "Initial baseline version" },
+  });
+
+  const art12ExtensionDe = await prisma.responseTemplate.create({
+    data: {
+      tenantId: null,
+      name: "Art. 12 Fristverlängerung (DE)",
+      language: "de",
+      jurisdiction: "GDPR",
+      dsarTypes: [DSARType.ACCESS, DSARType.ERASURE, DSARType.RECTIFICATION, DSARType.RESTRICTION, DSARType.PORTABILITY, DSARType.OBJECTION],
+      isBaseline: true,
+      sections: [
+        { key: "intro", title: "Fristverlängerung", body: "<p>Sehr geehrte/r {{subject.name}},</p><p>wir beziehen uns auf Ihren Antrag vom <strong>{{case.received_date}}</strong> (Referenz: <strong>{{case.number}}</strong>).</p><p>Gemäß Art. 12 Abs. 3 DSGVO benötigen wir aufgrund der Komplexität Ihres Antrags eine Fristverlängerung.</p>" },
+        { key: "reason", title: "Begründung", body: "<p>Grund: <strong>{{deadlines.extension_reason}}</strong>.</p><p>Die neue Frist ist <strong>{{deadlines.effective_due_date}}</strong>.</p>" },
+        { key: "contact", title: "Kontakt", body: "<p>Bei Fragen wenden Sie sich an <strong>{{tenant.name}}</strong>.</p>" },
+      ],
+    },
+  });
+  await prisma.responseTemplateVersion.create({
+    data: { templateId: art12ExtensionDe.id, version: 1, sections: art12ExtensionDe.sections as any, changeNote: "Initial baseline version" },
+  });
+
+  console.log("Created 10 baseline response templates (EN + DE)");
+
+  // ── Demo Response Documents ────────────────────────────────────────────
+
+  // Case 1 (ACCESS): Draft response in review
+  const responseDoc1 = await prisma.responseDocument.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case1.id,
+      templateId: art15TemplateEn.id,
+      version: 1,
+      status: ResponseDocStatus.IN_REVIEW,
+      language: "en",
+      sections: [
+        { key: "intro", title: "Introduction", renderedHtml: `<p>Dear John Smith,</p><p>We refer to your data subject access request received on ${new Date(daysAgo(15)).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })} (Reference: <strong>DSAR-2026-A1B2C3</strong>). In accordance with Article 15 GDPR, we provide the following information.</p>` },
+        { key: "scope", title: "Scope", renderedHtml: "<p>We searched 4 systems: SAP CRM, Microsoft 365, Finance Database, Marketing Platform.</p>" },
+        { key: "categories", title: "Data Categories", renderedHtml: "<p>Categories: IDENTIFICATION, CONTACT, CONTRACT, PAYMENT, COMMUNICATION. Total records: 156.</p>" },
+      ],
+      fullHtml: "<html><body><h1>DSAR Response</h1><p>Case DSAR-2026-A1B2C3 — Access request response draft.</p></body></html>",
+      createdByUserId: caseManager.id,
+    },
+  });
+
+  await prisma.responseApproval.create({
+    data: {
+      tenantId: tenant.id,
+      responseDocId: responseDoc1.id,
+      reviewerUserId: dpo.id,
+      action: "request_changes",
+      comments: "Please add retention period details to the data summary section.",
+    },
+  });
+
+  // Case 2 (ERASURE): Approved and sent
+  const responseDoc2 = await prisma.responseDocument.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case2.id,
+      templateId: art17TemplateEn.id,
+      version: 1,
+      status: ResponseDocStatus.SENT,
+      language: "en",
+      sections: [
+        { key: "intro", title: "Introduction", renderedHtml: "<p>Dear Emma Mueller,</p><p>We refer to your erasure request (DSAR-2026-D4E5F6).</p>" },
+        { key: "decision", title: "Decision", renderedHtml: "<p>Your data has been erased from 3 systems. Exemption applied: financial records retained per legal obligation (6 years).</p>" },
+      ],
+      fullHtml: "<html><body><h1>Erasure Response</h1><p>Partial erasure completed for DSAR-2026-D4E5F6.</p></body></html>",
+      approvedByUserId: dpo.id,
+      approvedAt: daysAgo(2),
+      sentAt: daysAgo(1),
+      createdByUserId: dpo.id,
+    },
+  });
+
+  await prisma.responseApproval.create({
+    data: {
+      tenantId: tenant.id,
+      responseDocId: responseDoc2.id,
+      reviewerUserId: admin.id,
+      action: "approve",
+      comments: "Exemptions correctly documented.",
+    },
+  });
+
+  await prisma.deliveryRecord.create({
+    data: {
+      tenantId: tenant.id,
+      responseDocId: responseDoc2.id,
+      method: DeliveryMethod.EMAIL,
+      recipientRef: "emma.mueller@example.com",
+      notes: "Sent via encrypted email with PDF attachment.",
+      createdByUserId: dpo.id,
+      sentAt: daysAgo(1),
+    },
+  });
+
+  // Case 4 (PORTABILITY): Approved response awaiting send
+  await prisma.responseDocument.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case4.id,
+      version: 1,
+      status: ResponseDocStatus.APPROVED,
+      language: "en",
+      sections: [
+        { key: "intro", title: "Introduction", renderedHtml: "<p>Dear Max Mustermann,</p><p>We have prepared your data in machine-readable format as requested (DSAR-2026-J0K1L2).</p>" },
+      ],
+      fullHtml: "<html><body><h1>Portability Response</h1><p>Data export ready for DSAR-2026-J0K1L2.</p></body></html>",
+      approvedByUserId: admin.id,
+      approvedAt: daysAgo(1),
+      createdByUserId: caseManager.id,
+    },
+  });
+
+  console.log("Created 3 demo response documents (in_review, sent, approved)");
+  console.log("Response Generator seed complete.");
 }
 
 main()

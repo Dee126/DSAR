@@ -235,6 +235,70 @@ export const idvPortalSubmitSchema = z.object({
   consentGiven: z.boolean().refine((v) => v === true, { message: "Consent is required to submit verification documents" }),
 });
 
+// ─── Response Generator Schemas ──────────────────────────────────────────────
+
+const DELIVERY_METHOD_VALUES = ["EMAIL", "POSTAL", "PORTAL", "API"] as const;
+
+export const generateResponseSchema = z.object({
+  templateId: z.string().uuid().optional(),
+  language: z.string().min(2).max(5).optional().default("en"),
+  aiAssisted: z.boolean().optional().default(false),
+});
+
+export const updateResponseDocSchema = z.object({
+  sections: z.array(z.object({
+    key: z.string(),
+    title: z.string(),
+    renderedHtml: z.string(),
+  })).optional(),
+  fullHtml: z.string().optional(),
+});
+
+export const responseApprovalSchema = z.object({
+  action: z.enum(["approve", "request_changes"]),
+  comments: z.string().optional(),
+});
+
+export const createDeliveryRecordSchema = z.object({
+  method: z.enum(DELIVERY_METHOD_VALUES),
+  recipientRef: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const createRedactionEntrySchema = z.object({
+  sectionKey: z.string().optional(),
+  documentRef: z.string().optional(),
+  redactedContent: z.string().optional(),
+  reason: z.string().min(1, "Redaction reason is required"),
+});
+
+export const createResponseTemplateSchema = z.object({
+  name: z.string().min(1, "Template name is required"),
+  language: z.string().min(2).max(5).optional().default("en"),
+  jurisdiction: z.string().optional().default("GDPR"),
+  dsarTypes: z.array(z.enum(DSAR_TYPE_VALUES)).min(1, "At least one DSAR type required"),
+  subjectTypes: z.array(z.string()).optional().default([]),
+  sections: z.array(z.object({
+    key: z.string(),
+    title: z.string(),
+    body: z.string(),
+  })).min(1, "At least one section is required"),
+  placeholders: z.array(z.object({
+    key: z.string(),
+    label: z.string(),
+    description: z.string().optional(),
+  })).optional(),
+  conditionals: z.array(z.object({
+    condition: z.string(),
+    sectionKey: z.string(),
+    show: z.boolean(),
+  })).optional(),
+  disclaimerText: z.string().optional(),
+  clonedFromId: z.string().uuid().optional(),
+});
+
+export const updateResponseTemplateSchema = createResponseTemplateSchema.partial();
+
 export const updateIdvSettingsSchema = z.object({
   allowedMethods: z.array(z.enum(IDV_METHOD_VALUES)).optional(),
   selfieEnabled: z.boolean().optional(),
