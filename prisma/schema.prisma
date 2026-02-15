@@ -271,6 +271,42 @@ enum NotificationType {
   INFO
 }
 
+// ─── Identity Verification Enums ─────────────────────────────────────────────
+
+enum IdvRequestStatus {
+  NOT_STARTED
+  LINK_SENT
+  SUBMITTED
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  NEED_MORE_INFO
+}
+
+enum IdvMethod {
+  EMAIL_OTP
+  DOC_UPLOAD
+  UTILITY_BILL
+  SELFIE_MATCH
+  KNOWLEDGE_BASED
+}
+
+enum IdvArtifactType {
+  ID_FRONT
+  ID_BACK
+  PASSPORT
+  DRIVERS_LICENSE
+  UTILITY_BILL
+  SELFIE
+  OTHER_DOCUMENT
+}
+
+enum IdvDecisionOutcome {
+  APPROVED
+  REJECTED
+  NEED_MORE_INFO
+}
+
 // ─── Data Inventory Enums ───────────────────────────────────────────────────
 
 enum SystemCriticality {
@@ -362,6 +398,12 @@ model Tenant {
   caseMilestones       CaseMilestone[]
   escalations          Escalation[]
   notifications        Notification[]
+  idvRequests          IdvRequest[]
+  idvArtifacts         IdvArtifact[]
+  idvChecks            IdvCheck[]
+  idvDecisions         IdvDecision[]
+  idvRiskAssessments   IdvRiskAssessment[]
+  idvSettings          IdvSettings?
 
   @@map("tenants")
 }
@@ -403,6 +445,7 @@ model User {
   notifications         Notification[]      @relation("NotificationRecipient")
   escalationsCreated    Escalation[]        @relation("EscalationCreatedBy")
   deadlineEventsActor   DeadlineEvent[]     @relation("DeadlineEventActor")
+  idvDecisions          IdvDecision[]       @relation("IdvDecisionReviewer")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -476,6 +519,7 @@ model DSARCase {
   deadlineEvents      DeadlineEvent[]
   milestones          CaseMilestone[]
   escalations         Escalation[]
+  idvRequest          IdvRequest?
 
   @@unique([tenantId, caseNumber])
   @@index([tenantId])
@@ -1341,4 +1385,133 @@ model Notification {
   @@index([tenantId, recipientUserId, read])
   @@index([tenantId, recipientUserId, createdAt])
   @@map("notifications")
+}
+
+// ─── Identity Verification Models ────────────────────────────────────────────
+
+model IdvRequest {
+  id              String           @id @default(uuid())
+  tenantId        String
+  caseId          String           @unique
+  dataSubjectId   String
+  status          IdvRequestStatus @default(NOT_STARTED)
+  portalToken     String?          @unique
+  portalTokenExp  DateTime?
+  allowedMethods  IdvMethod[]
+  submittedAt     DateTime?
+  expiresAt       DateTime?
+  maxSubmissions  Int              @default(3)
+  submissionCount Int              @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case        DSARCase         @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  artifacts   IdvArtifact[]
+  checks      IdvCheck[]
+  decisions   IdvDecision[]
+  assessments IdvRiskAssessment[]
+
+  @@index([tenantId, caseId])
+  @@index([portalToken])
+  @@map("idv_requests")
+}
+
+model IdvArtifact {
+  id             String          @id @default(uuid())
+  tenantId       String
+  requestId      String
+  artifactType   IdvArtifactType
+  filename       String
+  mimeType       String
+  sizeBytes      Int
+  sha256Hash     String
+  storageKey     String
+  uploadedBy     String?         // null if uploaded by data subject via portal
+  consentGiven   Boolean         @default(false)
+  retainUntil    DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime        @default(now())
+
+  tenant  Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  request IdvRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, requestId])
+  @@index([retainUntil])
+  @@map("idv_artifacts")
+}
+
+model IdvCheck {
+  id          String    @id @default(uuid())
+  tenantId    String
+  requestId   String
+  method      IdvMethod
+  passed      Boolean?
+  details     Json?     // method-specific: OTP attempts, KB answers, etc.
+  performedAt DateTime  @default(now())
+
+  tenant  Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  request IdvRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, requestId])
+  @@map("idv_checks")
+}
+
+model IdvDecision {
+  id             String             @id @default(uuid())
+  tenantId       String
+  requestId      String
+  outcome        IdvDecisionOutcome
+  rationale      String
+  reviewerUserId String
+  decidedAt      DateTime           @default(now())
+
+  tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  request  IdvRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  reviewer User       @relation("IdvDecisionReviewer", fields: [reviewerUserId], references: [id])
+
+  @@index([tenantId, requestId])
+  @@map("idv_decisions")
+}
+
+model IdvRiskAssessment {
+  id              String   @id @default(uuid())
+  tenantId        String
+  requestId       String
+  riskScore       Int      // 0–100, higher = more risky
+  flags           Json     // array of { flag, severity, detail }
+  extractedFields Json?    // { name, dob, address, documentNumber, expiryDate }
+  mismatches      Json?    // { field, expected, extracted, severity }
+  rawOutput       Json?    // full AI/provider response
+  provider        String   @default("mock") // "mock", "copilot", or external provider
+  createdAt       DateTime @default(now())
+
+  tenant  Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  request IdvRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, requestId])
+  @@map("idv_risk_assessments")
+}
+
+model IdvSettings {
+  id                        String    @id @default(uuid())
+  tenantId                  String    @unique
+  allowedMethods            IdvMethod[] @default([DOC_UPLOAD])
+  selfieEnabled             Boolean   @default(false)
+  knowledgeBasedEnabled     Boolean   @default(false)
+  emailOtpEnabled           Boolean   @default(true)
+  retentionDays             Int       @default(90)
+  portalTokenExpiryDays     Int       @default(7)
+  maxSubmissionsPerToken    Int       @default(3)
+  bypassForSsoEmail         Boolean   @default(false)
+  bypassForRepeatRequester  Boolean   @default(false)
+  repeatRequesterMonths     Int       @default(6)
+  autoTransitionOnApproval  Boolean   @default(false)
+  storeDob                  Boolean   @default(true)
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("idv_settings")
 }

@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole, RiskLevel, EscalationSeverity, DeadlineEventType, MilestoneType, NotificationType } from "@prisma/client";
+import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole, RiskLevel, EscalationSeverity, DeadlineEventType, MilestoneType, NotificationType, IdvRequestStatus, IdvMethod, IdvArtifactType, IdvDecisionOutcome } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -7,6 +7,12 @@ async function main() {
   console.log("Seeding database...");
 
   // Clean existing data (order matters for FK constraints)
+  await prisma.idvRiskAssessment.deleteMany();
+  await prisma.idvDecision.deleteMany();
+  await prisma.idvCheck.deleteMany();
+  await prisma.idvArtifact.deleteMany();
+  await prisma.idvRequest.deleteMany();
+  await prisma.idvSettings.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.escalation.deleteMany();
   await prisma.caseMilestone.deleteMany();
@@ -1795,6 +1801,208 @@ async function main() {
     ],
   });
   console.log("Created notifications");
+
+  // ── Identity Verification Seed Data ────────────────────────────────────
+
+  // IDV Settings (default config)
+  await prisma.idvSettings.create({
+    data: {
+      tenantId: tenant.id,
+      allowedMethods: [IdvMethod.DOC_UPLOAD, IdvMethod.EMAIL_OTP],
+      selfieEnabled: false,
+      knowledgeBasedEnabled: false,
+      emailOtpEnabled: true,
+      retentionDays: 90,
+      portalTokenExpiryDays: 7,
+      maxSubmissionsPerToken: 3,
+      bypassForSsoEmail: false,
+      bypassForRepeatRequester: false,
+      repeatRequesterMonths: 6,
+      autoTransitionOnApproval: false,
+      storeDob: true,
+    },
+  });
+  console.log("Created IDV settings");
+
+  // Case 1: Approved IDV (DATA_COLLECTION status)
+  const idvReq1 = await prisma.idvRequest.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case1.id,
+      dataSubjectId: case1.dataSubjectId,
+      status: IdvRequestStatus.APPROVED,
+      allowedMethods: [IdvMethod.DOC_UPLOAD],
+      submittedAt: daysAgo(13),
+      submissionCount: 1,
+      maxSubmissions: 3,
+    },
+  });
+
+  // Mock artifact for case 1 (approved)
+  await prisma.idvArtifact.create({
+    data: {
+      tenantId: tenant.id,
+      requestId: idvReq1.id,
+      artifactType: IdvArtifactType.PASSPORT,
+      filename: "passport_scan.jpg",
+      mimeType: "image/jpeg",
+      sizeBytes: 245_000,
+      sha256Hash: "a1b2c3d4e5f6789012345678abcdef01234567890abcdef0123456789abcdef",
+      storageKey: "mock-passport-1.jpg",
+      consentGiven: true,
+      retainUntil: daysFromNow(77),
+    },
+  });
+
+  await prisma.idvCheck.create({
+    data: {
+      tenantId: tenant.id,
+      requestId: idvReq1.id,
+      method: IdvMethod.DOC_UPLOAD,
+      passed: true,
+      details: { artifactCount: 1, artifactTypes: ["PASSPORT"] } as any,
+    },
+  });
+
+  await prisma.idvRiskAssessment.create({
+    data: {
+      tenantId: tenant.id,
+      requestId: idvReq1.id,
+      riskScore: 10,
+      flags: [{ flag: "SELFIE_NOT_PROVIDED", severity: "low", detail: "No selfie submitted (not required)" }] as any,
+      extractedFields: { name: "Max Mustermann", dob: "1985-03-15", documentType: "PASSPORT", issuingCountry: "DE" } as any,
+      mismatches: [] as any,
+      provider: "mock",
+    },
+  });
+
+  await prisma.idvDecision.create({
+    data: {
+      tenantId: tenant.id,
+      requestId: idvReq1.id,
+      outcome: IdvDecisionOutcome.APPROVED,
+      rationale: "Passport matches subject details. Low risk score. Identity verified.",
+      reviewerUserId: dpo.id,
+    },
+  });
+  console.log("Created IDV scenario 1: Approved verification");
+
+  // Case 2: Need more info IDV (REVIEW_LEGAL status)
+  const idvReq2 = await prisma.idvRequest.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case2.id,
+      dataSubjectId: case2.dataSubjectId,
+      status: IdvRequestStatus.NEED_MORE_INFO,
+      allowedMethods: [IdvMethod.DOC_UPLOAD, IdvMethod.UTILITY_BILL],
+      submittedAt: daysAgo(20),
+      submissionCount: 1,
+      maxSubmissions: 3,
+    },
+  });
+
+  await prisma.idvArtifact.create({
+    data: {
+      tenantId: tenant.id,
+      requestId: idvReq2.id,
+      artifactType: IdvArtifactType.ID_FRONT,
+      filename: "id_card_front.jpg",
+      mimeType: "image/jpeg",
+      sizeBytes: 180_000,
+      sha256Hash: "b2c3d4e5f6789012345678abcdef01234567890abcdef0123456789abcdef01",
+      storageKey: "mock-id-front-2.jpg",
+      consentGiven: true,
+      retainUntil: daysFromNow(70),
+    },
+  });
+
+  await prisma.idvRiskAssessment.create({
+    data: {
+      tenantId: tenant.id,
+      requestId: idvReq2.id,
+      riskScore: 45,
+      flags: [
+        { flag: "MISSING_ID_BACK", severity: "medium", detail: "ID card front provided but back is missing" },
+        { flag: "NAME_PARTIAL_MATCH", severity: "low", detail: "Extracted name partially matches request" },
+      ] as any,
+      extractedFields: { name: "E. Schmidt", dob: "1992-07-22", documentType: "ID_CARD", issuingCountry: "DE" } as any,
+      mismatches: [{ field: "name", expected: "Eva Schmidt", extracted: "E. Schmidt", severity: "low" }] as any,
+      provider: "mock",
+    },
+  });
+
+  await prisma.idvDecision.create({
+    data: {
+      tenantId: tenant.id,
+      requestId: idvReq2.id,
+      outcome: IdvDecisionOutcome.NEED_MORE_INFO,
+      rationale: "ID card back is missing. Please request the subject to upload both sides of their ID.",
+      reviewerUserId: dpo.id,
+    },
+  });
+  console.log("Created IDV scenario 2: Need more info");
+
+  // Case 3: High-risk flagged IDV (NEW status)
+  const idvReq3 = await prisma.idvRequest.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case3.id,
+      dataSubjectId: case3.dataSubjectId,
+      status: IdvRequestStatus.IN_REVIEW,
+      allowedMethods: [IdvMethod.DOC_UPLOAD],
+      submittedAt: daysAgo(1),
+      submissionCount: 1,
+      maxSubmissions: 3,
+    },
+  });
+
+  await prisma.idvArtifact.createMany({
+    data: [
+      {
+        tenantId: tenant.id,
+        requestId: idvReq3.id,
+        artifactType: IdvArtifactType.DRIVERS_LICENSE,
+        filename: "drivers_license_scan.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 35_000,
+        sha256Hash: "c3d4e5f6789012345678abcdef01234567890abcdef0123456789abcdef0123",
+        storageKey: "mock-license-3.pdf",
+        consentGiven: true,
+        retainUntil: daysFromNow(89),
+      },
+      {
+        tenantId: tenant.id,
+        requestId: idvReq3.id,
+        artifactType: IdvArtifactType.UTILITY_BILL,
+        filename: "electricity_bill.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 28_000,
+        sha256Hash: "d4e5f6789012345678abcdef01234567890abcdef0123456789abcdef012345",
+        storageKey: "mock-bill-3.pdf",
+        consentGiven: true,
+        retainUntil: daysFromNow(89),
+      },
+    ],
+  });
+
+  await prisma.idvRiskAssessment.create({
+    data: {
+      tenantId: tenant.id,
+      requestId: idvReq3.id,
+      riskScore: 72,
+      flags: [
+        { flag: "LOW_QUALITY_DOCUMENT", severity: "medium", detail: "drivers_license_scan.pdf may be low quality (34KB)" },
+        { flag: "EXPIRED_DOCUMENT", severity: "high", detail: "ID document appears to have expired on 2025-08-15" },
+        { flag: "ADDRESS_MISMATCH", severity: "medium", detail: "Address on utility bill does not match the provided address" },
+      ] as any,
+      extractedFields: { name: "Thomas Weber", dob: "1988-11-03", documentType: "DRIVERS_LICENSE", expiryDate: "2025-08-15", issuingCountry: "DE" } as any,
+      mismatches: [
+        { field: "address", expected: "Friedrichstr. 100, Berlin", extracted: "123 Different Street, Berlin 10115", severity: "medium" },
+      ] as any,
+      provider: "mock",
+    },
+  });
+  console.log("Created IDV scenario 3: High-risk flagged");
 
   console.log("\n--- Seed Complete ---");
   console.log("Tenant: Acme Corp");

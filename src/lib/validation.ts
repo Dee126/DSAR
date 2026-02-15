@@ -215,3 +215,37 @@ export const createHolidaySchema = z.object({
 export const markExtensionNotifiedSchema = z.object({
   sentAt: z.string().datetime().optional(),
 });
+
+// ─── Identity Verification Schemas ──────────────────────────────────────────
+
+const IDV_METHOD_VALUES = ["EMAIL_OTP", "DOC_UPLOAD", "UTILITY_BILL", "SELFIE_MATCH", "KNOWLEDGE_BASED"] as const;
+const IDV_ARTIFACT_TYPE_VALUES = ["ID_FRONT", "ID_BACK", "PASSPORT", "DRIVERS_LICENSE", "UTILITY_BILL", "SELFIE", "OTHER_DOCUMENT"] as const;
+const IDV_DECISION_VALUES = ["APPROVED", "REJECTED", "NEED_MORE_INFO"] as const;
+
+export const initIdvRequestSchema = z.object({
+  allowedMethods: z.array(z.enum(IDV_METHOD_VALUES)).optional(),
+});
+
+export const idvDecisionSchema = z.object({
+  outcome: z.enum(IDV_DECISION_VALUES),
+  rationale: z.string().min(1, "Rationale is required for IDV decisions"),
+});
+
+export const idvPortalSubmitSchema = z.object({
+  consentGiven: z.boolean().refine((v) => v === true, { message: "Consent is required to submit verification documents" }),
+});
+
+export const updateIdvSettingsSchema = z.object({
+  allowedMethods: z.array(z.enum(IDV_METHOD_VALUES)).optional(),
+  selfieEnabled: z.boolean().optional(),
+  knowledgeBasedEnabled: z.boolean().optional(),
+  emailOtpEnabled: z.boolean().optional(),
+  retentionDays: z.number().int().min(7).max(365).optional(),
+  portalTokenExpiryDays: z.number().int().min(1).max(90).optional(),
+  maxSubmissionsPerToken: z.number().int().min(1).max(10).optional(),
+  bypassForSsoEmail: z.boolean().optional(),
+  bypassForRepeatRequester: z.boolean().optional(),
+  repeatRequesterMonths: z.number().int().min(1).max(24).optional(),
+  autoTransitionOnApproval: z.boolean().optional(),
+  storeDob: z.boolean().optional(),
+});
