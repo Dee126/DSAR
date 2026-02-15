@@ -177,3 +177,41 @@ export const updateCaseSystemLinkSchema = z.object({
   collectionStatus: z.enum(DC_STATUS_VALUES).optional(),
   notes: z.string().optional(),
 });
+
+// ─── Deadline & Risk Schemas ──────────────────────────────────────────────────
+
+export const extensionRequestSchema = z.object({
+  extensionDays: z.number().int().min(1).max(60),
+  reason: z.string().min(1, "Extension reason is required"),
+  notificationRequired: z.boolean().optional().default(true),
+});
+
+export const pauseClockSchema = z.object({
+  reason: z.string().min(1, "Pause reason is required"),
+});
+
+export const updateSlaConfigSchema = z.object({
+  initialDeadlineDays: z.number().int().min(1).max(365).optional(),
+  extensionMaxDays: z.number().int().min(0).max(365).optional(),
+  useBusinessDays: z.boolean().optional(),
+  timezone: z.string().optional(),
+  yellowThresholdDays: z.number().int().min(1).max(90).optional(),
+  redThresholdDays: z.number().int().min(1).max(90).optional(),
+  milestoneIdvDays: z.number().int().min(1).max(90).optional(),
+  milestoneCollectionDays: z.number().int().min(1).max(180).optional(),
+  milestoneDraftDays: z.number().int().min(1).max(180).optional(),
+  milestoneLegalDays: z.number().int().min(1).max(180).optional(),
+  escalationYellowRoles: z.array(z.string()).optional(),
+  escalationRedRoles: z.array(z.string()).optional(),
+  escalationOverdueRoles: z.array(z.string()).optional(),
+});
+
+export const createHolidaySchema = z.object({
+  date: z.string().min(1, "Date is required"),
+  name: z.string().min(1, "Holiday name is required"),
+  locale: z.string().optional().default("DE"),
+});
+
+export const markExtensionNotifiedSchema = z.object({
+  sentAt: z.string().datetime().optional(),
+});

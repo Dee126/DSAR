@@ -6,6 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
 import Sidebar, { NAV_ITEMS } from "@/components/Sidebar";
 import { MobileHeader, MobileDrawer, BottomNav } from "@/components/MobileNav";
+import NotificationBell from "@/components/NotificationBell";
 
 /* ── Page title from pathname ──────────────────────────────────────── */
 
@@ -19,6 +20,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/data-inventory": "Data Inventory",
   "/integrations": "Integrations",
   "/governance": "Governance",
+  "/governance/sla": "SLA Configuration",
   "/settings": "Settings",
 };
 
@@ -26,6 +28,7 @@ function getPageTitle(pathname: string): string {
   if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
   if (pathname.startsWith("/cases/")) return "Case Detail";
   if (pathname.startsWith("/data-inventory/")) return "System Detail";
+  if (pathname.startsWith("/governance/")) return "Governance";
   if (pathname.startsWith("/integrations/")) return "Integration";
   return "PrivacyPilot";
 }
@@ -94,14 +97,18 @@ export default function DashboardLayout({
       </div>
 
       {/* Mobile header — visible below md */}
-      <MobileHeader onMenuOpen={handleDrawerOpen} pageTitle={pageTitle} />
+      <MobileHeader onMenuOpen={handleDrawerOpen} pageTitle={pageTitle} action={<NotificationBell />} />
 
       {/* Mobile drawer overlay */}
       <MobileDrawer open={drawerOpen} onClose={handleDrawerClose} navItems={NAV_ITEMS} />
 
       {/* Main content */}
       <main className="w-full flex-1 md:ml-64">
-        <div className="px-4 pb-24 pt-[4.25rem] md:p-8 md:pb-8">{children}</div>
+        {/* Desktop notification bell */}
+        <div className="hidden md:flex items-center justify-end px-8 pt-4 pb-0">
+          <NotificationBell />
+        </div>
+        <div className="px-4 pb-24 pt-[4.25rem] md:px-8 md:pt-2 md:pb-8">{children}</div>
       </main>
 
       {/* Mobile bottom nav — visible below md */}

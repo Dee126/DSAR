@@ -230,6 +230,47 @@ enum IntegrationHealthStatus {
   NOT_CONFIGURED
 }
 
+// ─── Deadline & Risk Enums ───────────────────────────────────────────────────
+
+enum RiskLevel {
+  GREEN
+  YELLOW
+  RED
+}
+
+enum EscalationSeverity {
+  YELLOW_WARNING
+  RED_ALERT
+  OVERDUE_BREACH
+}
+
+enum DeadlineEventType {
+  CREATED
+  RECALCULATED
+  EXTENDED
+  PAUSED
+  RESUMED
+  MILESTONE_COMPLETED
+  MILESTONE_MISSED
+}
+
+enum MilestoneType {
+  IDV_COMPLETE
+  COLLECTION_COMPLETE
+  DRAFT_READY
+  LEGAL_REVIEW_DONE
+  RESPONSE_SENT
+}
+
+enum NotificationType {
+  ESCALATION
+  DEADLINE_WARNING
+  EXTENSION_REQUEST
+  MILESTONE_DUE
+  OVERDUE
+  INFO
+}
+
 // ─── Data Inventory Enums ───────────────────────────────────────────────────
 
 enum SystemCriticality {
@@ -314,6 +355,13 @@ model Tenant {
   systemProcessors     SystemProcessor[]
   discoveryRules       DiscoveryRule[]
   caseSystemLinks      CaseSystemLink[]
+  slaConfig            TenantSlaConfig?
+  holidays             Holiday[]
+  caseDeadlines        CaseDeadline[]
+  deadlineEvents       DeadlineEvent[]
+  caseMilestones       CaseMilestone[]
+  escalations          Escalation[]
+  notifications        Notification[]
 
   @@map("tenants")
 }
@@ -352,6 +400,9 @@ model User {
   exportApprovals       ExportApproval[]    @relation("ExportApprovalApprover")
   caseTeamMemberships   CaseTeamMember[]    @relation("CaseTeamMember")
   ownedSystems          System[]            @relation("SystemOwner")
+  notifications         Notification[]      @relation("NotificationRecipient")
+  escalationsCreated    Escalation[]        @relation("EscalationCreatedBy")
+  deadlineEventsActor   DeadlineEvent[]     @relation("DeadlineEventActor")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -421,6 +472,10 @@ model DSARCase {
   legalHolds          LegalHold[]
   teamMembers         CaseTeamMember[]
   caseSystemLinks     CaseSystemLink[]
+  deadline            CaseDeadline?
+  deadlineEvents      DeadlineEvent[]
+  milestones          CaseMilestone[]
+  escalations         Escalation[]
 
   @@unique([tenantId, caseNumber])
   @@index([tenantId])
@@ -1134,4 +1189,156 @@ model CaseTeamMember {
   @@index([tenantId, caseId])
   @@index([tenantId, userId])
   @@map("case_team_members")
+}
+
+// ─── Deadline & Risk Engine ─────────────────────────────────────────────────
+
+model TenantSlaConfig {
+  id                     String   @id @default(uuid())
+  tenantId               String   @unique
+  initialDeadlineDays    Int      @default(30)
+  extensionMaxDays       Int      @default(60)
+  useBusinessDays        Boolean  @default(false)
+  timezone               String   @default("Europe/Berlin")
+  yellowThresholdDays    Int      @default(14)
+  redThresholdDays       Int      @default(7)
+  milestoneIdvDays       Int      @default(7)
+  milestoneCollectionDays Int     @default(14)
+  milestoneDraftDays     Int      @default(21)
+  milestoneLegalDays     Int      @default(25)
+  escalationYellowRoles  String[] @default(["DPO", "CASE_MANAGER"])
+  escalationRedRoles     String[] @default(["TENANT_ADMIN", "DPO"])
+  escalationOverdueRoles String[] @default(["TENANT_ADMIN", "DPO"])
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_sla_configs")
+}
+
+model Holiday {
+  id        String   @id @default(uuid())
+  tenantId  String
+  date      DateTime
+  name      String
+  locale    String   @default("DE")
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, date])
+  @@index([tenantId])
+  @@map("holidays")
+}
+
+model CaseDeadline {
+  id                          String    @id @default(uuid())
+  tenantId                    String
+  caseId                      String    @unique
+  receivedAt                  DateTime
+  legalDueAt                  DateTime
+  extendedDueAt               DateTime?
+  effectiveDueAt              DateTime
+  extensionAppliedAt          DateTime?
+  extensionDays               Int?
+  extensionReason             String?
+  extensionNotificationRequired Boolean @default(true)
+  extensionNotificationSentAt DateTime?
+  pausedAt                    DateTime?
+  pauseReason                 String?
+  pauseApprovedBy             String?
+  totalPausedDays             Int       @default(0)
+  currentRisk                 RiskLevel @default(GREEN)
+  riskReasons                 String[]  @default([])
+  daysRemaining               Int       @default(30)
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case   DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, currentRisk])
+  @@index([tenantId, effectiveDueAt])
+  @@map("case_deadlines")
+}
+
+model DeadlineEvent {
+  id          String            @id @default(uuid())
+  tenantId    String
+  caseId      String
+  eventType   DeadlineEventType
+  description String
+  actorUserId String?
+  metadata    Json?
+  createdAt   DateTime          @default(now())
+
+  tenant Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case   DSARCase  @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  actor  User?     @relation("DeadlineEventActor", fields: [actorUserId], references: [id])
+
+  @@index([tenantId, caseId])
+  @@map("deadline_events")
+}
+
+model CaseMilestone {
+  id            String        @id @default(uuid())
+  tenantId      String
+  caseId        String
+  milestoneType MilestoneType
+  plannedDueAt  DateTime
+  completedAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case   DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, caseId, milestoneType])
+  @@index([tenantId, caseId])
+  @@map("case_milestones")
+}
+
+model Escalation {
+  id              String             @id @default(uuid())
+  tenantId        String
+  caseId          String
+  severity        EscalationSeverity
+  reason          String
+  recipientRoles  String[]
+  acknowledged    Boolean            @default(false)
+  acknowledgedAt  DateTime?
+  createdByUserId String?
+  createdAt       DateTime           @default(now())
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case      DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  createdBy User?    @relation("EscalationCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([tenantId, caseId])
+  @@index([tenantId, severity])
+  @@map("escalations")
+}
+
+model Notification {
+  id              String           @id @default(uuid())
+  tenantId        String
+  recipientUserId String
+  type            NotificationType
+  title           String
+  message         String
+  linkUrl         String?
+  read            Boolean          @default(false)
+  readAt          DateTime?
+  emailPayload    Json?
+  emailSentAt     DateTime?
+  createdAt       DateTime         @default(now())
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  recipient User   @relation("NotificationRecipient", fields: [recipientUserId], references: [id])
+
+  @@index([tenantId, recipientUserId, read])
+  @@index([tenantId, recipientUserId, createdAt])
+  @@map("notifications")
 }

@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole } from "@prisma/client";
+import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole, RiskLevel, EscalationSeverity, DeadlineEventType, MilestoneType, NotificationType } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -7,6 +7,13 @@ async function main() {
   console.log("Seeding database...");
 
   // Clean existing data (order matters for FK constraints)
+  await prisma.notification.deleteMany();
+  await prisma.escalation.deleteMany();
+  await prisma.caseMilestone.deleteMany();
+  await prisma.deadlineEvent.deleteMany();
+  await prisma.caseDeadline.deleteMany();
+  await prisma.holiday.deleteMany();
+  await prisma.tenantSlaConfig.deleteMany();
   await prisma.caseSystemLink.deleteMany();
   await prisma.discoveryRule.deleteMany();
   await prisma.systemProcessor.deleteMany();
@@ -1560,6 +1567,234 @@ async function main() {
   });
 
   console.log("Created copilot demo data (1 run, 2 queries, 3 evidence items, 3 findings, 3 detector results, 1 identity profile, 1 summary, 1 export artifact)");
+
+  // ── Deadline & Risk Engine Seed Data ──────────────────────────────────
+
+  // Tenant SLA Config
+  await prisma.tenantSlaConfig.create({
+    data: {
+      tenantId: tenant.id,
+      initialDeadlineDays: 30,
+      extensionMaxDays: 60,
+      useBusinessDays: false,
+      timezone: "Europe/Berlin",
+      yellowThresholdDays: 14,
+      redThresholdDays: 7,
+      milestoneIdvDays: 7,
+      milestoneCollectionDays: 14,
+      milestoneDraftDays: 21,
+      milestoneLegalDays: 25,
+      escalationYellowRoles: ["DPO", "CASE_MANAGER"],
+      escalationRedRoles: ["DPO", "TENANT_ADMIN"],
+      escalationOverdueRoles: ["DPO", "TENANT_ADMIN", "SUPER_ADMIN"],
+    },
+  });
+  console.log("Created tenant SLA config");
+
+  // Holidays (German public holidays 2026)
+  await prisma.holiday.createMany({
+    data: [
+      { tenantId: tenant.id, date: new Date("2026-01-01"), name: "New Year's Day", locale: "DE" },
+      { tenantId: tenant.id, date: new Date("2026-04-03"), name: "Good Friday", locale: "DE" },
+      { tenantId: tenant.id, date: new Date("2026-04-06"), name: "Easter Monday", locale: "DE" },
+      { tenantId: tenant.id, date: new Date("2026-05-01"), name: "Labour Day", locale: "DE" },
+      { tenantId: tenant.id, date: new Date("2026-05-14"), name: "Ascension Day", locale: "DE" },
+      { tenantId: tenant.id, date: new Date("2026-05-25"), name: "Whit Monday", locale: "DE" },
+      { tenantId: tenant.id, date: new Date("2026-10-03"), name: "German Unity Day", locale: "DE" },
+      { tenantId: tenant.id, date: new Date("2026-12-25"), name: "Christmas Day", locale: "DE" },
+      { tenantId: tenant.id, date: new Date("2026-12-26"), name: "St. Stephen's Day", locale: "DE" },
+    ],
+  });
+  console.log("Created 9 holidays");
+
+  // CaseDeadlines for each open case with varied risk scenarios
+  // Case 1: DATA_COLLECTION, 15d remaining → GREEN risk
+  const deadline1 = await prisma.caseDeadline.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case1.id,
+      receivedAt: daysAgo(15),
+      legalDueAt: daysFromNow(15),
+      effectiveDueAt: daysFromNow(15),
+      currentRisk: RiskLevel.GREEN,
+      riskReasons: [],
+      daysRemaining: 15,
+    },
+  });
+
+  // Case 2: REVIEW_LEGAL, 5d remaining → RED risk (critical)
+  const deadline2 = await prisma.caseDeadline.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case2.id,
+      receivedAt: daysAgo(25),
+      legalDueAt: daysFromNow(5),
+      effectiveDueAt: daysFromNow(5),
+      currentRisk: RiskLevel.RED,
+      riskReasons: ["Only 5 days remaining", "Legal review still pending"],
+      daysRemaining: 5,
+    },
+  });
+
+  // Case 3: NEW, 28d remaining → GREEN risk
+  const deadline3 = await prisma.caseDeadline.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case3.id,
+      receivedAt: daysAgo(2),
+      legalDueAt: daysFromNow(28),
+      effectiveDueAt: daysFromNow(28),
+      currentRisk: RiskLevel.GREEN,
+      riskReasons: [],
+      daysRemaining: 28,
+    },
+  });
+
+  // Case 4: RESPONSE_SENT, 2d remaining → YELLOW risk
+  const deadline4 = await prisma.caseDeadline.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case4.id,
+      receivedAt: daysAgo(28),
+      legalDueAt: daysFromNow(2),
+      effectiveDueAt: daysFromNow(2),
+      currentRisk: RiskLevel.YELLOW,
+      riskReasons: ["Response sent but case not yet closed"],
+      daysRemaining: 2,
+    },
+  });
+
+  // Case 5: REJECTED/CLOSED, overdue → still tracked
+  const deadline5 = await prisma.caseDeadline.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case5.id,
+      receivedAt: daysAgo(40),
+      legalDueAt: daysAgo(10),
+      effectiveDueAt: daysAgo(10),
+      currentRisk: RiskLevel.GREEN,
+      riskReasons: [],
+      daysRemaining: 0,
+    },
+  });
+
+  console.log("Created 5 case deadlines");
+
+  // Milestones for cases with varied completion states
+  const milestoneData = [
+    // Case 1: IDV done, collection in progress
+    { tenantId: tenant.id, caseId: case1.id, milestoneType: MilestoneType.IDV_COMPLETE, plannedDueAt: daysAgo(8), completedAt: daysAgo(12) },
+    { tenantId: tenant.id, caseId: case1.id, milestoneType: MilestoneType.COLLECTION_COMPLETE, plannedDueAt: daysAgo(1), completedAt: null },
+    { tenantId: tenant.id, caseId: case1.id, milestoneType: MilestoneType.DRAFT_READY, plannedDueAt: daysFromNow(6), completedAt: null },
+    { tenantId: tenant.id, caseId: case1.id, milestoneType: MilestoneType.LEGAL_REVIEW_DONE, plannedDueAt: daysFromNow(10), completedAt: null },
+    { tenantId: tenant.id, caseId: case1.id, milestoneType: MilestoneType.RESPONSE_SENT, plannedDueAt: daysFromNow(15), completedAt: null },
+    // Case 2: Most milestones done, but legal review overdue
+    { tenantId: tenant.id, caseId: case2.id, milestoneType: MilestoneType.IDV_COMPLETE, plannedDueAt: daysAgo(18), completedAt: daysAgo(22) },
+    { tenantId: tenant.id, caseId: case2.id, milestoneType: MilestoneType.COLLECTION_COMPLETE, plannedDueAt: daysAgo(11), completedAt: daysAgo(10) },
+    { tenantId: tenant.id, caseId: case2.id, milestoneType: MilestoneType.DRAFT_READY, plannedDueAt: daysAgo(4), completedAt: null },
+    { tenantId: tenant.id, caseId: case2.id, milestoneType: MilestoneType.LEGAL_REVIEW_DONE, plannedDueAt: daysAgo(0), completedAt: null },
+    { tenantId: tenant.id, caseId: case2.id, milestoneType: MilestoneType.RESPONSE_SENT, plannedDueAt: daysFromNow(5), completedAt: null },
+    // Case 3: No milestones done yet (NEW)
+    { tenantId: tenant.id, caseId: case3.id, milestoneType: MilestoneType.IDV_COMPLETE, plannedDueAt: daysFromNow(5), completedAt: null },
+    { tenantId: tenant.id, caseId: case3.id, milestoneType: MilestoneType.COLLECTION_COMPLETE, plannedDueAt: daysFromNow(12), completedAt: null },
+    { tenantId: tenant.id, caseId: case3.id, milestoneType: MilestoneType.DRAFT_READY, plannedDueAt: daysFromNow(19), completedAt: null },
+    { tenantId: tenant.id, caseId: case3.id, milestoneType: MilestoneType.LEGAL_REVIEW_DONE, plannedDueAt: daysFromNow(23), completedAt: null },
+    { tenantId: tenant.id, caseId: case3.id, milestoneType: MilestoneType.RESPONSE_SENT, plannedDueAt: daysFromNow(28), completedAt: null },
+  ];
+  await prisma.caseMilestone.createMany({ data: milestoneData });
+  console.log("Created 15 milestones");
+
+  // Deadline Events
+  await prisma.deadlineEvent.createMany({
+    data: [
+      { tenantId: tenant.id, caseId: case1.id, eventType: DeadlineEventType.CREATED, description: "Deadline tracking initialized. Legal due: 30 calendar days.", actorUserId: admin.id },
+      { tenantId: tenant.id, caseId: case1.id, eventType: DeadlineEventType.MILESTONE_COMPLETED, description: "Identity Verification completed.", actorUserId: admin.id },
+      { tenantId: tenant.id, caseId: case2.id, eventType: DeadlineEventType.CREATED, description: "Deadline tracking initialized. Legal due: 30 calendar days.", actorUserId: caseManager.id },
+      { tenantId: tenant.id, caseId: case2.id, eventType: DeadlineEventType.MILESTONE_COMPLETED, description: "Identity Verification completed.", actorUserId: caseManager.id },
+      { tenantId: tenant.id, caseId: case2.id, eventType: DeadlineEventType.MILESTONE_COMPLETED, description: "Data Collection completed.", actorUserId: caseManager.id },
+      { tenantId: tenant.id, caseId: case2.id, eventType: DeadlineEventType.RECALCULATED, description: "Risk escalated to RED. Only 5 days remaining.", actorUserId: null },
+      { tenantId: tenant.id, caseId: case3.id, eventType: DeadlineEventType.CREATED, description: "Deadline tracking initialized. Legal due: 30 calendar days.", actorUserId: admin.id },
+    ],
+  });
+  console.log("Created deadline events");
+
+  // Escalations
+  await prisma.escalation.createMany({
+    data: [
+      {
+        tenantId: tenant.id,
+        caseId: case2.id,
+        severity: EscalationSeverity.RED_ALERT,
+        reason: "Case DSAR-2026-D4E5F6 has only 5 days remaining. Legal review still pending.",
+        recipientRoles: ["DPO", "TENANT_ADMIN"],
+        acknowledged: false,
+        createdByUserId: null,
+      },
+      {
+        tenantId: tenant.id,
+        caseId: case2.id,
+        severity: EscalationSeverity.YELLOW_WARNING,
+        reason: "Case DSAR-2026-D4E5F6 entered yellow zone (< 14 days remaining). Draft response not yet ready.",
+        recipientRoles: ["DPO", "CASE_MANAGER"],
+        acknowledged: true,
+        acknowledgedAt: daysAgo(5),
+        createdByUserId: null,
+      },
+    ],
+  });
+  console.log("Created escalations");
+
+  // Notifications
+  await prisma.notification.createMany({
+    data: [
+      {
+        tenantId: tenant.id,
+        recipientUserId: dpo.id,
+        type: NotificationType.ESCALATION,
+        title: "RED ALERT: DSAR-2026-D4E5F6",
+        message: "Case has only 5 days remaining and legal review is still pending. Immediate action required.",
+        linkUrl: `/cases/${case2.id}?tab=deadlines`,
+        read: false,
+      },
+      {
+        tenantId: tenant.id,
+        recipientUserId: admin.id,
+        type: NotificationType.ESCALATION,
+        title: "RED ALERT: DSAR-2026-D4E5F6",
+        message: "Case has only 5 days remaining and legal review is still pending. Immediate action required.",
+        linkUrl: `/cases/${case2.id}?tab=deadlines`,
+        read: false,
+      },
+      {
+        tenantId: tenant.id,
+        recipientUserId: dpo.id,
+        type: NotificationType.DEADLINE_WARNING,
+        title: "Yellow Warning: DSAR-2026-D4E5F6",
+        message: "Case entered yellow risk zone. Less than 14 days remaining.",
+        linkUrl: `/cases/${case2.id}?tab=deadlines`,
+        read: true,
+      },
+      {
+        tenantId: tenant.id,
+        recipientUserId: caseManager.id,
+        type: NotificationType.MILESTONE_DUE,
+        title: "Milestone overdue: Data Collection",
+        message: "Data Collection milestone for DSAR-2026-A1B2C3 is past its planned date.",
+        linkUrl: `/cases/${case1.id}?tab=deadlines`,
+        read: false,
+      },
+      {
+        tenantId: tenant.id,
+        recipientUserId: caseManager.id,
+        type: NotificationType.INFO,
+        title: "Deadline initialized: DSAR-2026-G7H8I9",
+        message: "Deadline tracking has been set up for the new rectification request. Due in 28 days.",
+        linkUrl: `/cases/${case3.id}?tab=deadlines`,
+        read: true,
+      },
+    ],
+  });
+  console.log("Created notifications");
 
   console.log("\n--- Seed Complete ---");
   console.log("Tenant: Acme Corp");

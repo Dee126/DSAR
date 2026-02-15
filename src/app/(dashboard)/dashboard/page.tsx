@@ -79,6 +79,18 @@ export default function DashboardPage() {
     issues: number;
     lastSuccessAt: string | null;
   } | null>(null);
+  const [slaReport, setSlaReport] = useState<{
+    summary: {
+      totalOpen: number;
+      overdue: number;
+      dueIn7: number;
+      dueIn14: number;
+      dueIn30: number;
+      avgDaysToClose: number;
+      extensionRate: number;
+      riskDistribution: { green: number; yellow: number; red: number };
+    };
+  } | null>(null);
   const [copilotStats, setCopilotStats] = useState<{
     totalRuns: number;
     completedRuns: number;
@@ -140,6 +152,20 @@ export default function DashboardPage() {
       }
     }
     fetchCopilotStats();
+  }, []);
+
+  useEffect(() => {
+    async function fetchSlaReport() {
+      try {
+        const res = await fetch("/api/sla-report");
+        if (res.ok) {
+          setSlaReport(await res.json());
+        }
+      } catch {
+        /* silently fail */
+      }
+    }
+    fetchSlaReport();
   }, []);
 
   const CLOSED_STATUSES = ["CLOSED", "REJECTED"];
@@ -296,6 +322,78 @@ export default function DashboardPage() {
             >
               Manage Integrations
             </Link>
+          </div>
+        </div>
+      )}
+
+      {/* SLA Compliance Widget */}
+      {slaReport && (
+        <div className="card">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
+                <svg className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">SLA Compliance</h3>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  {slaReport.summary.totalOpen} open cases &middot; Avg close: {slaReport.summary.avgDaysToClose.toFixed(1)} days
+                </p>
+              </div>
+            </div>
+            <Link href="/governance/sla" className="text-sm font-medium text-brand-600 hover:text-brand-700">
+              Configure SLA
+            </Link>
+          </div>
+
+          {/* Risk Distribution Bar */}
+          <div className="mt-4">
+            <div className="flex items-center justify-between text-xs font-medium text-gray-600 mb-1">
+              <span>Risk Distribution</span>
+              <span>{slaReport.summary.extensionRate.toFixed(0)}% extension rate</span>
+            </div>
+            {(slaReport.summary.riskDistribution.green + slaReport.summary.riskDistribution.yellow + slaReport.summary.riskDistribution.red) > 0 ? (
+              <div className="flex h-3 overflow-hidden rounded-full bg-gray-100">
+                {slaReport.summary.riskDistribution.green > 0 && (
+                  <div className="bg-green-500 transition-all" style={{ width: `${(slaReport.summary.riskDistribution.green / slaReport.summary.totalOpen) * 100}%` }} title={`${slaReport.summary.riskDistribution.green} green`} />
+                )}
+                {slaReport.summary.riskDistribution.yellow > 0 && (
+                  <div className="bg-yellow-500 transition-all" style={{ width: `${(slaReport.summary.riskDistribution.yellow / slaReport.summary.totalOpen) * 100}%` }} title={`${slaReport.summary.riskDistribution.yellow} yellow`} />
+                )}
+                {slaReport.summary.riskDistribution.red > 0 && (
+                  <div className="bg-red-500 transition-all" style={{ width: `${(slaReport.summary.riskDistribution.red / slaReport.summary.totalOpen) * 100}%` }} title={`${slaReport.summary.riskDistribution.red} red`} />
+                )}
+              </div>
+            ) : (
+              <div className="h-3 rounded-full bg-gray-100" />
+            )}
+            <div className="mt-1 flex items-center gap-4 text-xs text-gray-500">
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-500" />{slaReport.summary.riskDistribution.green} on track</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-yellow-500" />{slaReport.summary.riskDistribution.yellow} at risk</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-500" />{slaReport.summary.riskDistribution.red} critical</span>
+            </div>
+          </div>
+
+          {/* Due Soon / Overdue Counters */}
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-lg bg-red-50 px-3 py-2 text-center">
+              <p className="text-lg font-bold text-red-700">{slaReport.summary.overdue}</p>
+              <p className="text-xs text-red-600">Overdue</p>
+            </div>
+            <div className="rounded-lg bg-yellow-50 px-3 py-2 text-center">
+              <p className="text-lg font-bold text-yellow-700">{slaReport.summary.dueIn7}</p>
+              <p className="text-xs text-yellow-600">Due 7 days</p>
+            </div>
+            <div className="rounded-lg bg-blue-50 px-3 py-2 text-center">
+              <p className="text-lg font-bold text-blue-700">{slaReport.summary.dueIn14}</p>
+              <p className="text-xs text-blue-600">Due 14 days</p>
+            </div>
+            <div className="rounded-lg bg-gray-50 px-3 py-2 text-center">
+              <p className="text-lg font-bold text-gray-700">{slaReport.summary.dueIn30}</p>
+              <p className="text-xs text-gray-600">Due 30 days</p>
+            </div>
           </div>
         </div>
       )}
