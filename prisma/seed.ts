@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole, RiskLevel, EscalationSeverity, DeadlineEventType, MilestoneType, NotificationType, IdvRequestStatus, IdvMethod, IdvArtifactType, IdvDecisionOutcome, ResponseDocStatus, DeliveryMethod, IncidentSeverity, IncidentStatus, IncidentTimelineEventType, RegulatorRecordStatus, IncidentSourceType, DsarIncidentSubjectStatus, VendorStatus, VendorRequestStatus, VendorResponseType, VendorEscalationSeverity, KpiSnapshotPeriod, MaturityDomain, DeliveryLinkStatus, DeliveryEventType } from "@prisma/client";
+import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole, RiskLevel, EscalationSeverity, DeadlineEventType, MilestoneType, NotificationType, IdvRequestStatus, IdvMethod, IdvArtifactType, IdvDecisionOutcome, ResponseDocStatus, DeliveryMethod, IncidentSeverity, IncidentStatus, IncidentTimelineEventType, RegulatorRecordStatus, IncidentSourceType, DsarIncidentSubjectStatus, VendorStatus, VendorRequestStatus, VendorResponseType, VendorEscalationSeverity, KpiSnapshotPeriod, MaturityDomain, DeliveryLinkStatus, DeliveryEventType, RedactionType, SensitiveDataStatus, LegalExceptionType, LegalExceptionStatus, PartialDenialStatus, RedactionReviewState } from "@prisma/client";
 import { createHash, randomBytes } from "crypto";
 import { hash } from "bcryptjs";
 
@@ -8,6 +8,11 @@ async function main() {
   console.log("Seeding database...");
 
   // Clean existing data (order matters for FK constraints)
+  // Module 8.3: Redaction & Sensitive Data Controls
+  await prisma.caseRedactionReview.deleteMany();
+  await prisma.partialDenialSection.deleteMany();
+  await prisma.legalException.deleteMany();
+  await prisma.sensitiveDataFlag.deleteMany();
   // Module 8.2: Delivery Portal
   await prisma.deliveryEvent.deleteMany();
   await prisma.deliveryLink.deleteMany();
@@ -2524,6 +2529,193 @@ async function main() {
 
   console.log("Created delivery settings, 2 packages, 2 links (1 active+OTP, 1 revoked), 5 events.");
   console.log("Secure Data Delivery Portal (Module 8.2) seed complete.");
+
+  // ─── MODULE 8.3: Redaction & Sensitive Data Controls ──────────────────
+
+  // Case 2: Has completed response doc, so add redaction entries, sensitive flags, etc.
+  // Redaction entries for case2 response doc
+  const redaction1 = await prisma.redactionEntry.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case2.id,
+      responseDocId: responseDoc2.id,
+      sectionKey: "data_summary",
+      reason: "Third-party email addresses found in communication records",
+      redactionType: RedactionType.THIRD_PARTY,
+      legalBasisReference: "GDPR Art. 15(4)",
+      redactedContent: "Emails from suppliers containing personal data of non-requesting parties",
+      approved: true,
+      approvedByUserId: admin.id,
+      approvedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      createdByUserId: dpo.id,
+    },
+  });
+
+  const redaction2 = await prisma.redactionEntry.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case2.id,
+      responseDocId: responseDoc2.id,
+      sectionKey: "recipients",
+      reason: "Internal performance review notes containing managerial commentary about third parties",
+      redactionType: RedactionType.FULL,
+      pageNumber: 3,
+      legalBasisReference: "GDPR Art. 15(4) — Rights of others",
+      redactedContent: "HR evaluation comments by managers referencing other employees",
+      approved: true,
+      approvedByUserId: admin.id,
+      approvedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      createdByUserId: dpo.id,
+    },
+  });
+
+  const redaction3 = await prisma.redactionEntry.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case2.id,
+      responseDocId: responseDoc2.id,
+      sectionKey: "data_summary",
+      reason: "Health insurance claim details (Art. 9 special category)",
+      redactionType: RedactionType.ART9_SPECIAL,
+      legalBasisReference: "GDPR Art. 9(2)(h)",
+      approved: false,
+      createdByUserId: caseManager.id,
+    },
+  });
+
+  // Sensitive data flags for case2
+  await prisma.sensitiveDataFlag.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case2.id,
+      dataCategory: DataCategory.HEALTH,
+      description: "Health insurance records found in HR system export",
+      sectionKey: "data_summary",
+      status: SensitiveDataStatus.REQUIRES_REDACTION,
+      reviewNote: "Contains ICD-10 codes, must be redacted before disclosure",
+      reviewedByUserId: dpo.id,
+      reviewedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+      flaggedByUserId: caseManager.id,
+    },
+  });
+
+  await prisma.sensitiveDataFlag.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case2.id,
+      dataCategory: DataCategory.UNION,
+      description: "Trade union membership indicator detected in payroll records",
+      status: SensitiveDataStatus.CLEARED,
+      reviewNote: "Data belongs to requesting subject, no redaction needed for access request",
+      reviewedByUserId: dpo.id,
+      reviewedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+      flaggedByUserId: caseManager.id,
+    },
+  });
+
+  // Legal exceptions for case2
+  const exception1 = await prisma.legalException.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case2.id,
+      exceptionType: LegalExceptionType.ART_15_4_RIGHTS_OF_OTHERS,
+      legalBasisReference: "GDPR Art. 15(4)",
+      scope: "Third-party employee names and email addresses in communication logs",
+      justification: "Disclosure would adversely affect the rights and freedoms of third parties whose personal data appears in the subject's communication history",
+      status: LegalExceptionStatus.APPROVED,
+      proposedByUserId: dpo.id,
+      approvedByUserId: admin.id,
+      approvedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  await prisma.legalException.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case2.id,
+      exceptionType: LegalExceptionType.TRADE_SECRET,
+      legalBasisReference: "GDPR Art. 15(4) / Trade Secrets Act",
+      scope: "Internal pricing algorithm parameters in CRM data export",
+      justification: "Contains proprietary pricing model coefficients that constitute trade secrets",
+      status: LegalExceptionStatus.PROPOSED,
+      proposedByUserId: caseManager.id,
+    },
+  });
+
+  // Partial denial for case2
+  await prisma.partialDenialSection.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case2.id,
+      sectionKey: "data_summary",
+      deniedScope: "Third-party personal data in email correspondence",
+      legalBasis: "GDPR Art. 15(4)",
+      exceptionId: exception1.id,
+      justificationText: "Pursuant to Art. 15(4) GDPR, we have redacted personal data of third parties from the enclosed communication records, as disclosure would adversely affect their rights and freedoms.",
+      status: PartialDenialStatus.APPROVED,
+      approvedByUserId: admin.id,
+      approvedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      createdByUserId: dpo.id,
+    },
+  });
+
+  await prisma.partialDenialSection.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case2.id,
+      sectionKey: "recipients",
+      deniedScope: "Internal scoring algorithm details",
+      legalBasis: "GDPR Art. 15(4) / Trade Secrets Directive",
+      justificationText: "We have withheld details of our proprietary data processing algorithms as these constitute trade secrets under the Trade Secrets Directive (EU 2016/943).",
+      status: PartialDenialStatus.DRAFT,
+      createdByUserId: caseManager.id,
+    },
+  });
+
+  // Redaction review state for case2 - in review since redaction3 is not yet approved
+  await prisma.caseRedactionReview.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case2.id,
+      state: RedactionReviewState.IN_REVIEW,
+      totalRedactions: 3,
+      approvedRedactions: 2,
+      pendingSensitiveFlags: 0,
+      pendingExceptions: 1,
+      notes: "Awaiting trade secret exception approval and health data redaction sign-off",
+    },
+  });
+
+  // Case 1: Fewer items — just a sensitive data flag (case is still in data collection)
+  await prisma.sensitiveDataFlag.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case1.id,
+      dataCategory: DataCategory.HEALTH,
+      description: "Potential medical records found in HR system attachment",
+      status: SensitiveDataStatus.FLAGGED,
+      flaggedByUserId: caseManager.id,
+    },
+  });
+
+  // Case 4: Completed redaction review — response already sent
+  await prisma.caseRedactionReview.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case4.id,
+      state: RedactionReviewState.COMPLETED,
+      totalRedactions: 1,
+      approvedRedactions: 1,
+      pendingSensitiveFlags: 0,
+      pendingExceptions: 0,
+      completedByUserId: dpo.id,
+      completedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+      notes: "All redactions reviewed and approved. Response cleared for delivery.",
+    },
+  });
+
+  console.log("Created redaction entries, sensitive data flags, legal exceptions, partial denials, and review states.");
+  console.log("Redaction & Sensitive Data Controls (Module 8.3) seed complete.");
 
   // ─── MODULE 5: Incidents & Authority Linkage ────────────────────────
 

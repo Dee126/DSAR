@@ -502,6 +502,12 @@ model Tenant {
   deliveryEvents         DeliveryEvent[]
   deliverySettings       DeliverySettings?
 
+  // ─── Module 8.3: Redaction & Sensitive Data Controls ───
+  sensitiveDataFlags       SensitiveDataFlag[]
+  legalExceptions          LegalException[]
+  partialDenialSections    PartialDenialSection[]
+  caseRedactionReviews     CaseRedactionReview[]
+
   @@map("tenants")
 }
 
@@ -549,6 +555,7 @@ model User {
   responseApprovals     ResponseApproval[]  @relation("ResponseApprovalReviewer")
   deliveryRecords       DeliveryRecord[]    @relation("DeliveryRecordCreatedBy")
   redactionEntries      RedactionEntry[]    @relation("RedactionEntryCreatedBy")
+  redactionEntriesApproved RedactionEntry[] @relation("RedactionEntryApprovedBy")
   incidentsCreated      Incident[]          @relation("IncidentCreatedBy")
   incidentTimelines     IncidentTimeline[]  @relation("IncidentTimelineCreatedBy")
   incidentCommunications IncidentCommunication[] @relation("IncidentCommCreatedBy")
@@ -570,6 +577,15 @@ model User {
   deliveryLinksCreated   DeliveryLink[]    @relation("DeliveryLinkCreatedBy")
   deliveryLinksRevoked   DeliveryLink[]    @relation("DeliveryLinkRevokedBy")
   deliveryPackagesGenerated DeliveryPackage[] @relation("DeliveryPackageGeneratedBy")
+
+  // ─── Module 8.3: Redaction & Sensitive Data Controls ───
+  sensitiveDataFlagsCreated   SensitiveDataFlag[]    @relation("SensitiveDataFlaggedBy")
+  sensitiveDataFlagsReviewed  SensitiveDataFlag[]    @relation("SensitiveDataReviewedBy")
+  legalExceptionsProposed     LegalException[]       @relation("LegalExceptionProposedBy")
+  legalExceptionsApproved     LegalException[]       @relation("LegalExceptionApprovedBy")
+  partialDenialsCreated       PartialDenialSection[] @relation("PartialDenialCreatedBy")
+  partialDenialsApproved      PartialDenialSection[] @relation("PartialDenialApprovedBy")
+  redactionReviewsCompleted   CaseRedactionReview[]  @relation("RedactionReviewCompletedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -664,6 +680,12 @@ model DSARCase {
   deliveryLinks         DeliveryLink[]
   deliveryPackages      DeliveryPackage[]
   deliveryEvents        DeliveryEvent[]
+
+  // ─── Module 8.3: Redaction & Sensitive Data Controls ───
+  sensitiveDataFlags      SensitiveDataFlag[]
+  legalExceptions         LegalException[]
+  partialDenialSections   PartialDenialSection[]
+  redactionReview         CaseRedactionReview?
 
   @@unique([tenantId, caseNumber])
   @@index([tenantId])
@@ -1920,20 +1942,27 @@ model DeliveryRecord {
 }
 
 model RedactionEntry {
-  id              String   @id @default(uuid())
-  tenantId        String
-  responseDocId   String
-  caseId          String
-  sectionKey      String?
-  documentRef     String?  // reference to external doc/attachment
-  redactedContent String?  // description of what was redacted
-  reason          String
-  createdByUserId String
-  createdAt       DateTime @default(now())
+  id                   String         @id @default(uuid())
+  tenantId             String
+  responseDocId        String
+  caseId               String
+  sectionKey           String?
+  documentRef          String?        // reference to external doc/attachment
+  redactedContent      String?        // description of what was redacted
+  reason               String
+  redactionType        RedactionType? // FULL, PARTIAL, THIRD_PARTY, ART9_SPECIAL, etc.
+  pageNumber           Int?           // for paginated documents
+  legalBasisReference  String?        // e.g. "Art. 15(4) GDPR"
+  approved             Boolean        @default(false)
+  approvedByUserId     String?
+  approvedAt           DateTime?
+  createdByUserId      String
+  createdAt            DateTime       @default(now())
 
   tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   responseDoc ResponseDocument @relation(fields: [responseDocId], references: [id], onDelete: Cascade)
   createdBy   User             @relation("RedactionEntryCreatedBy", fields: [createdByUserId], references: [id])
+  approvedBy  User?            @relation("RedactionEntryApprovedBy", fields: [approvedByUserId], references: [id])
 
   @@index([tenantId, responseDocId])
   @@index([tenantId, caseId])
@@ -3003,4 +3032,160 @@ model DeliverySettings {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("delivery_settings")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Module 8.3: Redaction & Sensitive Data Controls + Legal Exceptions
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum RedactionType {
+  FULL            // entire content replaced with [REDACTED]
+  PARTIAL         // only specific PII masked
+  THIRD_PARTY     // third-party data removed
+  ART9_SPECIAL    // Art. 9 special category redaction
+  LEGAL_PRIVILEGE // attorney-client privilege
+  TRADE_SECRET    // commercial / trade secret redaction
+}
+
+enum RedactionReviewState {
+  PENDING
+  IN_REVIEW
+  COMPLETED
+  REJECTED
+}
+
+enum SensitiveDataStatus {
+  FLAGGED
+  UNDER_REVIEW
+  CLEARED
+  REQUIRES_REDACTION
+}
+
+enum LegalExceptionType {
+  ART_15_4_RIGHTS_OF_OTHERS
+  ART_17_3_LEGAL_OBLIGATION
+  ART_17_3_PUBLIC_INTEREST
+  ART_17_3_LEGAL_CLAIMS
+  ART_23_NATIONAL_SECURITY
+  ART_23_PUBLIC_SECURITY
+  ART_23_JUDICIAL_PROCEEDINGS
+  TRADE_SECRET
+  INTELLECTUAL_PROPERTY
+  PROFESSIONAL_PRIVILEGE
+}
+
+enum LegalExceptionStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+  WITHDRAWN
+}
+
+enum PartialDenialStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+model SensitiveDataFlag {
+  id                String              @id @default(uuid())
+  tenantId          String
+  caseId            String
+  documentId        String?             // Document reference
+  responseDocId     String?             // ResponseDocument reference
+  dataCategory      DataCategory        // HEALTH, RELIGION, etc.
+  description       String              // what was detected
+  pageNumber        Int?                // for paginated docs
+  sectionKey        String?             // for structured responses
+  status            SensitiveDataStatus @default(FLAGGED)
+  reviewNote        String?
+  reviewedByUserId  String?
+  reviewedAt        DateTime?
+  flaggedByUserId   String
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case       DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  flaggedBy  User     @relation("SensitiveDataFlaggedBy", fields: [flaggedByUserId], references: [id])
+  reviewedBy User?    @relation("SensitiveDataReviewedBy", fields: [reviewedByUserId], references: [id])
+
+  @@index([tenantId, caseId])
+  @@map("sensitive_data_flags")
+}
+
+model LegalException {
+  id                    String               @id @default(uuid())
+  tenantId              String
+  caseId                String
+  exceptionType         LegalExceptionType
+  legalBasisReference   String               // e.g. "GDPR Art. 15(4)"
+  scope                 String               // what data/sections this applies to
+  justification         String               // why the exception applies
+  status                LegalExceptionStatus @default(PROPOSED)
+  proposedByUserId      String
+  approvedByUserId      String?
+  approvedAt            DateTime?
+  rejectionReason       String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  tenant          Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case            DSARCase              @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  proposedBy      User                  @relation("LegalExceptionProposedBy", fields: [proposedByUserId], references: [id])
+  approvedBy      User?                 @relation("LegalExceptionApprovedBy", fields: [approvedByUserId], references: [id])
+  partialDenials  PartialDenialSection[]
+
+  @@index([tenantId, caseId])
+  @@map("legal_exceptions")
+}
+
+model PartialDenialSection {
+  id                    String             @id @default(uuid())
+  tenantId              String
+  caseId                String
+  sectionKey            String             // which section of the response
+  deniedScope           String             // what data is denied
+  legalBasis            String             // legal basis for partial denial
+  exceptionId           String?            // reference to LegalException
+  justificationText     String             // explanation included in response
+  status                PartialDenialStatus @default(DRAFT)
+  approvedByUserId      String?
+  approvedAt            DateTime?
+  createdByUserId       String
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case       DSARCase        @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  exception  LegalException? @relation(fields: [exceptionId], references: [id])
+  createdBy  User            @relation("PartialDenialCreatedBy", fields: [createdByUserId], references: [id])
+  approvedBy User?           @relation("PartialDenialApprovedBy", fields: [approvedByUserId], references: [id])
+
+  @@index([tenantId, caseId])
+  @@map("partial_denial_sections")
+}
+
+model CaseRedactionReview {
+  id                    String              @id @default(uuid())
+  tenantId              String
+  caseId                String              @unique
+  state                 RedactionReviewState @default(PENDING)
+  totalRedactions       Int                 @default(0)
+  approvedRedactions    Int                 @default(0)
+  pendingSensitiveFlags Int                 @default(0)
+  pendingExceptions     Int                 @default(0)
+  completedByUserId     String?
+  completedAt           DateTime?
+  notes                 String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case        DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  completedBy User?    @relation("RedactionReviewCompletedBy", fields: [completedByUserId], references: [id])
+
+  @@index([tenantId])
+  @@map("case_redaction_reviews")
 }

@@ -19,6 +19,8 @@ import {
   type TemplateSection,
   type TemplateConditional,
 } from "./response-templates";
+import { checkRedactionGate } from "./redaction-controls-service";
+import { buildRedactionSummary } from "./legal-exception-service";
 import type { DSARType } from "@prisma/client";
 
 export interface RenderedSection {
@@ -68,6 +70,28 @@ export async function generateResponse(
   }
   if (!factPack.collectionComplete) {
     warnings.push("Data collection is not yet complete. Generated response may have missing data.");
+  }
+
+  // Module 8.3: Redaction gate check
+  const redactionGate = await checkRedactionGate(tenantId, caseId);
+  if (!redactionGate.allowed) {
+    for (const blocker of redactionGate.blockers) {
+      warnings.push(`Redaction: ${blocker}`);
+    }
+  }
+
+  // Module 8.3: Include redaction summary in fact pack
+  const redactionSummary = await buildRedactionSummary(tenantId, caseId);
+  if (redactionSummary.totalRedactions > 0 || redactionSummary.legalExceptions.length > 0 || redactionSummary.partialDenials.length > 0) {
+    factPack.placeholderValues["redaction.total"] = String(redactionSummary.totalRedactions);
+    factPack.placeholderValues["redaction.approved"] = String(redactionSummary.approvedRedactions);
+    factPack.placeholderValues["redaction.types"] = redactionSummary.redactionTypes.join(", ") || "None";
+    factPack.placeholderValues["legal_exceptions.count"] = String(redactionSummary.legalExceptions.length);
+    factPack.placeholderValues["legal_exceptions.summary"] = redactionSummary.legalExceptions
+      .map(e => `${e.type} (${e.status}): ${e.scope}`).join("; ") || "None";
+    factPack.placeholderValues["partial_denials.count"] = String(redactionSummary.partialDenials.length);
+    factPack.placeholderValues["partial_denials.summary"] = redactionSummary.partialDenials
+      .map(d => `${d.sectionKey}: ${d.legalBasis}`).join("; ") || "None";
   }
 
   // 2. Resolve template

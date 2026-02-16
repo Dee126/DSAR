@@ -128,7 +128,19 @@ export type Permission =
   | "DELIVERY_REVOKE_LINK"
   | "DELIVERY_CREATE_PACKAGE"
   | "DELIVERY_SETTINGS_VIEW"
-  | "DELIVERY_SETTINGS_EDIT";
+  | "DELIVERY_SETTINGS_EDIT"
+  // S) Redaction & Sensitive Data Controls
+  | "SENSITIVE_DATA_VIEW"
+  | "SENSITIVE_DATA_FLAG"
+  | "SENSITIVE_DATA_REVIEW"
+  | "LEGAL_EXCEPTION_VIEW"
+  | "LEGAL_EXCEPTION_PROPOSE"
+  | "LEGAL_EXCEPTION_APPROVE"
+  | "PARTIAL_DENIAL_VIEW"
+  | "PARTIAL_DENIAL_CREATE"
+  | "PARTIAL_DENIAL_APPROVE"
+  | "REDACTION_REVIEW_STATE_VIEW"
+  | "REDACTION_REVIEW_STATE_MANAGE";
 
 // ─── Role → Permission Matrix ──────────────────────────────────────────────
 
@@ -164,6 +176,10 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "EXEC_REPORT_GENERATE", "EXEC_REPORT_EXPORT", "EXEC_KPI_CONFIG", "EXEC_FORECAST_VIEW",
     "DELIVERY_VIEW", "DELIVERY_CREATE_LINK", "DELIVERY_REVOKE_LINK", "DELIVERY_CREATE_PACKAGE",
     "DELIVERY_SETTINGS_VIEW", "DELIVERY_SETTINGS_EDIT",
+    "SENSITIVE_DATA_VIEW", "SENSITIVE_DATA_FLAG", "SENSITIVE_DATA_REVIEW",
+    "LEGAL_EXCEPTION_VIEW", "LEGAL_EXCEPTION_PROPOSE", "LEGAL_EXCEPTION_APPROVE",
+    "PARTIAL_DENIAL_VIEW", "PARTIAL_DENIAL_CREATE", "PARTIAL_DENIAL_APPROVE",
+    "REDACTION_REVIEW_STATE_VIEW", "REDACTION_REVIEW_STATE_MANAGE",
   ]),
 
   TENANT_ADMIN: new Set<Permission>([
@@ -197,6 +213,10 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "EXEC_REPORT_GENERATE", "EXEC_REPORT_EXPORT", "EXEC_KPI_CONFIG", "EXEC_FORECAST_VIEW",
     "DELIVERY_VIEW", "DELIVERY_CREATE_LINK", "DELIVERY_REVOKE_LINK", "DELIVERY_CREATE_PACKAGE",
     "DELIVERY_SETTINGS_VIEW", "DELIVERY_SETTINGS_EDIT",
+    "SENSITIVE_DATA_VIEW", "SENSITIVE_DATA_FLAG", "SENSITIVE_DATA_REVIEW",
+    "LEGAL_EXCEPTION_VIEW", "LEGAL_EXCEPTION_PROPOSE", "LEGAL_EXCEPTION_APPROVE",
+    "PARTIAL_DENIAL_VIEW", "PARTIAL_DENIAL_CREATE", "PARTIAL_DENIAL_APPROVE",
+    "REDACTION_REVIEW_STATE_VIEW", "REDACTION_REVIEW_STATE_MANAGE",
   ]),
 
   DPO: new Set<Permission>([
@@ -235,6 +255,10 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "EXEC_DASHBOARD_VIEW", "EXEC_DASHBOARD_FULL", "EXEC_REPORT_GENERATE", "EXEC_FORECAST_VIEW",
     "DELIVERY_VIEW", "DELIVERY_CREATE_LINK", "DELIVERY_REVOKE_LINK", "DELIVERY_CREATE_PACKAGE",
     "DELIVERY_SETTINGS_VIEW",
+    "SENSITIVE_DATA_VIEW", "SENSITIVE_DATA_FLAG", "SENSITIVE_DATA_REVIEW",
+    "LEGAL_EXCEPTION_VIEW", "LEGAL_EXCEPTION_PROPOSE", "LEGAL_EXCEPTION_APPROVE",
+    "PARTIAL_DENIAL_VIEW", "PARTIAL_DENIAL_CREATE", "PARTIAL_DENIAL_APPROVE",
+    "REDACTION_REVIEW_STATE_VIEW", "REDACTION_REVIEW_STATE_MANAGE",
   ]),
 
   CASE_MANAGER: new Set<Permission>([
@@ -269,6 +293,10 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "VENDOR_RESPONSE_LOG", "VENDOR_TEMPLATE_VIEW", "VENDOR_ESCALATION_VIEW",
     "EXEC_DASHBOARD_VIEW",
     "DELIVERY_VIEW",
+    "SENSITIVE_DATA_VIEW", "SENSITIVE_DATA_FLAG",
+    "LEGAL_EXCEPTION_VIEW", "LEGAL_EXCEPTION_PROPOSE",
+    "PARTIAL_DENIAL_VIEW", "PARTIAL_DENIAL_CREATE",
+    "REDACTION_REVIEW_STATE_VIEW",
   ]),
 
   ANALYST: new Set<Permission>([
@@ -295,6 +323,10 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "VENDOR_VIEW", "VENDOR_REQUEST_VIEW", "VENDOR_TEMPLATE_VIEW", "VENDOR_ESCALATION_VIEW",
     "EXEC_DASHBOARD_VIEW",
     "DELIVERY_VIEW",
+    "SENSITIVE_DATA_VIEW",
+    "LEGAL_EXCEPTION_VIEW",
+    "PARTIAL_DENIAL_VIEW",
+    "REDACTION_REVIEW_STATE_VIEW",
   ]),
 
   AUDITOR: new Set<Permission>([
@@ -323,6 +355,10 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "VENDOR_VIEW", "VENDOR_REQUEST_VIEW", "VENDOR_TEMPLATE_VIEW", "VENDOR_ESCALATION_VIEW",
     "EXEC_DASHBOARD_VIEW",
     "DELIVERY_VIEW",
+    "SENSITIVE_DATA_VIEW",
+    "LEGAL_EXCEPTION_VIEW",
+    "PARTIAL_DENIAL_VIEW",
+    "REDACTION_REVIEW_STATE_VIEW",
   ]),
 
   // Legacy roles mapped for backward compatibility
@@ -406,7 +442,8 @@ type Resource =
   | "incidents" | "incident_linkage" | "incident_surge" | "authority_export"
   | "vendors" | "vendor_requests" | "vendor_templates" | "vendor_escalations"
   | "exec_dashboard" | "exec_reports" | "exec_kpi_config"
-  | "delivery" | "delivery_settings";
+  | "delivery" | "delivery_settings"
+  | "sensitive_data" | "legal_exceptions" | "partial_denials" | "redaction_review_state";
 
 type Action = "create" | "read" | "update" | "delete" | "manage";
 
@@ -597,6 +634,29 @@ const LEGACY_MAP: Record<string, Record<string, Permission[]>> = {
     read: ["DELIVERY_SETTINGS_VIEW"],
     update: ["DELIVERY_SETTINGS_EDIT"],
     manage: ["DELIVERY_SETTINGS_EDIT"],
+  },
+  sensitive_data: {
+    read: ["SENSITIVE_DATA_VIEW"],
+    create: ["SENSITIVE_DATA_FLAG"],
+    update: ["SENSITIVE_DATA_REVIEW"],
+    manage: ["SENSITIVE_DATA_FLAG", "SENSITIVE_DATA_REVIEW"],
+  },
+  legal_exceptions: {
+    read: ["LEGAL_EXCEPTION_VIEW"],
+    create: ["LEGAL_EXCEPTION_PROPOSE"],
+    update: ["LEGAL_EXCEPTION_APPROVE"],
+    manage: ["LEGAL_EXCEPTION_PROPOSE", "LEGAL_EXCEPTION_APPROVE"],
+  },
+  partial_denials: {
+    read: ["PARTIAL_DENIAL_VIEW"],
+    create: ["PARTIAL_DENIAL_CREATE"],
+    update: ["PARTIAL_DENIAL_APPROVE"],
+    manage: ["PARTIAL_DENIAL_CREATE", "PARTIAL_DENIAL_APPROVE"],
+  },
+  redaction_review_state: {
+    read: ["REDACTION_REVIEW_STATE_VIEW"],
+    update: ["REDACTION_REVIEW_STATE_MANAGE"],
+    manage: ["REDACTION_REVIEW_STATE_MANAGE"],
   },
 };
 

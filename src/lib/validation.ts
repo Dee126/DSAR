@@ -735,3 +735,74 @@ export const createAwsIntegrationSchema = z.object({
   (data) => data.authType !== "assume_role" || !!data.roleArn,
   { message: "Role ARN is required when authType is assume_role", path: ["roleArn"] }
 );
+
+// ─── Module 8.3: Redaction & Sensitive Data Controls Schemas ────────────────
+
+const REDACTION_TYPE_VALUES = ["FULL", "PARTIAL", "THIRD_PARTY", "ART9_SPECIAL", "LEGAL_PRIVILEGE", "TRADE_SECRET"] as const;
+const SENSITIVE_DATA_STATUS_VALUES = ["FLAGGED", "UNDER_REVIEW", "CLEARED", "REQUIRES_REDACTION"] as const;
+const LEGAL_EXCEPTION_TYPE_VALUES = [
+  "ART_15_4_RIGHTS_OF_OTHERS", "ART_17_3_LEGAL_OBLIGATION", "ART_17_3_PUBLIC_INTEREST",
+  "ART_17_3_LEGAL_CLAIMS", "ART_23_NATIONAL_SECURITY", "ART_23_PUBLIC_SECURITY",
+  "ART_23_JUDICIAL_PROCEEDINGS", "TRADE_SECRET", "INTELLECTUAL_PROPERTY", "PROFESSIONAL_PRIVILEGE",
+] as const;
+const LEGAL_EXCEPTION_STATUS_VALUES = ["PROPOSED", "APPROVED", "REJECTED", "WITHDRAWN"] as const;
+const PARTIAL_DENIAL_STATUS_VALUES = ["DRAFT", "SUBMITTED", "APPROVED", "REJECTED"] as const;
+const REDACTION_REVIEW_STATE_VALUES = ["PENDING", "IN_REVIEW", "COMPLETED", "REJECTED"] as const;
+
+export const createSensitiveDataFlagSchema = z.object({
+  documentId: z.string().uuid().optional(),
+  responseDocId: z.string().uuid().optional(),
+  dataCategory: z.enum(DATA_CATEGORY_VALUES),
+  description: z.string().min(1, "Description is required"),
+  pageNumber: z.number().int().min(1).optional(),
+  sectionKey: z.string().optional(),
+});
+
+export const reviewSensitiveDataFlagSchema = z.object({
+  status: z.enum(SENSITIVE_DATA_STATUS_VALUES),
+  reviewNote: z.string().optional(),
+});
+
+export const enhancedRedactionEntrySchema = z.object({
+  responseDocId: z.string().uuid("Valid response document ID required"),
+  sectionKey: z.string().optional(),
+  documentRef: z.string().optional(),
+  redactedContent: z.string().optional(),
+  reason: z.string().min(1, "Redaction reason is required"),
+  redactionType: z.enum(REDACTION_TYPE_VALUES).optional(),
+  pageNumber: z.number().int().min(1).optional(),
+  legalBasisReference: z.string().optional(),
+});
+
+export const approveRedactionEntrySchema = z.object({
+  approved: z.boolean(),
+});
+
+export const createLegalExceptionSchema = z.object({
+  exceptionType: z.enum(LEGAL_EXCEPTION_TYPE_VALUES),
+  legalBasisReference: z.string().min(1, "Legal basis reference is required"),
+  scope: z.string().min(1, "Scope is required"),
+  justification: z.string().min(1, "Justification is required"),
+});
+
+export const decideLegalExceptionSchema = z.object({
+  decision: z.enum(["approve", "reject", "withdraw"]),
+  rejectionReason: z.string().optional(),
+});
+
+export const createPartialDenialSchema = z.object({
+  sectionKey: z.string().min(1, "Section key is required"),
+  deniedScope: z.string().min(1, "Denied scope is required"),
+  legalBasis: z.string().min(1, "Legal basis is required"),
+  exceptionId: z.string().uuid().optional(),
+  justificationText: z.string().min(1, "Justification text is required"),
+});
+
+export const decidePartialDenialSchema = z.object({
+  decision: z.enum(["submit", "approve", "reject"]),
+});
+
+export const updateRedactionReviewStateSchema = z.object({
+  state: z.enum(REDACTION_REVIEW_STATE_VALUES),
+  notes: z.string().optional(),
+});

@@ -9,6 +9,7 @@ import DeadlinePanel from "@/components/DeadlinePanel";
 import IdvPanel from "@/components/IdvPanel";
 import ResponsePanel from "@/components/ResponsePanel";
 import DeliveryPanel from "@/components/DeliveryPanel";
+import RedactionPanel from "@/components/RedactionPanel";
 import IncidentPanel from "@/components/IncidentPanel";
 import VendorPanel from "@/components/VendorPanel";
 
@@ -216,7 +217,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   OTHER: "bg-gray-100 text-gray-600",
 };
 
-type TabKey = "overview" | "tasks" | "documents" | "communications" | "data-collection" | "legal-review" | "copilot" | "response" | "delivery" | "timeline" | "deadlines" | "idv" | "incidents" | "vendors";
+type TabKey = "overview" | "tasks" | "documents" | "communications" | "data-collection" | "legal-review" | "copilot" | "response" | "delivery" | "redaction" | "timeline" | "deadlines" | "idv" | "incidents" | "vendors";
 
 /* ── Component ────────────────────────────────────────────────────────── */
 
@@ -606,6 +607,7 @@ export default function CaseDetailPage() {
     { key: "copilot", label: "Copilot", count: copilotRuns.length },
     { key: "response", label: "Response" },
     { key: "delivery", label: "Delivery" },
+    { key: "redaction", label: "Redaction" },
     { key: "idv", label: "Identity" },
     { key: "incidents", label: "Incidents" },
     { key: "vendors", label: "Vendors" },
@@ -1121,6 +1123,10 @@ export default function CaseDetailPage() {
               }))}
               userRole={session?.user?.role || "READ_ONLY"}
             />
+          )}
+
+          {activeTab === "redaction" && (
+            <RedactionPanel caseId={caseId} userRole={session?.user?.role} />
           )}
 
           {activeTab === "idv" && (
