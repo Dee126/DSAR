@@ -151,7 +151,16 @@ export type Permission =
   | "ASSURANCE_RETENTION_RUN"
   | "ASSURANCE_DELETION_VIEW"
   | "ASSURANCE_DELETION_EXPORT"
-  | "ASSURANCE_APPROVAL_DECIDE";
+  | "ASSURANCE_APPROVAL_DECIDE"
+  // U) Enterprise Search & eDiscovery (Module 8.5)
+  | "SEARCH_GLOBAL"
+  | "SEARCH_AUDIT"
+  | "SEARCH_SAVED_CREATE"
+  | "SEARCH_SAVED_VIEW"
+  | "SEARCH_SAVED_MANAGE"
+  | "EDISCOVERY_VIEW"
+  | "EDISCOVERY_EXPORT"
+  | "SEARCH_INDEX_REBUILD";
 
 // ─── Role → Permission Matrix ──────────────────────────────────────────────
 
@@ -196,6 +205,9 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "ASSURANCE_SOD_MANAGE", "ASSURANCE_RETENTION_VIEW", "ASSURANCE_RETENTION_MANAGE",
     "ASSURANCE_RETENTION_RUN", "ASSURANCE_DELETION_VIEW", "ASSURANCE_DELETION_EXPORT",
     "ASSURANCE_APPROVAL_DECIDE",
+    // U) Enterprise Search & eDiscovery
+    "SEARCH_GLOBAL", "SEARCH_AUDIT", "SEARCH_SAVED_CREATE", "SEARCH_SAVED_VIEW",
+    "SEARCH_SAVED_MANAGE", "EDISCOVERY_VIEW", "EDISCOVERY_EXPORT", "SEARCH_INDEX_REBUILD",
   ]),
 
   TENANT_ADMIN: new Set<Permission>([
@@ -238,6 +250,9 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "ASSURANCE_SOD_MANAGE", "ASSURANCE_RETENTION_VIEW", "ASSURANCE_RETENTION_MANAGE",
     "ASSURANCE_RETENTION_RUN", "ASSURANCE_DELETION_VIEW", "ASSURANCE_DELETION_EXPORT",
     "ASSURANCE_APPROVAL_DECIDE",
+    // U) Enterprise Search & eDiscovery
+    "SEARCH_GLOBAL", "SEARCH_AUDIT", "SEARCH_SAVED_CREATE", "SEARCH_SAVED_VIEW",
+    "SEARCH_SAVED_MANAGE", "EDISCOVERY_VIEW", "EDISCOVERY_EXPORT", "SEARCH_INDEX_REBUILD",
   ]),
 
   DPO: new Set<Permission>([
@@ -283,6 +298,9 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     // T) Assurance Layer (DPO: view + verify + approve, no manage)
     "ASSURANCE_VIEW", "ASSURANCE_AUDIT_VERIFY", "ASSURANCE_RETENTION_VIEW",
     "ASSURANCE_DELETION_VIEW", "ASSURANCE_DELETION_EXPORT", "ASSURANCE_APPROVAL_DECIDE",
+    // U) Enterprise Search & eDiscovery
+    "SEARCH_GLOBAL", "SEARCH_AUDIT", "SEARCH_SAVED_CREATE", "SEARCH_SAVED_VIEW",
+    "SEARCH_SAVED_MANAGE", "EDISCOVERY_VIEW", "EDISCOVERY_EXPORT",
   ]),
 
   CASE_MANAGER: new Set<Permission>([
@@ -323,6 +341,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "REDACTION_REVIEW_STATE_VIEW",
     // T) Assurance Layer (view only)
     "ASSURANCE_VIEW",
+    // U) Enterprise Search & eDiscovery
+    "SEARCH_GLOBAL", "SEARCH_SAVED_CREATE", "SEARCH_SAVED_VIEW",
   ]),
 
   ANALYST: new Set<Permission>([
@@ -355,6 +375,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "REDACTION_REVIEW_STATE_VIEW",
     // T) Assurance Layer (view only)
     "ASSURANCE_VIEW",
+    // U) Enterprise Search & eDiscovery
+    "SEARCH_GLOBAL", "SEARCH_SAVED_VIEW",
   ]),
 
   AUDITOR: new Set<Permission>([
@@ -390,6 +412,9 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     // T) Assurance Layer (auditor: full read + verify + export)
     "ASSURANCE_VIEW", "ASSURANCE_AUDIT_VERIFY",
     "ASSURANCE_RETENTION_VIEW", "ASSURANCE_DELETION_VIEW", "ASSURANCE_DELETION_EXPORT",
+    // U) Enterprise Search & eDiscovery (auditor: search + audit + ediscovery view)
+    "SEARCH_GLOBAL", "SEARCH_AUDIT", "SEARCH_SAVED_VIEW",
+    "EDISCOVERY_VIEW", "EDISCOVERY_EXPORT",
   ]),
 
   // Legacy roles mapped for backward compatibility
@@ -402,6 +427,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "TASKS_READ", "TASKS_UPDATE",
     "COMMENTS_CREATE", "COMMENTS_READ",
     "SYSTEMS_READ",
+    // U) Enterprise Search
+    "SEARCH_GLOBAL", "SEARCH_SAVED_VIEW",
   ]),
 
   READ_ONLY: new Set<Permission>([
@@ -410,6 +437,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "DOCUMENT_DOWNLOAD",
     "COMMENTS_READ",
     "INTEGRATIONS_VIEW",
+    // U) Enterprise Search (read-only)
+    "SEARCH_GLOBAL", "SEARCH_SAVED_VIEW",
   ]),
 };
 
@@ -475,7 +504,8 @@ type Resource =
   | "exec_dashboard" | "exec_reports" | "exec_kpi_config"
   | "delivery" | "delivery_settings"
   | "sensitive_data" | "legal_exceptions" | "partial_denials" | "redaction_review_state"
-  | "assurance" | "assurance_audit" | "assurance_sod" | "assurance_retention" | "assurance_deletion" | "assurance_approvals";
+  | "assurance" | "assurance_audit" | "assurance_sod" | "assurance_retention" | "assurance_deletion" | "assurance_approvals"
+  | "search" | "search_audit" | "saved_searches" | "ediscovery";
 
 type Action = "create" | "read" | "update" | "delete" | "manage";
 
@@ -719,6 +749,25 @@ const LEGACY_MAP: Record<string, Record<string, Permission[]>> = {
     read: ["ASSURANCE_VIEW"],
     update: ["ASSURANCE_APPROVAL_DECIDE"],
     manage: ["ASSURANCE_APPROVAL_DECIDE"],
+  },
+  // U) Enterprise Search & eDiscovery (Module 8.5)
+  search: {
+    read: ["SEARCH_GLOBAL"],
+    manage: ["SEARCH_INDEX_REBUILD"],
+  },
+  search_audit: {
+    read: ["SEARCH_AUDIT"],
+  },
+  saved_searches: {
+    read: ["SEARCH_SAVED_VIEW"],
+    create: ["SEARCH_SAVED_CREATE"],
+    update: ["SEARCH_SAVED_CREATE"],
+    delete: ["SEARCH_SAVED_CREATE"],
+    manage: ["SEARCH_SAVED_MANAGE"],
+  },
+  ediscovery: {
+    read: ["EDISCOVERY_VIEW"],
+    manage: ["EDISCOVERY_VIEW", "EDISCOVERY_EXPORT"],
   },
 };
 

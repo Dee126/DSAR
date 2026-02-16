@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import Sidebar, { NAV_ITEMS } from "@/components/Sidebar";
 import { MobileHeader, MobileDrawer, BottomNav } from "@/components/MobileNav";
 import NotificationBell from "@/components/NotificationBell";
+import CommandPalette from "@/components/CommandPalette";
 
 /* ── Page title from pathname ──────────────────────────────────────── */
 
@@ -21,6 +22,8 @@ const PAGE_TITLES: Record<string, string> = {
   "/integrations": "Integrations",
   "/governance": "Governance",
   "/governance/sla": "SLA Configuration",
+  "/search": "Enterprise Search",
+  "/ediscovery": "eDiscovery",
   "/settings": "Settings",
 };
 
@@ -104,8 +107,9 @@ export default function DashboardLayout({
 
       {/* Main content */}
       <main className="w-full flex-1 md:ml-64">
-        {/* Desktop notification bell */}
-        <div className="hidden md:flex items-center justify-end px-8 pt-4 pb-0">
+        {/* Desktop top bar: search + notification */}
+        <div className="hidden md:flex items-center justify-end gap-3 px-8 pt-4 pb-0">
+          <CommandPalette />
           <NotificationBell />
         </div>
         <div className="px-4 pb-24 pt-[4.25rem] md:px-8 md:pt-2 md:pb-8">{children}</div>

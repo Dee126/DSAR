@@ -8,6 +8,10 @@ async function main() {
   console.log("Seeding database...");
 
   // Clean existing data (order matters for FK constraints)
+  // Module 8.5: Enterprise Search & eDiscovery
+  await prisma.searchView.deleteMany();
+  await prisma.savedSearch.deleteMany();
+  await prisma.searchIndexEntry.deleteMany();
   // Module 8.4: Assurance Layer
   await prisma.deletionEvent.deleteMany();
   await prisma.deletionJob.deleteMany();
@@ -3920,6 +3924,345 @@ async function main() {
 
   console.log("Module 8.4: Assurance Layer seed complete.");
   console.log("\nAssurance dashboard: http://localhost:3000/governance/assurance");
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MODULE 8.5: Enterprise Search & eDiscovery Seed
+  // ═══════════════════════════════════════════════════════════════════════════
+  console.log("\n--- Module 8.5: Enterprise Search & eDiscovery ---");
+
+  // Helper: mask email for index body_text
+  function maskEmail(email: string): string {
+    const at = email.indexOf("@");
+    if (at <= 0) return "***";
+    const local = email.substring(0, at);
+    const domain = email.substring(at);
+    const visible = local.length <= 2 ? local[0] : local.substring(0, 2);
+    return `${visible}***${domain}`;
+  }
+
+  // Index all existing cases
+  const allCases = await prisma.dSARCase.findMany({
+    where: { tenantId: tenant.id },
+    include: { dataSubject: true, assignedTo: true },
+  });
+  let indexCount = 0;
+  for (const c of allCases) {
+    const subjectEmail = c.dataSubject?.email ? maskEmail(c.dataSubject.email) : "";
+    await prisma.searchIndexEntry.upsert({
+      where: { tenantId_entityType_entityId: { tenantId: tenant.id, entityType: "CASE", entityId: c.id } },
+      create: {
+        tenantId: tenant.id,
+        entityType: "CASE",
+        entityId: c.id,
+        title: `${c.caseNumber} - ${c.type} request`,
+        bodyText: [c.description ?? "", c.dataSubject?.fullName ?? "", subjectEmail, c.channel ?? ""].filter(Boolean).join(" "),
+        tags: [],
+        metadataJson: {
+          status: c.status,
+          priority: c.priority,
+          type: c.type,
+          caseNumber: c.caseNumber,
+          assignedTo: c.assignedTo?.name ?? null,
+          assignedToUserId: c.assignedToUserId,
+          dueDate: c.dueDate?.toISOString() ?? null,
+          createdAt: c.createdAt.toISOString(),
+        },
+      },
+      update: {},
+    });
+    indexCount++;
+  }
+  console.log(`  ${indexCount} cases indexed.`);
+
+  // Index all existing systems
+  const allSystems = await prisma.system.findMany({
+    where: { tenantId: tenant.id },
+    include: { ownerUser: true },
+  });
+  for (const s of allSystems) {
+    await prisma.searchIndexEntry.upsert({
+      where: { tenantId_entityType_entityId: { tenantId: tenant.id, entityType: "SYSTEM", entityId: s.id } },
+      create: {
+        tenantId: tenant.id,
+        entityType: "SYSTEM",
+        entityId: s.id,
+        title: s.name,
+        bodyText: [s.description ?? "", s.notes ?? "", s.contactEmail ? maskEmail(s.contactEmail) : ""].filter(Boolean).join(" "),
+        tags: s.tags,
+        metadataJson: {
+          criticality: s.criticality,
+          systemStatus: s.systemStatus,
+          ownerUserId: s.ownerUserId,
+          ownerName: s.ownerUser?.name ?? null,
+          inScopeForDsar: s.inScopeForDsar,
+          createdAt: s.createdAt.toISOString(),
+        },
+      },
+      update: {},
+    });
+    indexCount++;
+  }
+  console.log(`  ${allSystems.length} systems indexed.`);
+
+  // Index all existing documents
+  const allDocs = await prisma.document.findMany({
+    where: { tenantId: tenant.id },
+    include: { case: true },
+  });
+  for (const d of allDocs) {
+    await prisma.searchIndexEntry.upsert({
+      where: { tenantId_entityType_entityId: { tenantId: tenant.id, entityType: "DOCUMENT", entityId: d.id } },
+      create: {
+        tenantId: tenant.id,
+        entityType: "DOCUMENT",
+        entityId: d.id,
+        title: d.filename,
+        bodyText: [d.filename, d.mimeType ?? ""].filter(Boolean).join(" "),
+        tags: [],
+        metadataJson: {
+          classification: d.classification,
+          mimeType: d.mimeType,
+          caseId: d.caseId,
+          caseNumber: d.case?.caseNumber ?? null,
+          createdAt: d.createdAt.toISOString(),
+        },
+      },
+      update: {},
+    });
+    indexCount++;
+  }
+  console.log(`  ${allDocs.length} documents indexed.`);
+
+  // Index all existing incidents
+  const allIncidents = await prisma.incident.findMany({ where: { tenantId: tenant.id } });
+  for (const i of allIncidents) {
+    await prisma.searchIndexEntry.upsert({
+      where: { tenantId_entityType_entityId: { tenantId: tenant.id, entityType: "INCIDENT", entityId: i.id } },
+      create: {
+        tenantId: tenant.id,
+        entityType: "INCIDENT",
+        entityId: i.id,
+        title: `${i.reference} - ${i.title}`,
+        bodyText: [i.description ?? "", i.category ?? ""].filter(Boolean).join(" "),
+        tags: [],
+        metadataJson: {
+          status: i.status,
+          severity: i.severity,
+          category: i.category,
+          reference: i.reference,
+          createdAt: i.createdAt.toISOString(),
+          notifiable: i.notifiable,
+        },
+      },
+      update: {},
+    });
+    indexCount++;
+  }
+  console.log(`  ${allIncidents.length} incidents indexed.`);
+
+  // Index all vendor requests
+  const allVR = await prisma.vendorRequest.findMany({
+    where: { tenantId: tenant.id },
+    include: { vendor: true, case: true },
+  });
+  for (const vr of allVR) {
+    await prisma.searchIndexEntry.upsert({
+      where: { tenantId_entityType_entityId: { tenantId: tenant.id, entityType: "VENDOR_REQUEST", entityId: vr.id } },
+      create: {
+        tenantId: tenant.id,
+        entityType: "VENDOR_REQUEST",
+        entityId: vr.id,
+        title: `Vendor Request: ${vr.vendor?.name ?? "Unknown"} (${vr.case?.caseNumber ?? ""})`,
+        bodyText: [vr.notes ?? "", vr.vendor?.name ?? ""].filter(Boolean).join(" "),
+        tags: [],
+        metadataJson: {
+          status: vr.status,
+          vendorName: vr.vendor?.name,
+          vendorId: vr.vendorId,
+          caseId: vr.caseId,
+          caseNumber: vr.case?.caseNumber ?? null,
+          dueDate: vr.dueDate?.toISOString() ?? null,
+          createdAt: vr.createdAt.toISOString(),
+        },
+      },
+      update: {},
+    });
+    indexCount++;
+  }
+  console.log(`  ${allVR.length} vendor requests indexed.`);
+
+  // Index all intake submissions
+  const allIntakes = await prisma.intakeSubmission.findMany({ where: { tenantId: tenant.id } });
+  for (const i of allIntakes) {
+    const subjectEmail = i.subjectEmail ? maskEmail(i.subjectEmail) : "";
+    await prisma.searchIndexEntry.upsert({
+      where: { tenantId_entityType_entityId: { tenantId: tenant.id, entityType: "INTAKE", entityId: i.id } },
+      create: {
+        tenantId: tenant.id,
+        entityType: "INTAKE",
+        entityId: i.id,
+        title: `Intake ${i.reference} - ${i.subjectName ?? "Unknown"}`,
+        bodyText: [i.description ?? "", i.subjectName ?? "", subjectEmail, i.channel].filter(Boolean).join(" "),
+        tags: [],
+        metadataJson: {
+          status: i.status,
+          channel: i.channel,
+          requestTypes: i.requestTypes,
+          reference: i.reference,
+          createdAt: i.createdAt.toISOString(),
+        },
+      },
+      update: {},
+    });
+    indexCount++;
+  }
+  console.log(`  ${allIntakes.length} intake submissions indexed.`);
+
+  // Index last 50 audit logs
+  const recentAudits = await prisma.auditLog.findMany({
+    where: { tenantId: tenant.id },
+    orderBy: { timestamp: "desc" },
+    take: 50,
+    include: { actor: true },
+  });
+  for (const a of recentAudits) {
+    await prisma.searchIndexEntry.upsert({
+      where: { tenantId_entityType_entityId: { tenantId: tenant.id, entityType: "AUDIT", entityId: a.id } },
+      create: {
+        tenantId: tenant.id,
+        entityType: "AUDIT",
+        entityId: a.id,
+        title: `${a.action} on ${a.entityType}`,
+        bodyText: [a.action, a.entityType, a.entityId ?? "", a.actor?.name ?? ""].filter(Boolean).join(" "),
+        tags: [],
+        metadataJson: {
+          action: a.action,
+          entityType: a.entityType,
+          entityId: a.entityId,
+          actorName: a.actor?.name ?? null,
+          timestamp: a.timestamp.toISOString(),
+        },
+      },
+      update: {},
+    });
+    indexCount++;
+  }
+  console.log(`  ${recentAudits.length} audit events indexed.`);
+
+  // Index response documents
+  const allResponses = await prisma.responseDocument.findMany({
+    where: { tenantId: tenant.id },
+    include: { case: true },
+  });
+  for (const r of allResponses) {
+    await prisma.searchIndexEntry.upsert({
+      where: { tenantId_entityType_entityId: { tenantId: tenant.id, entityType: "RESPONSE", entityId: r.id } },
+      create: {
+        tenantId: tenant.id,
+        entityType: "RESPONSE",
+        entityId: r.id,
+        title: `Response for ${r.case?.caseNumber ?? "case"}`,
+        bodyText: [r.language ?? "", r.case?.caseNumber ?? ""].filter(Boolean).join(" "),
+        tags: [],
+        metadataJson: {
+          status: r.status,
+          caseId: r.caseId,
+          caseNumber: r.case?.caseNumber ?? null,
+          language: r.language,
+          version: r.version,
+          createdAt: r.createdAt.toISOString(),
+        },
+      },
+      update: {},
+    });
+    indexCount++;
+  }
+  console.log(`  ${allResponses.length} response documents indexed.`);
+
+  console.log(`  Total: ${indexCount} search index entries created.`);
+
+  // Create saved searches
+  const adminUser = await prisma.user.findFirst({
+    where: { tenantId: tenant.id, role: "TENANT_ADMIN" },
+  });
+
+  if (adminUser) {
+    const savedSearchData = [
+      {
+        name: "Due in 7 days",
+        queryText: "",
+        filtersJson: { scope: "CASES", status: "", risk: "" },
+        sortJson: { sort: "due_date" },
+        visibility: "TENANT" as const,
+        pinned: true,
+      },
+      {
+        name: "Overdue vendor requests",
+        queryText: "overdue",
+        filtersJson: { scope: "VENDORS", vendorOverdue: true },
+        sortJson: { sort: "updated_at" },
+        visibility: "TENANT" as const,
+        pinned: true,
+      },
+      {
+        name: "Incident-linked DSARs",
+        queryText: "incident",
+        filtersJson: { scope: "CASES", incidentLinked: true },
+        sortJson: { sort: "relevance" },
+        visibility: "TEAM" as const,
+        pinned: false,
+      },
+      {
+        name: "High risk cases (Red)",
+        queryText: "",
+        filtersJson: { scope: "CASES", risk: "red" },
+        sortJson: { sort: "updated_at" },
+        visibility: "TENANT" as const,
+        pinned: true,
+      },
+    ];
+
+    for (const ss of savedSearchData) {
+      await prisma.savedSearch.create({
+        data: {
+          tenantId: tenant.id,
+          createdBy: adminUser.id,
+          name: ss.name,
+          queryText: ss.queryText,
+          filtersJson: ss.filtersJson,
+          sortJson: ss.sortJson,
+          visibility: ss.visibility,
+          pinned: ss.pinned,
+        },
+      });
+    }
+    console.log(`  ${savedSearchData.length} saved searches created.`);
+  }
+
+  // Create search views
+  await prisma.searchView.create({
+    data: {
+      tenantId: tenant.id,
+      name: "All Cases Overview",
+      entityScope: "CASES",
+      defaultFiltersJson: {},
+      columnsJson: { columns: ["caseNumber", "type", "status", "priority", "assignedTo", "dueDate"] },
+    },
+  });
+  await prisma.searchView.create({
+    data: {
+      tenantId: tenant.id,
+      name: "Vendor Compliance",
+      entityScope: "VENDORS",
+      defaultFiltersJson: {},
+      columnsJson: { columns: ["vendorName", "status", "dueDate", "caseNumber"] },
+    },
+  });
+  console.log("  2 search views created.");
+
+  console.log("Module 8.5: Enterprise Search & eDiscovery seed complete.");
+  console.log("\nSearch page: http://localhost:3000/search");
+  console.log("eDiscovery: http://localhost:3000/ediscovery");
 }
 
 main()

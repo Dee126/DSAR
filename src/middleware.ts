@@ -20,5 +20,7 @@ export const config = {
     "/documents/:path*",
     "/settings/:path*",
     "/intake/:path*",
+    "/search/:path*",
+    "/ediscovery/:path*",
   ],
 };

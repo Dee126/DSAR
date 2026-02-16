@@ -518,6 +518,11 @@ model Tenant {
   deletionEvents           DeletionEvent[]
   jobRuns                  JobRun[]
 
+  // ─── Module 8.5: Enterprise Search & eDiscovery ───
+  searchIndexEntries       SearchIndexEntry[]
+  savedSearches            SavedSearch[]
+  searchViews              SearchView[]
+
   @@map("tenants")
 }
 
@@ -603,6 +608,7 @@ model User {
   assuranceApprovalsRequested AssuranceApproval[]    @relation("AssuranceApprovalRequester")
   assuranceApprovalsApproved  AssuranceApproval[]    @relation("AssuranceApprovalApprover")
   deletionJobsTriggered       DeletionJob[]          @relation("DeletionJobTriggeredBy")
+  savedSearches               SavedSearch[]           @relation("SavedSearchCreator")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -3473,4 +3479,94 @@ model JobRun {
   @@index([tenantId, jobName])
   @@index([tenantId, status])
   @@map("job_runs")
+}
+
+// ─── Module 8.5: Enterprise Search & eDiscovery ─────────────────────────────
+
+enum SearchEntityType {
+  CASE
+  INCIDENT
+  VENDOR_REQUEST
+  DOCUMENT
+  SYSTEM
+  INTAKE
+  RESPONSE
+  AUDIT
+}
+
+enum SavedSearchVisibility {
+  PRIVATE
+  TEAM
+  TENANT
+}
+
+enum SearchViewScope {
+  ALL
+  CASES
+  INCIDENTS
+  VENDORS
+  DOCUMENTS
+  SYSTEMS
+  INTAKE
+  RESPONSES
+  AUDIT
+}
+
+model SearchIndexEntry {
+  id            String           @id @default(uuid())
+  tenantId      String
+  entityType    SearchEntityType
+  entityId      String
+  title         String
+  bodyText      String           @default("")
+  tags          String[]         @default([])
+  metadataJson  Json?            // status, dates, owners, risk, request_type, etc.
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, entityType, entityId])
+  @@index([tenantId])
+  @@index([tenantId, entityType])
+  @@index([tenantId, updatedAt])
+  @@map("search_index_entries")
+}
+
+model SavedSearch {
+  id          String                @id @default(uuid())
+  tenantId    String
+  name        String
+  createdBy   String
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  queryText   String                @default("")
+  filtersJson Json?
+  sortJson    Json?
+  visibility  SavedSearchVisibility @default(PRIVATE)
+  pinned      Boolean               @default(false)
+
+  tenant  Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creator User   @relation("SavedSearchCreator", fields: [createdBy], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, createdBy])
+  @@index([tenantId, visibility])
+  @@map("saved_searches")
+}
+
+model SearchView {
+  id                  String          @id @default(uuid())
+  tenantId            String
+  name                String
+  entityScope         SearchViewScope @default(ALL)
+  defaultFiltersJson  Json?
+  columnsJson         Json?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("search_views")
 }

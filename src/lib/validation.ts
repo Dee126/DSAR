@@ -858,3 +858,53 @@ export const accessLogFilterSchema = z.object({
   limit: z.number().int().min(1).max(200).optional(),
   offset: z.number().int().min(0).optional(),
 });
+
+// ─── Module 8.5: Enterprise Search & eDiscovery Schemas ─────────────────────
+
+const SEARCH_SCOPE_VALUES = ["ALL", "CASES", "INCIDENTS", "VENDORS", "DOCUMENTS", "SYSTEMS", "INTAKE", "RESPONSES", "AUDIT"] as const;
+const SEARCH_SORT_VALUES = ["relevance", "updated_at", "due_date"] as const;
+const RISK_VALUES = ["green", "yellow", "red"] as const;
+const SAVED_SEARCH_VISIBILITY_VALUES = ["PRIVATE", "TEAM", "TENANT"] as const;
+
+export const searchQuerySchema = z.object({
+  q: z.string().max(500).optional().default(""),
+  scope: z.enum(SEARCH_SCOPE_VALUES).optional().default("ALL"),
+  filters: z.object({
+    dateFrom: z.string().datetime().optional(),
+    dateTo: z.string().datetime().optional(),
+    status: z.string().optional(),
+    requestType: z.string().optional(),
+    subjectType: z.string().optional(),
+    risk: z.enum(RISK_VALUES).optional(),
+    owner: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+    incidentLinked: z.boolean().optional(),
+    vendorOverdue: z.boolean().optional(),
+    system: z.string().uuid().optional(),
+  }).optional().default({}),
+  page: z.number().int().min(1).optional().default(1),
+  pageSize: z.number().int().min(1).max(100).optional().default(20),
+  sort: z.enum(SEARCH_SORT_VALUES).optional().default("relevance"),
+});
+
+export const createSavedSearchSchema = z.object({
+  name: z.string().min(1, "Search name is required").max(100),
+  queryText: z.string().max(500).optional().default(""),
+  filtersJson: z.record(z.unknown()).optional(),
+  sortJson: z.record(z.unknown()).optional(),
+  visibility: z.enum(SAVED_SEARCH_VISIBILITY_VALUES).optional().default("PRIVATE"),
+  pinned: z.boolean().optional().default(false),
+});
+
+export const updateSavedSearchSchema = createSavedSearchSchema.partial();
+
+export const ediscoveryQuerySchema = z.object({
+  caseId: z.string().uuid().optional(),
+  incidentId: z.string().uuid().optional(),
+  eventTypes: z.array(z.string()).optional(),
+  dateFrom: z.string().datetime().optional(),
+  dateTo: z.string().datetime().optional(),
+  page: z.number().int().min(1).optional().default(1),
+  pageSize: z.number().int().min(1).max(200).optional().default(50),
+  exportFormat: z.enum(["json", "csv"]).optional(),
+});
