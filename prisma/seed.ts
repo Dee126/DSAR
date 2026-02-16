@@ -7,6 +7,13 @@ async function main() {
   console.log("Seeding database...");
 
   // Clean existing data (order matters for FK constraints)
+  // Module 8.1: Intake Portal
+  await prisma.clarificationRequest.deleteMany();
+  await prisma.dedupeCandidate.deleteMany();
+  await prisma.emailIngestEvent.deleteMany();
+  await prisma.intakeAttachment.deleteMany();
+  await prisma.intakeSubmission.deleteMany();
+  await prisma.tenantIntakeSettings.deleteMany();
   // Module 7: Executive KPI
   await prisma.forecastModel.deleteMany();
   await prisma.boardExportRun.deleteMany();
@@ -90,6 +97,7 @@ async function main() {
   const tenant = await prisma.tenant.create({
     data: {
       name: "Acme Corp",
+      slug: "acme-corp",
       slaDefaultDays: 30,
       dueSoonDays: 7,
       retentionDays: 365,
@@ -3164,6 +3172,158 @@ async function main() {
 
   console.log("Created 12-month KPI snapshot history with maturity scores, automation metrics, thresholds, and report template.");
   console.log("Executive KPI & Board Reporting (Module 7) seed complete.");
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Module 8.1: Intake Portal & Omnichannel Capture
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Tenant Intake Settings
+  await prisma.tenantIntakeSettings.create({
+    data: {
+      tenantId: tenant.id,
+      autoCreateCase: false,
+      dedupeWindowDays: 30,
+      clarificationPausesClock: true,
+      maxAttachments: 5,
+      maxAttachmentSizeMb: 10,
+      rateLimitPerMinute: 5,
+      rateLimitPerHour: 20,
+      enabledLanguages: ["en", "de"],
+      requiredFields: ["subjectEmail"],
+      privacyNoticeUrl: "https://acme-corp.example.com/privacy",
+      portalWelcomeText: {
+        en: "Submit your data subject access request securely.",
+        de: "Stellen Sie Ihre Betroffenenrechte-Anfrage sicher.",
+      },
+    },
+  });
+  console.log("Created tenant intake settings.");
+
+  // Demo intake submissions
+  const sub1 = await prisma.intakeSubmission.create({
+    data: {
+      tenantId: tenant.id,
+      reference: "INK-DEMO0001",
+      channel: "WEB",
+      status: "NEW",
+      preferredLanguage: "en",
+      requestTypes: ["ACCESS"],
+      subjectType: "CUSTOMER",
+      jurisdiction: "GDPR",
+      classificationConfidence: 1.0,
+      subjectEmail: "john.doe@example.com",
+      subjectName: "John Doe",
+      subjectPhone: "+49 170 1234567",
+      requestDetails: "I would like to know what personal data you store about me as a customer.",
+      consentGiven: true,
+      receivedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
+    },
+  });
+
+  const sub2 = await prisma.intakeSubmission.create({
+    data: {
+      tenantId: tenant.id,
+      reference: "INK-DEMO0002",
+      channel: "EMAIL",
+      status: "NEW",
+      preferredLanguage: "de",
+      requestTypes: ["ERASURE", "ACCESS"],
+      subjectType: "EMPLOYEE",
+      jurisdiction: "GDPR",
+      classificationConfidence: 0.8,
+      subjectEmail: "maria.mueller@example.com",
+      subjectName: "Maria Müller",
+      employeeId: "EMP-4567",
+      requestDetails: "Ich möchte alle meine Daten löschen lassen und vorher eine Kopie erhalten. Mitarbeiternummer: EMP-4567",
+      consentGiven: false,
+      receivedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // 1 day ago
+    },
+  });
+
+  // Email ingest event for sub2
+  await prisma.emailIngestEvent.create({
+    data: {
+      tenantId: tenant.id,
+      submissionId: sub2.id,
+      fromAddress: "Maria Müller <maria.mueller@example.com>",
+      subject: "Datenschutz: Löschung und Auskunft",
+      bodyPlain: "Ich möchte alle meine Daten löschen lassen und vorher eine Kopie erhalten. Mitarbeiternummer: EMP-4567",
+      receivedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
+      parsedIdentifiers: {
+        email: "maria.mueller@example.com",
+        employeeIds: ["EMP-4567"],
+        phones: [],
+        customerIds: [],
+      },
+      mappingStatus: "MAPPED",
+    },
+  });
+
+  // Duplicate submission (same person as sub1, slightly different)
+  const sub3 = await prisma.intakeSubmission.create({
+    data: {
+      tenantId: tenant.id,
+      reference: "INK-DEMO0003",
+      channel: "WEB",
+      status: "NEW",
+      preferredLanguage: "en",
+      requestTypes: ["ACCESS", "PORTABILITY"],
+      subjectType: "CUSTOMER",
+      jurisdiction: "GDPR",
+      classificationConfidence: 1.0,
+      subjectEmail: "john.doe@example.com",
+      subjectName: "J. Doe",
+      subjectPhone: "+491701234567",
+      requestDetails: "Please provide all my data and export it in a machine-readable format.",
+      consentGiven: true,
+      receivedAt: new Date(Date.now() - 6 * 60 * 60 * 1000), // 6 hours ago
+    },
+  });
+
+  // Spam submission
+  const sub4 = await prisma.intakeSubmission.create({
+    data: {
+      tenantId: tenant.id,
+      reference: "INK-DEMO0004",
+      channel: "WEB",
+      status: "SPAM",
+      preferredLanguage: "en",
+      requestTypes: ["ACCESS"],
+      subjectEmail: "bot@spammer.test",
+      requestDetails: "Buy cheap products at www.spam.test",
+      consentGiven: true,
+      honeypotValue: "gotcha",
+      ipAddress: "192.168.1.99",
+      receivedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  // Already-processed submission
+  const sub5 = await prisma.intakeSubmission.create({
+    data: {
+      tenantId: tenant.id,
+      reference: "INK-DEMO0005",
+      channel: "MANUAL",
+      status: "PROCESSED",
+      preferredLanguage: "de",
+      requestTypes: ["RECTIFICATION"],
+      subjectType: "CUSTOMER",
+      jurisdiction: "GDPR",
+      classificationConfidence: 1.0,
+      subjectEmail: "hans.meier@example.com",
+      subjectName: "Hans Meier",
+      customerId: "CUST-9876",
+      requestDetails: "Meine Adresse hat sich geändert. Bitte korrigieren Sie: Neue Straße 123, 10115 Berlin",
+      consentGiven: true,
+      processedByUserId: admin.id,
+      processedAt: new Date(Date.now() - 12 * 60 * 60 * 1000),
+      receivedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  console.log(`Created 5 demo intake submissions (${sub1.reference}, ${sub2.reference}, ${sub3.reference}, ${sub4.reference}, ${sub5.reference}).`);
+  console.log("DSAR Intake Portal (Module 8.1) seed complete.");
+  console.log(`\nPublic intake portal: http://localhost:3000/public/acme-corp/dsar`);
 }
 
 main()

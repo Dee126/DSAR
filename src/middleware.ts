@@ -19,5 +19,6 @@ export const config = {
     "/tasks/:path*",
     "/documents/:path*",
     "/settings/:path*",
+    "/intake/:path*",
   ],
 };

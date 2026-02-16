@@ -349,11 +349,57 @@ enum ProcessorRole {
   SUBPROCESSOR
 }
 
+// ─── Intake Portal Enums (Module 8.1) ────────────────────────────────────────
+
+enum IntakeChannel {
+  WEB
+  EMAIL
+  MANUAL
+}
+
+enum IntakeSubmissionStatus {
+  NEW
+  PROCESSED
+  REJECTED
+  SPAM
+}
+
+enum DataSubjectType {
+  CUSTOMER
+  EMPLOYEE
+  APPLICANT
+  VISITOR
+  OTHER
+}
+
+enum IntakeJurisdiction {
+  GDPR
+  CCPA
+  LGPD
+  POPIA
+  UNKNOWN
+}
+
+enum DedupeStatus {
+  PENDING
+  LINKED
+  MERGED
+  DISMISSED
+}
+
+enum ClarificationStatus {
+  OPEN
+  SENT
+  RESOLVED
+  EXPIRED
+}
+
 // ─── Models ─────────────────────────────────────────────────────────────────
 
 model Tenant {
   id              String   @id @default(uuid())
   name            String
+  slug            String?  @unique
   slaDefaultDays  Int      @default(30)
   dueSoonDays     Int      @default(7)
   retentionDays   Int      @default(365)
@@ -442,6 +488,14 @@ model Tenant {
   forecastModels       ForecastModel[]
   integrationRuns      IntegrationRun[]
 
+  // ─── Module 8.1: Intake Portal ───
+  intakeSubmissions      IntakeSubmission[]
+  intakeAttachments      IntakeAttachment[]
+  emailIngestEvents      EmailIngestEvent[]
+  dedupeCandidates       DedupeCandidate[]
+  clarificationRequests  ClarificationRequest[]
+  tenantIntakeSettings   TenantIntakeSettings?
+
   @@map("tenants")
 }
 
@@ -501,6 +555,10 @@ model User {
   vendorEscalationsCreated VendorEscalation[] @relation("VendorEscalationCreatedBy")
   executiveReportRunsCreated ExecutiveReportRun[] @relation("ExecReportRunCreatedBy")
   boardExportRunsCreated     BoardExportRun[]     @relation("BoardExportCreatedBy")
+
+  // ─── Module 8.1: Intake Portal ───
+  clarificationsCreated ClarificationRequest[] @relation("ClarificationCreatedBy")
+  intakeSubmissionsProcessed IntakeSubmission[] @relation("IntakeProcessedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -579,6 +637,17 @@ model DSARCase {
   dsarIncidents       DsarIncident[]
   surgeGroupMembers   SurgeGroupMember[]
   vendorRequests      VendorRequest[]
+
+  // ─── Module 8.1: Intake Portal ───
+  intakeSubmission      IntakeSubmission? @relation("CaseIntakeSubmission")
+  dedupeCandidatesA     DedupeCandidate[] @relation("DedupeCaseA")
+  dedupeCandidatesB     DedupeCandidate[] @relation("DedupeCaseB")
+  duplicateOfCase       DSARCase?         @relation("DuplicateOf", fields: [duplicateOfCaseId], references: [id])
+  duplicatedCases       DSARCase[]        @relation("DuplicateOf")
+  duplicateOfCaseId     String?
+  clarificationRequests ClarificationRequest[]
+  intakeChannel         IntakeChannel?
+  intakeReference       String?
 
   @@unique([tenantId, caseNumber])
   @@index([tenantId])
@@ -2618,4 +2687,171 @@ model ForecastModel {
   @@unique([tenantId, modelType])
   @@index([tenantId])
   @@map("forecast_models")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Module 8.1: DSAR Intake Portal + Omnichannel Capture
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model IntakeSubmission {
+  id                String                  @id @default(uuid())
+  tenantId          String
+  reference         String                  // tokenised public reference e.g. "INK-XXXXXX"
+  channel           IntakeChannel           @default(WEB)
+  status            IntakeSubmissionStatus  @default(NEW)
+  preferredLanguage String                  @default("en")
+
+  // Classification (auto or manual)
+  requestTypes      Json?                   // DSARType[]
+  subjectType       DataSubjectType?
+  jurisdiction      IntakeJurisdiction      @default(GDPR)
+  classificationConfidence Float?
+
+  // Identifiers
+  subjectEmail      String?
+  subjectPhone      String?
+  subjectName       String?
+  subjectAddress    String?
+  customerId        String?
+  employeeId        String?
+  identifiers       Json?                   // additional key-value identifiers
+
+  // Content
+  requestDetails    String?
+  consentGiven      Boolean                 @default(false)
+
+  // Anti-abuse
+  honeypotValue     String?                 // non-empty = spam
+  ipAddress         String?
+  userAgent         String?
+
+  // Linkage
+  caseId            String?                 @unique
+  processedByUserId String?
+  processedAt       DateTime?
+
+  receivedAt        DateTime                @default(now())
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case        DSARCase? @relation("CaseIntakeSubmission", fields: [caseId], references: [id])
+  processedBy User?     @relation("IntakeProcessedBy", fields: [processedByUserId], references: [id])
+  attachments IntakeAttachment[]
+  emailIngestEvent EmailIngestEvent?
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, subjectEmail])
+  @@index([reference])
+  @@map("intake_submissions")
+}
+
+model IntakeAttachment {
+  id             String   @id @default(uuid())
+  tenantId       String
+  submissionId   String
+  filename       String
+  contentType    String
+  storageKey     String
+  size           Int
+  hash           String
+  createdAt      DateTime @default(now())
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  submission IntakeSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([submissionId])
+  @@map("intake_attachments")
+}
+
+model EmailIngestEvent {
+  id              String   @id @default(uuid())
+  tenantId        String
+  submissionId    String?  @unique
+  fromAddress     String
+  subject         String?
+  bodyPlain       String?
+  bodyHtml        String?
+  receivedAt      DateTime
+  rawHeaders      Json?
+  parsedIdentifiers Json?  // { email, phone, customerId, ... }
+  mappingStatus   String   @default("PENDING") // PENDING | MAPPED | FAILED
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  submission IntakeSubmission? @relation(fields: [submissionId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, mappingStatus])
+  @@map("email_ingest_events")
+}
+
+model DedupeCandidate {
+  id              String      @id @default(uuid())
+  tenantId        String
+  caseId          String
+  candidateCaseId String
+  score           Float       // 0.0 – 1.0
+  reasons         Json        // string[] of match reasons
+  status          DedupeStatus @default(PENDING)
+  resolvedAt      DateTime?
+  createdAt       DateTime    @default(now())
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case          DSARCase @relation("DedupeCaseA", fields: [caseId], references: [id], onDelete: Cascade)
+  candidateCase DSARCase @relation("DedupeCaseB", fields: [candidateCaseId], references: [id], onDelete: Cascade)
+
+  @@unique([caseId, candidateCaseId])
+  @@index([tenantId])
+  @@index([caseId])
+  @@map("dedupe_candidates")
+}
+
+model ClarificationRequest {
+  id           String              @id @default(uuid())
+  tenantId     String
+  caseId       String
+  questions    Json                // string[]
+  templateBody String?             // generated outbox message
+  status       ClarificationStatus @default(OPEN)
+  createdByUserId String
+  sentAt       DateTime?
+  resolvedAt   DateTime?
+  resolvedNote String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case      DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("ClarificationCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([tenantId])
+  @@index([caseId])
+  @@map("clarification_requests")
+}
+
+model TenantIntakeSettings {
+  id                       String  @id @default(uuid())
+  tenantId                 String  @unique
+  autoCreateCase           Boolean @default(false)
+  dedupeWindowDays         Int     @default(30)
+  clarificationPausesClock Boolean @default(true)
+  maxAttachments           Int     @default(5)
+  maxAttachmentSizeMb      Int     @default(10)
+  rateLimitPerMinute       Int     @default(5)
+  rateLimitPerHour         Int     @default(20)
+  enabledLanguages         Json    @default("[\"en\",\"de\"]") // string[]
+  requiredFields           Json    @default("[\"subjectEmail\"]") // string[]
+  privacyNoticeUrl         String?
+  portalWelcomeText        Json?   // { en: "...", de: "..." }
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("tenant_intake_settings")
 }

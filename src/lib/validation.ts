@@ -579,6 +579,70 @@ export const createKpiThresholdSchema = z.object({
   direction: z.enum(["lower_is_better", "higher_is_better"]).optional().default("lower_is_better"),
 });
 
+// ─── Intake Portal Schemas (Module 8.1) ──────────────────────────────────────
+
+const INTAKE_CHANNEL_VALUES = ["WEB", "EMAIL", "MANUAL"] as const;
+const INTAKE_STATUS_VALUES = ["NEW", "PROCESSED", "REJECTED", "SPAM"] as const;
+const DATA_SUBJECT_TYPE_VALUES = ["CUSTOMER", "EMPLOYEE", "APPLICANT", "VISITOR", "OTHER"] as const;
+const INTAKE_JURISDICTION_VALUES = ["GDPR", "CCPA", "LGPD", "POPIA", "UNKNOWN"] as const;
+
+export const intakeSubmissionSchema = z.object({
+  preferredLanguage: z.enum(["en", "de"]).optional().default("en"),
+  requestTypes: z.array(z.enum(DSAR_TYPE_VALUES)).min(1, "At least one request type required"),
+  subjectType: z.enum(DATA_SUBJECT_TYPE_VALUES).optional(),
+  subjectEmail: z.string().email().optional().or(z.literal("")),
+  subjectPhone: z.string().optional(),
+  subjectName: z.string().optional(),
+  subjectAddress: z.string().optional(),
+  customerId: z.string().optional(),
+  employeeId: z.string().optional(),
+  requestDetails: z.string().optional(),
+  consentGiven: z.boolean().refine((v) => v === true, { message: "Consent is required" }),
+  honeypot: z.string().optional(), // must be empty
+});
+
+export const emailIngestSchema = z.object({
+  from: z.string().min(1, "From address is required"),
+  subject: z.string().optional(),
+  body: z.string().optional(),
+  bodyHtml: z.string().optional(),
+  receivedAt: z.string().datetime().optional(),
+  tenantSlug: z.string().min(1, "Tenant slug is required"),
+  attachments: z.array(z.object({
+    filename: z.string(),
+    contentType: z.string(),
+    base64: z.string(),
+  })).optional(),
+});
+
+export const clarificationRequestSchema = z.object({
+  questions: z.array(z.string().min(1)).min(1, "At least one question is required"),
+  templateBody: z.string().optional(),
+});
+
+export const resolveClarificationSchema = z.object({
+  resolvedNote: z.string().optional(),
+});
+
+export const dedupeLinkSchema = z.object({
+  candidateId: z.string().uuid("Valid candidate ID required"),
+  action: z.enum(["link", "merge", "dismiss"]),
+});
+
+export const updateIntakeSettingsSchema = z.object({
+  autoCreateCase: z.boolean().optional(),
+  dedupeWindowDays: z.number().int().min(1).max(365).optional(),
+  clarificationPausesClock: z.boolean().optional(),
+  maxAttachments: z.number().int().min(1).max(20).optional(),
+  maxAttachmentSizeMb: z.number().int().min(1).max(50).optional(),
+  rateLimitPerMinute: z.number().int().min(1).max(60).optional(),
+  rateLimitPerHour: z.number().int().min(1).max(500).optional(),
+  enabledLanguages: z.array(z.string()).optional(),
+  requiredFields: z.array(z.string()).optional(),
+  privacyNoticeUrl: z.string().url().optional().or(z.literal("")),
+  portalWelcomeText: z.record(z.string()).optional(),
+});
+
 // ─── Integration Schemas ─────────────────────────────────────────────────────
 
 const INTEGRATION_PROVIDER_VALUES = [
