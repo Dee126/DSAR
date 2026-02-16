@@ -313,3 +313,114 @@ export const updateIdvSettingsSchema = z.object({
   autoTransitionOnApproval: z.boolean().optional(),
   storeDob: z.boolean().optional(),
 });
+
+// ─── Incident & Authority Linkage Schemas ────────────────────────────────────
+
+const INCIDENT_SEVERITY_VALUES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
+const INCIDENT_STATUS_VALUES = ["OPEN", "CONTAINED", "RESOLVED"] as const;
+const INCIDENT_TIMELINE_EVENT_VALUES = ["DETECTED", "TRIAGED", "CONTAINED", "NOTIFIED_AUTHORITY", "NOTIFIED_SUBJECTS", "REMEDIATION", "CLOSED", "OTHER"] as const;
+const REGULATOR_STATUS_VALUES = ["DRAFT", "SUBMITTED", "INQUIRY", "CLOSED"] as const;
+const INCIDENT_SOURCE_VALUES = ["MANUAL", "IMPORT_JIRA", "IMPORT_SERVICENOW", "IMPORT_SIEM", "IMPORT_OTHER"] as const;
+const DSAR_INCIDENT_SUBJECT_VALUES = ["UNKNOWN", "YES", "NO"] as const;
+
+export const createIncidentSchema = z.object({
+  title: z.string().min(1, "Incident title is required"),
+  description: z.string().optional(),
+  severity: z.enum(INCIDENT_SEVERITY_VALUES).optional().default("MEDIUM"),
+  status: z.enum(INCIDENT_STATUS_VALUES).optional().default("OPEN"),
+  detectedAt: z.string().datetime().optional(),
+  containedAt: z.string().datetime().optional(),
+  resolvedAt: z.string().datetime().optional(),
+  regulatorNotificationRequired: z.boolean().optional().default(false),
+  numberOfDataSubjectsEstimate: z.number().int().min(0).nullable().optional(),
+  categoriesOfDataAffected: z.array(z.string()).optional().default([]),
+  crossBorder: z.boolean().optional().default(false),
+  tags: z.array(z.string()).optional(),
+});
+
+export const updateIncidentSchema = createIncidentSchema.partial();
+
+export const createIncidentTimelineSchema = z.object({
+  eventType: z.enum(INCIDENT_TIMELINE_EVENT_VALUES),
+  timestamp: z.string().datetime(),
+  description: z.string().min(1, "Description is required"),
+});
+
+export const createIncidentAssessmentSchema = z.object({
+  natureOfBreach: z.string().optional(),
+  categoriesAndApproxSubjects: z.string().optional(),
+  categoriesAndApproxRecords: z.string().optional(),
+  likelyConsequences: z.string().optional(),
+  measuresTakenOrProposed: z.string().optional(),
+  dpoContactDetails: z.string().optional(),
+  additionalNotes: z.string().optional(),
+});
+
+export const createRegulatorRecordSchema = z.object({
+  authorityName: z.string().min(1, "Authority name is required"),
+  country: z.string().optional(),
+  referenceNumber: z.string().optional(),
+  status: z.enum(REGULATOR_STATUS_VALUES).optional().default("DRAFT"),
+  notes: z.string().optional(),
+});
+
+export const updateRegulatorRecordSchema = createRegulatorRecordSchema.partial();
+
+export const linkDsarIncidentSchema = z.object({
+  incidentId: z.string().uuid("Valid incident ID required"),
+  linkReason: z.string().optional(),
+  subjectInScope: z.enum(DSAR_INCIDENT_SUBJECT_VALUES).optional().default("UNKNOWN"),
+});
+
+export const createSurgeGroupSchema = z.object({
+  name: z.string().min(1, "Surge group name is required"),
+  description: z.string().optional(),
+  caseIds: z.array(z.string().uuid()).optional().default([]),
+});
+
+export const surgeGroupBulkActionSchema = z.object({
+  action: z.enum(["apply_systems", "create_tasks", "set_template", "create_extension_notices"]),
+  systemIds: z.array(z.string().uuid()).optional(),
+  taskTitle: z.string().optional(),
+  taskDescription: z.string().optional(),
+  templateId: z.string().uuid().optional(),
+  extensionDays: z.number().int().min(1).max(60).optional(),
+  extensionReason: z.string().optional(),
+});
+
+export const createAuthorityExportSchema = z.object({
+  includeTimeline: z.boolean().optional().default(true),
+  includeDsarList: z.boolean().optional().default(true),
+  includeEvidence: z.boolean().optional().default(false),
+  includeResponses: z.boolean().optional().default(false),
+});
+
+export const incidentContactSchema = z.object({
+  role: z.string().min(1, "Contact role is required"),
+  name: z.string().min(1, "Contact name is required"),
+  email: z.string().email().optional().or(z.literal("")),
+  phone: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const incidentSourceSchema = z.object({
+  sourceType: z.enum(INCIDENT_SOURCE_VALUES).optional().default("MANUAL"),
+  externalId: z.string().optional(),
+  externalUrl: z.string().optional(),
+  systemName: z.string().optional(),
+});
+
+export const incidentSystemSchema = z.object({
+  systemId: z.string().uuid("Valid system ID required"),
+  notes: z.string().optional(),
+});
+
+export const incidentCommunicationSchema = z.object({
+  direction: z.enum(["INBOUND", "OUTBOUND"]),
+  channel: z.enum(["EMAIL", "LETTER", "PHONE", "PORTAL"]),
+  recipient: z.string().optional(),
+  subject: z.string().optional(),
+  body: z.string().optional(),
+  documentRef: z.string().optional(),
+  sentAt: z.string().datetime().optional(),
+});

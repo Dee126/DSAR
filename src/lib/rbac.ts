@@ -93,7 +93,16 @@ export type Permission =
   | "RESPONSE_APPROVE"
   | "RESPONSE_SEND"
   | "RESPONSE_TEMPLATE_VIEW"
-  | "RESPONSE_TEMPLATE_MANAGE";
+  | "RESPONSE_TEMPLATE_MANAGE"
+  // O) Incidents & Authority Linkage
+  | "INCIDENT_VIEW"
+  | "INCIDENT_CREATE"
+  | "INCIDENT_UPDATE"
+  | "INCIDENT_DELETE"
+  | "INCIDENT_LINK_DSAR"
+  | "INCIDENT_ASSESSMENT"
+  | "INCIDENT_AUTHORITY_EXPORT"
+  | "INCIDENT_SURGE_MANAGE";
 
 // ─── Role → Permission Matrix ──────────────────────────────────────────────
 
@@ -120,6 +129,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "IDV_VIEW", "IDV_MANAGE", "IDV_DECIDE", "IDV_VIEW_ARTIFACTS", "IDV_SETTINGS_VIEW", "IDV_SETTINGS_EDIT",
     "RESPONSE_VIEW", "RESPONSE_GENERATE", "RESPONSE_EDIT", "RESPONSE_SUBMIT_REVIEW", "RESPONSE_APPROVE", "RESPONSE_SEND",
     "RESPONSE_TEMPLATE_VIEW", "RESPONSE_TEMPLATE_MANAGE",
+    "INCIDENT_VIEW", "INCIDENT_CREATE", "INCIDENT_UPDATE", "INCIDENT_DELETE",
+    "INCIDENT_LINK_DSAR", "INCIDENT_ASSESSMENT", "INCIDENT_AUTHORITY_EXPORT", "INCIDENT_SURGE_MANAGE",
   ]),
 
   TENANT_ADMIN: new Set<Permission>([
@@ -144,6 +155,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "IDV_VIEW", "IDV_MANAGE", "IDV_DECIDE", "IDV_VIEW_ARTIFACTS", "IDV_SETTINGS_VIEW", "IDV_SETTINGS_EDIT",
     "RESPONSE_VIEW", "RESPONSE_GENERATE", "RESPONSE_EDIT", "RESPONSE_SUBMIT_REVIEW", "RESPONSE_APPROVE", "RESPONSE_SEND",
     "RESPONSE_TEMPLATE_VIEW", "RESPONSE_TEMPLATE_MANAGE",
+    "INCIDENT_VIEW", "INCIDENT_CREATE", "INCIDENT_UPDATE", "INCIDENT_DELETE",
+    "INCIDENT_LINK_DSAR", "INCIDENT_ASSESSMENT", "INCIDENT_AUTHORITY_EXPORT", "INCIDENT_SURGE_MANAGE",
   ]),
 
   DPO: new Set<Permission>([
@@ -174,6 +187,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "IDV_VIEW", "IDV_MANAGE", "IDV_DECIDE", "IDV_VIEW_ARTIFACTS", "IDV_SETTINGS_VIEW", "IDV_SETTINGS_EDIT",
     "RESPONSE_VIEW", "RESPONSE_GENERATE", "RESPONSE_EDIT", "RESPONSE_SUBMIT_REVIEW", "RESPONSE_APPROVE", "RESPONSE_SEND",
     "RESPONSE_TEMPLATE_VIEW", "RESPONSE_TEMPLATE_MANAGE",
+    "INCIDENT_VIEW", "INCIDENT_CREATE", "INCIDENT_UPDATE",
+    "INCIDENT_LINK_DSAR", "INCIDENT_ASSESSMENT", "INCIDENT_AUTHORITY_EXPORT", "INCIDENT_SURGE_MANAGE",
   ]),
 
   CASE_MANAGER: new Set<Permission>([
@@ -203,6 +218,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "IDV_VIEW", "IDV_MANAGE", "IDV_VIEW_ARTIFACTS",
     "RESPONSE_VIEW", "RESPONSE_GENERATE", "RESPONSE_EDIT", "RESPONSE_SUBMIT_REVIEW",
     "RESPONSE_TEMPLATE_VIEW",
+    "INCIDENT_VIEW", "INCIDENT_LINK_DSAR",
   ]),
 
   ANALYST: new Set<Permission>([
@@ -225,6 +241,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "DEADLINES_VIEW", "NOTIFICATIONS_VIEW",
     "IDV_VIEW",
     "RESPONSE_VIEW", "RESPONSE_TEMPLATE_VIEW",
+    "INCIDENT_VIEW",
   ]),
 
   AUDITOR: new Set<Permission>([
@@ -249,6 +266,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "DEADLINES_VIEW", "ESCALATIONS_VIEW", "SLA_CONFIG_VIEW", "NOTIFICATIONS_VIEW",
     "IDV_VIEW", "IDV_VIEW_ARTIFACTS", "IDV_SETTINGS_VIEW",
     "RESPONSE_VIEW", "RESPONSE_TEMPLATE_VIEW",
+    "INCIDENT_VIEW",
   ]),
 
   // Legacy roles mapped for backward compatibility
@@ -328,7 +346,8 @@ type Resource =
   | "integrations" | "copilot" | "copilot_governance"
   | "legal_hold" | "redaction" | "governance_report"
   | "data_inventory" | "discovery_rules"
-  | "response" | "response_templates";
+  | "response" | "response_templates"
+  | "incidents" | "incident_linkage" | "incident_surge" | "authority_export";
 
 type Action = "create" | "read" | "update" | "delete" | "manage";
 
@@ -443,6 +462,31 @@ const LEGACY_MAP: Record<string, Record<string, Permission[]>> = {
     update: ["RESPONSE_TEMPLATE_MANAGE"],
     delete: ["RESPONSE_TEMPLATE_MANAGE"],
     manage: ["RESPONSE_TEMPLATE_MANAGE"],
+  },
+  incidents: {
+    read: ["INCIDENT_VIEW"],
+    create: ["INCIDENT_CREATE"],
+    update: ["INCIDENT_UPDATE"],
+    delete: ["INCIDENT_DELETE"],
+    manage: ["INCIDENT_CREATE", "INCIDENT_UPDATE", "INCIDENT_DELETE"],
+  },
+  incident_linkage: {
+    create: ["INCIDENT_LINK_DSAR"],
+    read: ["INCIDENT_VIEW"],
+    update: ["INCIDENT_LINK_DSAR"],
+    delete: ["INCIDENT_LINK_DSAR"],
+    manage: ["INCIDENT_LINK_DSAR"],
+  },
+  incident_surge: {
+    create: ["INCIDENT_SURGE_MANAGE"],
+    read: ["INCIDENT_VIEW"],
+    update: ["INCIDENT_SURGE_MANAGE"],
+    manage: ["INCIDENT_SURGE_MANAGE"],
+  },
+  authority_export: {
+    create: ["INCIDENT_AUTHORITY_EXPORT"],
+    read: ["INCIDENT_VIEW"],
+    manage: ["INCIDENT_AUTHORITY_EXPORT"],
   },
 };
 

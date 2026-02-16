@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+import IncidentDashboardWidget from "@/components/IncidentDashboardWidget";
 
 /* ── Display helpers ──────────────────────────────────────────────────── */
 
@@ -462,6 +463,9 @@ export default function DashboardPage() {
 
       {/* Response Generator Widget */}
       <ResponseWidget />
+
+      {/* Incident-Linked DSARs Widget */}
+      <IncidentDashboardWidget />
 
       {/* Recent Cases Table */}
       <div className="card p-0">

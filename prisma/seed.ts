@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole, RiskLevel, EscalationSeverity, DeadlineEventType, MilestoneType, NotificationType, IdvRequestStatus, IdvMethod, IdvArtifactType, IdvDecisionOutcome, ResponseDocStatus, DeliveryMethod } from "@prisma/client";
+import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole, RiskLevel, EscalationSeverity, DeadlineEventType, MilestoneType, NotificationType, IdvRequestStatus, IdvMethod, IdvArtifactType, IdvDecisionOutcome, ResponseDocStatus, DeliveryMethod, IncidentSeverity, IncidentStatus, IncidentTimelineEventType, RegulatorRecordStatus, IncidentSourceType, DsarIncidentSubjectStatus } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -7,6 +7,18 @@ async function main() {
   console.log("Seeding database...");
 
   // Clean existing data (order matters for FK constraints)
+  await prisma.surgeGroupMember.deleteMany();
+  await prisma.surgeGroup.deleteMany();
+  await prisma.dsarIncident.deleteMany();
+  await prisma.incidentCommunication.deleteMany();
+  await prisma.incidentAssessment.deleteMany();
+  await prisma.incidentRegulatorRecord.deleteMany();
+  await prisma.incidentTimeline.deleteMany();
+  await prisma.incidentContact.deleteMany();
+  await prisma.incidentSystem.deleteMany();
+  await prisma.incidentSource.deleteMany();
+  await prisma.authorityExportRun.deleteMany();
+  await prisma.incident.deleteMany();
   await prisma.redactionEntry.deleteMany();
   await prisma.deliveryRecord.deleteMany();
   await prisma.responseApproval.deleteMany();
@@ -2324,6 +2336,216 @@ async function main() {
 
   console.log("Created 3 demo response documents (in_review, sent, approved)");
   console.log("Response Generator seed complete.");
+
+  // ─── MODULE 5: Incidents & Authority Linkage ────────────────────────
+
+  // Incident 1: Phishing-led account compromise (MEDIUM, CONTAINED)
+  const incident1 = await prisma.incident.create({
+    data: {
+      tenantId: tenant.id,
+      title: "Phishing-led account compromise",
+      description: "A targeted phishing campaign led to unauthorized access to the CRM system through compromised employee credentials.",
+      severity: IncidentSeverity.MEDIUM,
+      status: IncidentStatus.CONTAINED,
+      detectedAt: daysAgo(10),
+      containedAt: daysAgo(7),
+      regulatorNotificationRequired: false,
+      numberOfDataSubjectsEstimate: 150,
+      categoriesOfDataAffected: ["IDENTIFICATION", "CONTACT", "COMMUNICATION"],
+      crossBorder: false,
+      createdByUserId: dpo.id,
+    },
+  });
+
+  // Incident 1 — source
+  await prisma.incidentSource.create({
+    data: {
+      tenantId: tenant.id,
+      incidentId: incident1.id,
+      sourceType: IncidentSourceType.MANUAL,
+    },
+  });
+
+  // Incident 1 — affected systems
+  await prisma.incidentSystem.createMany({
+    data: [
+      { tenantId: tenant.id, incidentId: incident1.id, systemId: crmSystem.id, notes: "Primary target — unauthorized CRM access via phished credentials" },
+      { tenantId: tenant.id, incidentId: incident1.id, systemId: emailSystem.id, notes: "Phishing emails delivered through this channel" },
+    ],
+  });
+
+  // Incident 1 — contacts
+  await prisma.incidentContact.createMany({
+    data: [
+      { tenantId: tenant.id, incidentId: incident1.id, role: "DPO", name: "David DPO", email: "dpo@acme-corp.com" },
+      { tenantId: tenant.id, incidentId: incident1.id, role: "CISO", name: "Sarah CISO", email: "ciso@acme-corp.com" },
+    ],
+  });
+
+  // Incident 1 — timeline events
+  await prisma.incidentTimeline.createMany({
+    data: [
+      { tenantId: tenant.id, incidentId: incident1.id, eventType: IncidentTimelineEventType.DETECTED, timestamp: daysAgo(10), description: "Anomalous CRM access patterns detected by SOC monitoring", createdByUserId: dpo.id },
+      { tenantId: tenant.id, incidentId: incident1.id, eventType: IncidentTimelineEventType.TRIAGED, timestamp: daysAgo(9), description: "Confirmed phishing vector; affected accounts identified", createdByUserId: dpo.id },
+      { tenantId: tenant.id, incidentId: incident1.id, eventType: IncidentTimelineEventType.CONTAINED, timestamp: daysAgo(7), description: "All compromised credentials reset, MFA enforced across organization", createdByUserId: dpo.id },
+    ],
+  });
+
+  // Incident 1 — assessment
+  await prisma.incidentAssessment.create({
+    data: {
+      tenantId: tenant.id,
+      incidentId: incident1.id,
+      natureOfBreach: "Phishing attack led to unauthorized access to CRM",
+      categoriesAndApproxSubjects: "~150 customers",
+      categoriesAndApproxRecords: "~500 records",
+      likelyConsequences: "Potential exposure of contact details",
+      measuresTakenOrProposed: "Passwords reset, MFA enforced",
+      dpoContactDetails: "David DPO, dpo@acme-corp.com",
+      version: 1,
+      createdByUserId: dpo.id,
+    },
+  });
+
+  // Incident 1 — link to existing DSAR cases
+  await prisma.dsarIncident.createMany({
+    data: [
+      { tenantId: tenant.id, caseId: case1.id, incidentId: incident1.id, linkReason: "Data subject affected by phishing incident", subjectInScope: DsarIncidentSubjectStatus.YES, linkedByUserId: dpo.id },
+      { tenantId: tenant.id, caseId: case2.id, incidentId: incident1.id, linkReason: "Data subject potentially affected — erasure requested during incident window", subjectInScope: DsarIncidentSubjectStatus.YES, linkedByUserId: dpo.id },
+    ],
+  });
+
+  console.log("Created Incident 1: Phishing-led account compromise (MEDIUM / CONTAINED)");
+
+  // Incident 2: Data exfiltration suspected (HIGH, OPEN)
+  const incident2 = await prisma.incident.create({
+    data: {
+      tenantId: tenant.id,
+      title: "Data exfiltration suspected",
+      description: "SIEM alerts indicate potential large-scale data exfiltration from HR and finance systems. Investigation ongoing.",
+      severity: IncidentSeverity.HIGH,
+      status: IncidentStatus.OPEN,
+      detectedAt: daysAgo(5),
+      regulatorNotificationRequired: true,
+      regulatorNotifiedAt: null,
+      numberOfDataSubjectsEstimate: 2500,
+      categoriesOfDataAffected: ["IDENTIFICATION", "CONTACT", "HR", "PAYMENT"],
+      crossBorder: true,
+      createdByUserId: admin.id,
+    },
+  });
+
+  // Incident 2 — source (SIEM import)
+  await prisma.incidentSource.create({
+    data: {
+      tenantId: tenant.id,
+      incidentId: incident2.id,
+      sourceType: IncidentSourceType.IMPORT_SIEM,
+      externalId: "SIEM-2026-4421",
+      importedAt: daysAgo(5),
+    },
+  });
+
+  // Incident 2 — affected systems
+  await prisma.incidentSystem.createMany({
+    data: [
+      { tenantId: tenant.id, incidentId: incident2.id, systemId: hrSystem.id, notes: "Employee PII potentially exfiltrated" },
+      { tenantId: tenant.id, incidentId: incident2.id, systemId: financeSystem.id, notes: "Payment and billing data potentially exfiltrated" },
+      { tenantId: tenant.id, incidentId: incident2.id, systemId: m365System.id, notes: "Mailbox data accessed by compromised service account" },
+    ],
+  });
+
+  // Incident 2 — contacts
+  await prisma.incidentContact.createMany({
+    data: [
+      { tenantId: tenant.id, incidentId: incident2.id, role: "DPO", name: "David DPO", email: "dpo@acme-corp.com" },
+      { tenantId: tenant.id, incidentId: incident2.id, role: "CISO", name: "Sarah CISO", email: "ciso@acme-corp.com" },
+      { tenantId: tenant.id, incidentId: incident2.id, role: "Legal", name: "Legal Team", email: "legal@acme-corp.com" },
+      { tenantId: tenant.id, incidentId: incident2.id, role: "Comms", name: "PR Team", email: "comms@acme-corp.com" },
+    ],
+  });
+
+  // Incident 2 — timeline events
+  await prisma.incidentTimeline.createMany({
+    data: [
+      { tenantId: tenant.id, incidentId: incident2.id, eventType: IncidentTimelineEventType.DETECTED, timestamp: daysAgo(5), description: "SIEM alert SIEM-2026-4421: Unusual outbound data transfer volume detected from HR and finance systems", createdByUserId: admin.id },
+      { tenantId: tenant.id, incidentId: incident2.id, eventType: IncidentTimelineEventType.TRIAGED, timestamp: daysAgo(4), description: "Forensic analysis initiated; compromised service account isolated; scope of exfiltration under investigation", createdByUserId: admin.id },
+    ],
+  });
+
+  // Incident 2 — assessment
+  await prisma.incidentAssessment.create({
+    data: {
+      tenantId: tenant.id,
+      incidentId: incident2.id,
+      natureOfBreach: "Suspected large-scale data exfiltration via compromised service account affecting HR and finance systems",
+      categoriesAndApproxSubjects: "~2,500 employees and customers across EU subsidiaries",
+      categoriesAndApproxRecords: "~15,000 records (HR files, payroll data, payment records)",
+      likelyConsequences: "Risk of identity fraud, financial loss, and regulatory penalties; cross-border impact across DE, FR, NL offices",
+      measuresTakenOrProposed: "Service account disabled, network segmentation applied, forensic imaging in progress, external IR firm engaged",
+      dpoContactDetails: "David DPO, dpo@acme-corp.com",
+      additionalNotes: "72-hour notification deadline approaching. Legal counsel reviewing preliminary notification draft.",
+      version: 1,
+      createdByUserId: admin.id,
+    },
+  });
+
+  // Incident 2 — regulator record (BfDI, draft)
+  await prisma.incidentRegulatorRecord.create({
+    data: {
+      tenantId: tenant.id,
+      incidentId: incident2.id,
+      authorityName: "BfDI (German Federal Commissioner)",
+      country: "DE",
+      status: RegulatorRecordStatus.DRAFT,
+      notes: "Preliminary notification being prepared. 72-hour deadline from detection.",
+    },
+  });
+
+  // Incident 2 — link to existing DSAR cases
+  await prisma.dsarIncident.createMany({
+    data: [
+      { tenantId: tenant.id, caseId: case1.id, incidentId: incident2.id, linkReason: "Data subject records found in exfiltrated dataset", subjectInScope: DsarIncidentSubjectStatus.YES, linkedByUserId: dpo.id },
+      { tenantId: tenant.id, caseId: case2.id, incidentId: incident2.id, linkReason: "Erasure request overlaps with breached data categories", subjectInScope: DsarIncidentSubjectStatus.YES, linkedByUserId: dpo.id },
+      { tenantId: tenant.id, caseId: case3.id, incidentId: incident2.id, linkReason: "Portability request for HR data — system under investigation", subjectInScope: DsarIncidentSubjectStatus.UNKNOWN, linkedByUserId: admin.id },
+      { tenantId: tenant.id, caseId: case4.id, incidentId: incident2.id, linkReason: "Active DSAR with data from affected finance system", subjectInScope: DsarIncidentSubjectStatus.UNKNOWN, linkedByUserId: admin.id },
+    ],
+  });
+
+  // Incident 2 — Surge Group for related DSARs
+  const surgeGroup = await prisma.surgeGroup.create({
+    data: {
+      tenantId: tenant.id,
+      incidentId: incident2.id,
+      name: "Data Exfiltration DSAR Surge",
+      description: "Grouped DSARs whose data subjects may be affected by the data exfiltration incident. Coordinated processing to ensure consistent handling.",
+      createdByUserId: admin.id,
+    },
+  });
+
+  await prisma.surgeGroupMember.createMany({
+    data: [
+      { tenantId: tenant.id, surgeGroupId: surgeGroup.id, caseId: case3.id },
+      { tenantId: tenant.id, surgeGroupId: surgeGroup.id, caseId: case4.id },
+    ],
+  });
+
+  // Incident 2 — communication (outbound to regulator)
+  await prisma.incidentCommunication.create({
+    data: {
+      tenantId: tenant.id,
+      incidentId: incident2.id,
+      direction: "OUTBOUND",
+      channel: "EMAIL",
+      recipient: "bfdi@bfdi.bund.de",
+      subject: "Preliminary notification - Data breach",
+      body: "Dear BfDI,\n\nWe are writing to notify you of a potential personal data breach detected on " + daysAgo(5).toISOString().split("T")[0] + ". Investigation is ongoing. Full Article 33 notification to follow within 72 hours.\n\nKind regards,\nACME Corp DPO",
+      createdByUserId: dpo.id,
+    },
+  });
+
+  console.log("Created Incident 2: Data exfiltration suspected (HIGH / OPEN)");
+  console.log("Incidents & Authority Linkage (Module 5) seed complete.");
 }
 
 main()

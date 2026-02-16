@@ -409,6 +409,18 @@ model Tenant {
   responseApprovals    ResponseApproval[]
   deliveryRecords      DeliveryRecord[]
   redactionEntries     RedactionEntry[]
+  incidents            Incident[]
+  incidentSources      IncidentSource[]
+  incidentSystems      IncidentSystem[]
+  incidentContacts     IncidentContact[]
+  incidentTimelines    IncidentTimeline[]
+  incidentCommunications IncidentCommunication[]
+  incidentAssessments  IncidentAssessment[]
+  regulatorRecords     IncidentRegulatorRecord[]
+  dsarIncidents        DsarIncident[]
+  surgeGroups          SurgeGroup[]
+  surgeGroupMembers    SurgeGroupMember[]
+  authorityExportRuns  AuthorityExportRun[]
 
   @@map("tenants")
 }
@@ -457,6 +469,13 @@ model User {
   responseApprovals     ResponseApproval[]  @relation("ResponseApprovalReviewer")
   deliveryRecords       DeliveryRecord[]    @relation("DeliveryRecordCreatedBy")
   redactionEntries      RedactionEntry[]    @relation("RedactionEntryCreatedBy")
+  incidentsCreated      Incident[]          @relation("IncidentCreatedBy")
+  incidentTimelines     IncidentTimeline[]  @relation("IncidentTimelineCreatedBy")
+  incidentCommunications IncidentCommunication[] @relation("IncidentCommCreatedBy")
+  incidentAssessments   IncidentAssessment[] @relation("IncidentAssessmentCreatedBy")
+  dsarIncidentsLinked   DsarIncident[]      @relation("DsarIncidentLinkedBy")
+  surgeGroupsCreated    SurgeGroup[]        @relation("SurgeGroupCreatedBy")
+  authorityExportRuns   AuthorityExportRun[] @relation("AuthorityExportCreatedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -532,6 +551,8 @@ model DSARCase {
   escalations         Escalation[]
   idvRequest          IdvRequest?
   responseDocuments   ResponseDocument[]
+  dsarIncidents       DsarIncident[]
+  surgeGroupMembers   SurgeGroupMember[]
 
   @@unique([tenantId, caseNumber])
   @@index([tenantId])
@@ -688,6 +709,7 @@ model System {
   processors          SystemProcessor[]
   discoveryRules      DiscoveryRule[]
   caseSystemLinks     CaseSystemLink[]
+  incidentSystems     IncidentSystem[]
 
   @@index([tenantId])
   @@map("systems")
@@ -1528,6 +1550,60 @@ model IdvSettings {
   @@map("idv_settings")
 }
 
+// ─── Incident & Authority Enums ─────────────────────────────────────────────
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  OPEN
+  CONTAINED
+  RESOLVED
+}
+
+enum IncidentTimelineEventType {
+  DETECTED
+  TRIAGED
+  CONTAINED
+  NOTIFIED_AUTHORITY
+  NOTIFIED_SUBJECTS
+  REMEDIATION
+  CLOSED
+  OTHER
+}
+
+enum RegulatorRecordStatus {
+  DRAFT
+  SUBMITTED
+  INQUIRY
+  CLOSED
+}
+
+enum IncidentSourceType {
+  MANUAL
+  IMPORT_JIRA
+  IMPORT_SERVICENOW
+  IMPORT_SIEM
+  IMPORT_OTHER
+}
+
+enum DsarIncidentSubjectStatus {
+  UNKNOWN
+  YES
+  NO
+}
+
+enum AuthorityExportStatus {
+  PENDING
+  GENERATING
+  COMPLETED
+  FAILED
+}
+
 // ─── Response Generator Enums ───────────────────────────────────────────────
 
 enum ResponseDocStatus {
@@ -1687,4 +1763,267 @@ model RedactionEntry {
   @@index([tenantId, responseDocId])
   @@index([tenantId, caseId])
   @@map("redaction_entries")
+}
+
+// ─── Incident & Authority Linkage Models ────────────────────────────────────
+
+model Incident {
+  id                            String           @id @default(uuid())
+  tenantId                      String
+  title                         String
+  description                   String?
+  severity                      IncidentSeverity @default(MEDIUM)
+  status                        IncidentStatus   @default(OPEN)
+  detectedAt                    DateTime?
+  containedAt                   DateTime?
+  resolvedAt                    DateTime?
+  regulatorNotificationRequired Boolean          @default(false)
+  regulatorNotifiedAt           DateTime?
+  numberOfDataSubjectsEstimate  Int?
+  categoriesOfDataAffected      String[]         @default([])
+  crossBorder                   Boolean          @default(false)
+  tags                          Json?
+  createdByUserId               String
+  createdAt                     DateTime         @default(now())
+  updatedAt                     DateTime         @updatedAt
+
+  tenant              Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy           User                  @relation("IncidentCreatedBy", fields: [createdByUserId], references: [id])
+  sources             IncidentSource[]
+  incidentSystems     IncidentSystem[]
+  contacts            IncidentContact[]
+  timeline            IncidentTimeline[]
+  communications      IncidentCommunication[]
+  assessments         IncidentAssessment[]
+  regulatorRecords    IncidentRegulatorRecord[]
+  dsarIncidents       DsarIncident[]
+  surgeGroups         SurgeGroup[]
+  authorityExportRuns AuthorityExportRun[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, severity])
+  @@map("incidents")
+}
+
+model IncidentSource {
+  id           String             @id @default(uuid())
+  tenantId     String
+  incidentId   String
+  sourceType   IncidentSourceType @default(MANUAL)
+  externalId   String?
+  externalUrl  String?
+  systemName   String?
+  importedAt   DateTime?
+  rawPayload   Json?
+  createdAt    DateTime           @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, incidentId])
+  @@map("incident_sources")
+}
+
+model IncidentSystem {
+  id          String   @id @default(uuid())
+  tenantId    String
+  incidentId  String
+  systemId    String
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  system   System   @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  @@unique([incidentId, systemId])
+  @@index([tenantId, incidentId])
+  @@map("incident_systems")
+}
+
+model IncidentContact {
+  id          String   @id @default(uuid())
+  tenantId    String
+  incidentId  String
+  role        String   // DPO, CISO, Legal, Comms, etc.
+  name        String
+  email       String?
+  phone       String?
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, incidentId])
+  @@map("incident_contacts")
+}
+
+model IncidentTimeline {
+  id              String                    @id @default(uuid())
+  tenantId        String
+  incidentId      String
+  eventType       IncidentTimelineEventType
+  timestamp       DateTime
+  description     String
+  createdByUserId String
+  createdAt       DateTime                  @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  createdBy User    @relation("IncidentTimelineCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([tenantId, incidentId])
+  @@map("incident_timelines")
+}
+
+model IncidentCommunication {
+  id              String   @id @default(uuid())
+  tenantId        String
+  incidentId      String
+  direction       String   // INBOUND, OUTBOUND
+  channel         String   // EMAIL, LETTER, PHONE, PORTAL
+  recipient       String?
+  subject         String?
+  body            String?
+  documentRef     String?  // reference to a Document or storageKey
+  sentAt          DateTime?
+  createdByUserId String
+  createdAt       DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  createdBy User    @relation("IncidentCommCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([tenantId, incidentId])
+  @@map("incident_communications")
+}
+
+model IncidentAssessment {
+  id                                  String   @id @default(uuid())
+  tenantId                            String
+  incidentId                          String
+  natureOfBreach                      String?
+  categoriesAndApproxSubjects         String?
+  categoriesAndApproxRecords          String?
+  likelyConsequences                  String?
+  measuresTakenOrProposed             String?
+  dpoContactDetails                   String?
+  additionalNotes                     String?
+  version                             Int      @default(1)
+  createdByUserId                     String
+  createdAt                           DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  createdBy User    @relation("IncidentAssessmentCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([tenantId, incidentId])
+  @@map("incident_assessments")
+}
+
+model IncidentRegulatorRecord {
+  id              String               @id @default(uuid())
+  tenantId        String
+  incidentId      String
+  authorityName   String
+  country         String?
+  referenceNumber String?
+  status          RegulatorRecordStatus @default(DRAFT)
+  notes           String?
+  documentRefs    Json?                // array of document/storageKey references
+  submittedAt     DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, incidentId])
+  @@map("incident_regulator_records")
+}
+
+model DsarIncident {
+  id              String                    @id @default(uuid())
+  tenantId        String
+  caseId          String
+  incidentId      String
+  linkReason      String?
+  subjectInScope  DsarIncidentSubjectStatus @default(UNKNOWN)
+  linkedByUserId  String
+  createdAt       DateTime                  @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case     DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  linkedBy User     @relation("DsarIncidentLinkedBy", fields: [linkedByUserId], references: [id])
+
+  @@unique([caseId, incidentId])
+  @@index([tenantId, caseId])
+  @@index([tenantId, incidentId])
+  @@map("dsar_incidents")
+}
+
+model SurgeGroup {
+  id              String   @id @default(uuid())
+  tenantId        String
+  incidentId      String
+  name            String
+  description     String?
+  suggestedSystems  Json?  // array of systemId suggestions
+  suggestedTemplate String? // templateId suggestion
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant   Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident           @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  createdBy User              @relation("SurgeGroupCreatedBy", fields: [createdByUserId], references: [id])
+  members  SurgeGroupMember[]
+
+  @@index([tenantId, incidentId])
+  @@map("surge_groups")
+}
+
+model SurgeGroupMember {
+  id           String   @id @default(uuid())
+  tenantId     String
+  surgeGroupId String
+  caseId       String
+  addedAt      DateTime @default(now())
+
+  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  surgeGroup SurgeGroup   @relation(fields: [surgeGroupId], references: [id], onDelete: Cascade)
+  case       DSARCase     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@unique([surgeGroupId, caseId])
+  @@index([tenantId, surgeGroupId])
+  @@map("surge_group_members")
+}
+
+model AuthorityExportRun {
+  id              String                @id @default(uuid())
+  tenantId        String
+  incidentId      String
+  status          AuthorityExportStatus @default(PENDING)
+  includeTimeline Boolean               @default(true)
+  includeDsarList Boolean               @default(true)
+  includeEvidence Boolean               @default(false)
+  includeResponses Boolean              @default(false)
+  pdfStorageKey   String?
+  zipStorageKey   String?
+  fileChecksum    String?
+  fileSize        Int?
+  errorMessage    String?
+  createdByUserId String
+  createdAt       DateTime              @default(now())
+  completedAt     DateTime?
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  createdBy User    @relation("AuthorityExportCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([tenantId, incidentId])
+  @@map("authority_export_runs")
 }
