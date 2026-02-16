@@ -5,6 +5,7 @@ import { checkPermission } from "@/lib/rbac";
 import { logAudit, getClientInfo } from "@/lib/audit";
 import { ApiError, handleApiError } from "@/lib/errors";
 import { getStorage } from "@/lib/storage";
+import { logAllowedAccess } from "@/lib/access-log-middleware";
 
 interface RouteParams {
   params: { id: string };
@@ -48,6 +49,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         caseNumber: document.case.caseNumber,
         filename: document.filename,
       },
+    });
+
+    // Module 8.4: Access logging for sensitive artifact download
+    await logAllowedAccess({
+      tenantId: user.tenantId,
+      userId: user.id,
+      accessType: "DOWNLOAD",
+      resourceType: "DOCUMENT",
+      resourceId: document.id,
+      caseId: document.caseId,
+      ip: clientInfo.ip,
+      userAgent: clientInfo.userAgent,
     });
 
     return new NextResponse(new Uint8Array(fileBuffer), {

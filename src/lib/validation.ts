@@ -806,3 +806,55 @@ export const updateRedactionReviewStateSchema = z.object({
   state: z.enum(REDACTION_REVIEW_STATE_VALUES),
   notes: z.string().optional(),
 });
+
+// ─── Module 8.4: Assurance Layer Schemas ──────────────────────────────────────
+
+export const updateSodPolicySchema = z.object({
+  enabled: z.boolean().optional(),
+  rules: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    description: z.string(),
+    enabled: z.boolean(),
+  })).optional(),
+  exemptions: z.record(z.unknown()).optional(),
+});
+
+export const decideApprovalSchema = z.object({
+  decision: z.enum(["APPROVED", "REJECTED"]),
+  reason: z.string().optional(),
+});
+
+export const upsertRetentionPolicySchema = z.object({
+  artifactType: z.enum([
+    "IDV_ARTIFACT", "INTAKE_ATTACHMENT", "RESPONSE_DOC",
+    "DELIVERY_LOG", "VENDOR_ARTIFACT", "EXPORT_ARTIFACT", "EVIDENCE",
+  ]),
+  retentionDays: z.number().int().min(1).max(3650),
+  deleteMode: z.enum(["HARD_DELETE", "SOFT_DELETE"]),
+  legalHoldRespects: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+});
+
+export const auditLogFilterSchema = z.object({
+  entityType: z.string().optional(),
+  action: z.string().optional(),
+  actorUserId: z.string().uuid().optional(),
+  dateFrom: z.string().datetime().optional(),
+  dateTo: z.string().datetime().optional(),
+  limit: z.number().int().min(1).max(200).optional(),
+  offset: z.number().int().min(0).optional(),
+});
+
+export const accessLogFilterSchema = z.object({
+  resourceType: z.enum([
+    "IDV_ARTIFACT", "DOCUMENT", "RESPONSE_DOC",
+    "DELIVERY_PACKAGE", "VENDOR_ARTIFACT", "EXPORT_ARTIFACT", "EVIDENCE",
+  ]).optional(),
+  caseId: z.string().uuid().optional(),
+  outcome: z.enum(["ALLOWED", "DENIED"]).optional(),
+  dateFrom: z.string().datetime().optional(),
+  dateTo: z.string().datetime().optional(),
+  limit: z.number().int().min(1).max(200).optional(),
+  offset: z.number().int().min(0).optional(),
+});

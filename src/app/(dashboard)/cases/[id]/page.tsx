@@ -12,6 +12,7 @@ import DeliveryPanel from "@/components/DeliveryPanel";
 import RedactionPanel from "@/components/RedactionPanel";
 import IncidentPanel from "@/components/IncidentPanel";
 import VendorPanel from "@/components/VendorPanel";
+import AssuranceMiniPanel from "@/components/AssuranceMiniPanel";
 
 /* ── Display helpers ──────────────────────────────────────────────────── */
 
@@ -1180,6 +1181,7 @@ export default function CaseDetailPage() {
               <div><dt className="text-xs font-medium text-gray-500">Documents</dt><dd className="text-gray-900">{caseData.documents.length}</dd></div>
             </dl>
           </div>
+          <AssuranceMiniPanel caseId={caseId} />
         </div>
       </div>
 

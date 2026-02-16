@@ -309,6 +309,19 @@ ${auditLogs.slice(0, 50).map((log: any) => `<tr><td>${new Date(log.createdAt).to
       },
     });
 
+    // Module 8.4: Access logging for case export
+    const { logAllowedAccess } = await import("@/lib/access-log-middleware");
+    await logAllowedAccess({
+      tenantId: user.tenantId,
+      userId: user.id,
+      accessType: "EXPORT",
+      resourceType: "EXPORT_ARTIFACT",
+      resourceId: dsarCase.id,
+      caseId: dsarCase.id,
+      ip: clientInfo.ip,
+      userAgent: clientInfo.userAgent,
+    });
+
     return new NextResponse(buffer, {
       status: 200,
       headers: {

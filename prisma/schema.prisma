@@ -508,6 +508,16 @@ model Tenant {
   partialDenialSections    PartialDenialSection[]
   caseRedactionReviews     CaseRedactionReview[]
 
+  // ─── Module 8.4: Assurance Layer ───
+  assuranceAuditLogs       AssuranceAuditLog[]
+  accessLogs               AccessLog[]
+  sodPolicy                SodPolicy?
+  assuranceApprovals       AssuranceApproval[]
+  retentionPolicies        RetentionPolicy[]
+  deletionJobs             DeletionJob[]
+  deletionEvents           DeletionEvent[]
+  jobRuns                  JobRun[]
+
   @@map("tenants")
 }
 
@@ -586,6 +596,13 @@ model User {
   partialDenialsCreated       PartialDenialSection[] @relation("PartialDenialCreatedBy")
   partialDenialsApproved      PartialDenialSection[] @relation("PartialDenialApprovedBy")
   redactionReviewsCompleted   CaseRedactionReview[]  @relation("RedactionReviewCompletedBy")
+
+  // ─── Module 8.4: Assurance Layer ───
+  assuranceAuditLogs          AssuranceAuditLog[]    @relation("AssuranceAuditActor")
+  accessLogs                  AccessLog[]            @relation("AccessLogUser")
+  assuranceApprovalsRequested AssuranceApproval[]    @relation("AssuranceApprovalRequester")
+  assuranceApprovalsApproved  AssuranceApproval[]    @relation("AssuranceApprovalApprover")
+  deletionJobsTriggered       DeletionJob[]          @relation("DeletionJobTriggeredBy")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -686,6 +703,9 @@ model DSARCase {
   legalExceptions         LegalException[]
   partialDenialSections   PartialDenialSection[]
   redactionReview         CaseRedactionReview?
+
+  // ─── Module 8.4: Assurance Layer ───
+  accessLogs              AccessLog[]   @relation("AccessLogCase")
 
   @@unique([tenantId, caseNumber])
   @@index([tenantId])
@@ -3188,4 +3208,269 @@ model CaseRedactionReview {
 
   @@index([tenantId])
   @@map("case_redaction_reviews")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Module 8.4: Assurance Layer
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum ActorType {
+  USER
+  PUBLIC
+  SYSTEM
+}
+
+enum AccessType {
+  VIEW
+  DOWNLOAD
+  EXPORT
+}
+
+enum AccessOutcome {
+  ALLOWED
+  DENIED
+}
+
+enum AccessResourceType {
+  IDV_ARTIFACT
+  DOCUMENT
+  RESPONSE_DOC
+  DELIVERY_PACKAGE
+  VENDOR_ARTIFACT
+  EXPORT_ARTIFACT
+  EVIDENCE
+}
+
+enum ApprovalScopeType {
+  RESPONSE
+  LEGAL_EXCEPTION
+  RETENTION_OVERRIDE
+  DELETION_OVERRIDE
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RetentionArtifactType {
+  IDV_ARTIFACT
+  INTAKE_ATTACHMENT
+  RESPONSE_DOC
+  DELIVERY_LOG
+  VENDOR_ARTIFACT
+  EXPORT_ARTIFACT
+  EVIDENCE
+}
+
+enum RetentionDeleteMode {
+  HARD_DELETE
+  SOFT_DELETE
+}
+
+enum DeletionJobStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum DeletionMethod {
+  HARD
+  KEY_ROTATION
+  SOFT
+}
+
+enum DeletionTrigger {
+  USER
+  SYSTEM
+}
+
+enum JobRunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+// ─── Immutable Audit Log (enhanced) ──────────────────────────────────────────
+
+model AssuranceAuditLog {
+  id                String    @id @default(uuid())
+  tenantId          String
+  entityType        String
+  entityId          String?
+  action            String    // CREATE/UPDATE/DELETE/ACCESS/EXPORT/APPROVE/REVOKE/LOGIN/AMEND
+  actorUserId       String?
+  actorType         ActorType @default(USER)
+  timestamp         DateTime  @default(now())
+  diffJson          Json?     // before/after diff
+  metadataJson      Json?     // {ip_hash, user_agent_hash, correlation_id}
+  prevHash          String?   // hash of previous log entry for this tenant
+  hash              String    // sha256(prevHash + canonical_json(event))
+  signatureVersion  String    @default("v1")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actor  User?  @relation("AssuranceAuditActor", fields: [actorUserId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, actorUserId])
+  @@index([tenantId, action])
+  @@index([tenantId, timestamp])
+  @@map("assurance_audit_logs")
+}
+
+// ─── Access Logs ─────────────────────────────────────────────────────────────
+
+model AccessLog {
+  id              String             @id @default(uuid())
+  tenantId        String
+  userId          String?
+  accessType      AccessType
+  resourceType    AccessResourceType
+  resourceId      String
+  caseId          String?
+  timestamp       DateTime           @default(now())
+  ipHash          String?
+  userAgentHash   String?
+  outcome         AccessOutcome
+  reason          String?            // RBAC_DENY, EXPIRED_TOKEN, etc.
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?    @relation("AccessLogUser", fields: [userId], references: [id])
+  case   DSARCase? @relation("AccessLogCase", fields: [caseId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, resourceType, resourceId])
+  @@index([tenantId, caseId])
+  @@index([tenantId, userId])
+  @@index([tenantId, timestamp])
+  @@map("access_logs")
+}
+
+// ─── Separation of Duties Policies ───────────────────────────────────────────
+
+model SodPolicy {
+  id          String   @id @default(uuid())
+  tenantId    String   @unique
+  enabled     Boolean  @default(true)
+  rulesJson   Json     // array of rule objects
+  exemptions  Json?    // optional exemptions with approval requirement
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("sod_policies")
+}
+
+// ─── Approvals (4-Eyes) ──────────────────────────────────────────────────────
+
+model AssuranceApproval {
+  id            String            @id @default(uuid())
+  tenantId      String
+  scopeType     ApprovalScopeType
+  scopeId       String
+  requestedBy   String
+  requestedAt   DateTime          @default(now())
+  approvedBy    String?
+  approvedAt    DateTime?
+  status        ApprovalStatus    @default(PENDING)
+  reason        String?
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requester User   @relation("AssuranceApprovalRequester", fields: [requestedBy], references: [id])
+  approver  User?  @relation("AssuranceApprovalApprover", fields: [approvedBy], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, scopeType, scopeId])
+  @@index([tenantId, status])
+  @@map("assurance_approvals")
+}
+
+// ─── Retention Policies ──────────────────────────────────────────────────────
+
+model RetentionPolicy {
+  id                  String              @id @default(uuid())
+  tenantId            String
+  artifactType        RetentionArtifactType
+  retentionDays       Int
+  deleteMode          RetentionDeleteMode @default(SOFT_DELETE)
+  legalHoldRespects   Boolean             @default(true)
+  enabled             Boolean             @default(true)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, artifactType])
+  @@index([tenantId])
+  @@map("retention_policies")
+}
+
+// ─── Deletion Jobs ───────────────────────────────────────────────────────────
+
+model DeletionJob {
+  id              String           @id @default(uuid())
+  tenantId        String
+  startedAt       DateTime         @default(now())
+  finishedAt      DateTime?
+  status          DeletionJobStatus @default(RUNNING)
+  summaryJson     Json?            // {counts, errors}
+  triggeredBy     DeletionTrigger  @default(SYSTEM)
+  triggeredUserId String?
+
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  triggeredUser User?           @relation("DeletionJobTriggeredBy", fields: [triggeredUserId], references: [id])
+  events        DeletionEvent[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("deletion_jobs")
+}
+
+// ─── Deletion Events (Proof) ─────────────────────────────────────────────────
+
+model DeletionEvent {
+  id                String         @id @default(uuid())
+  tenantId          String
+  artifactType      String
+  artifactId        String
+  caseId            String?
+  storageKey        String?
+  deletedAt         DateTime       @default(now())
+  deletionMethod    DeletionMethod
+  checksumBefore    String?
+  proofHash         String         // sha256(canonical_json(event_payload))
+  jobId             String
+  legalHoldBlocked  Boolean        @default(false)
+  reason            String?
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  job    DeletionJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, jobId])
+  @@index([tenantId, artifactType])
+  @@map("deletion_events")
+}
+
+// ─── Job Runs (Observability) ────────────────────────────────────────────────
+
+model JobRun {
+  id            String       @id @default(uuid())
+  tenantId      String
+  jobName       String
+  startedAt     DateTime     @default(now())
+  finishedAt    DateTime?
+  status        JobRunStatus @default(RUNNING)
+  errorMessage  String?
+  correlationId String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, jobName])
+  @@index([tenantId, status])
+  @@map("job_runs")
 }

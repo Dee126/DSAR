@@ -8,6 +8,15 @@ async function main() {
   console.log("Seeding database...");
 
   // Clean existing data (order matters for FK constraints)
+  // Module 8.4: Assurance Layer
+  await prisma.deletionEvent.deleteMany();
+  await prisma.deletionJob.deleteMany();
+  await prisma.jobRun.deleteMany();
+  await prisma.assuranceApproval.deleteMany();
+  await prisma.retentionPolicy.deleteMany();
+  await prisma.sodPolicy.deleteMany();
+  await prisma.accessLog.deleteMany();
+  await prisma.assuranceAuditLog.deleteMany();
   // Module 8.3: Redaction & Sensitive Data Controls
   await prisma.caseRedactionReview.deleteMany();
   await prisma.partialDenialSection.deleteMany();
@@ -3675,6 +3684,242 @@ async function main() {
   console.log(`Created 5 demo intake submissions (${sub1.reference}, ${sub2.reference}, ${sub3.reference}, ${sub4.reference}, ${sub5.reference}).`);
   console.log("DSAR Intake Portal (Module 8.1) seed complete.");
   console.log(`\nPublic intake portal: http://localhost:3000/public/acme-corp/dsar`);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Module 8.4: Assurance Layer Seed Data
+  // ═══════════════════════════════════════════════════════════════════════════
+  console.log("\nSeeding Module 8.4: Assurance Layer...");
+
+  // 1) SoD Policy (default enabled)
+  await prisma.sodPolicy.create({
+    data: {
+      tenantId: tenant.id,
+      enabled: true,
+      rulesJson: [
+        { id: "generator_cannot_approve_response", name: "Response Generator ≠ Approver", description: "The user who generated/drafted a response cannot be the same user who approves it.", enabled: true },
+        { id: "idv_reviewer_cannot_finalize_delivery", name: "IDV Reviewer ≠ Delivery Finalizer", description: "The user who reviewed IDV cannot finalize the delivery package.", enabled: true },
+        { id: "same_user_cannot_request_and_approve_legal_exception", name: "Legal Exception Creator ≠ Approver", description: "The user who proposed a legal exception cannot approve it.", enabled: true },
+        { id: "retention_override_requester_cannot_approve", name: "Retention Override Requester ≠ Approver", description: "The user who requested a retention override cannot approve it.", enabled: true },
+      ],
+    },
+  });
+  console.log("  SoD policy created (enabled, 4 rules).");
+
+  // 2) Retention Policies
+  const retentionDefaults = [
+    { artifactType: "IDV_ARTIFACT" as const, retentionDays: 90, deleteMode: "HARD_DELETE" as const },
+    { artifactType: "INTAKE_ATTACHMENT" as const, retentionDays: 180, deleteMode: "SOFT_DELETE" as const },
+    { artifactType: "RESPONSE_DOC" as const, retentionDays: 365, deleteMode: "SOFT_DELETE" as const },
+    { artifactType: "DELIVERY_LOG" as const, retentionDays: 365, deleteMode: "SOFT_DELETE" as const },
+    { artifactType: "VENDOR_ARTIFACT" as const, retentionDays: 365, deleteMode: "SOFT_DELETE" as const },
+    { artifactType: "EXPORT_ARTIFACT" as const, retentionDays: 365, deleteMode: "SOFT_DELETE" as const },
+    { artifactType: "EVIDENCE" as const, retentionDays: 730, deleteMode: "SOFT_DELETE" as const },
+  ];
+
+  for (const policy of retentionDefaults) {
+    await prisma.retentionPolicy.create({
+      data: {
+        tenantId: tenant.id,
+        artifactType: policy.artifactType,
+        retentionDays: policy.retentionDays,
+        deleteMode: policy.deleteMode,
+        legalHoldRespects: true,
+        enabled: true,
+      },
+    });
+  }
+  console.log("  7 retention policies created.");
+
+  // 3) Demo Assurance Audit Logs (hash-chained)
+  const { createHash: seedCreateHash } = await import("crypto");
+
+  function seedCanonicalJson(obj: unknown): string {
+    if (obj === null || obj === undefined) return "null";
+    if (typeof obj === "string") return JSON.stringify(obj);
+    if (typeof obj === "number" || typeof obj === "boolean") return String(obj);
+    if (Array.isArray(obj)) return "[" + obj.map(seedCanonicalJson).join(",") + "]";
+    if (typeof obj === "object") {
+      const sorted = Object.keys(obj as Record<string, unknown>).sort();
+      const pairs = sorted.map(k => JSON.stringify(k) + ":" + seedCanonicalJson((obj as Record<string, unknown>)[k]));
+      return "{" + pairs.join(",") + "}";
+    }
+    return String(obj);
+  }
+
+  function seedSha256(input: string): string {
+    return seedCreateHash("sha256").update(input, "utf8").digest("hex");
+  }
+
+  let prevHash: string | null = null;
+  const auditActions = [
+    { action: "CREATE", entityType: "DSARCase", entityId: case1.id, actorUserId: admin.id },
+    { action: "ACCESS", entityType: "Document", entityId: case1.id, actorUserId: caseManager.id },
+    { action: "UPDATE", entityType: "DSARCase", entityId: case1.id, actorUserId: admin.id },
+    { action: "APPROVE", entityType: "ResponseDocument", entityId: case1.id, actorUserId: dpo.id },
+    { action: "EXPORT", entityType: "DSARCase", entityId: case2.id, actorUserId: admin.id },
+    { action: "LOGIN", entityType: "User", entityId: admin.id, actorUserId: admin.id },
+    { action: "ACCESS", entityType: "IdvArtifact", entityId: case2.id, actorUserId: dpo.id },
+    { action: "DELETE", entityType: "Document", entityId: case3.id, actorUserId: admin.id },
+  ];
+
+  for (let i = 0; i < auditActions.length; i++) {
+    const a = auditActions[i];
+    const timestamp = new Date(Date.now() - (auditActions.length - i) * 3600 * 1000);
+    const eventPayload = {
+      tenantId: tenant.id,
+      entityType: a.entityType,
+      entityId: a.entityId,
+      action: a.action,
+      actorUserId: a.actorUserId,
+      actorType: "USER",
+      timestamp: timestamp.toISOString(),
+      diffJson: null,
+      metadataJson: null,
+    };
+    const canonical = seedCanonicalJson(eventPayload);
+    const hashInput = (prevHash || "") + canonical;
+    const hash = seedSha256(hashInput);
+
+    await prisma.assuranceAuditLog.create({
+      data: {
+        tenantId: tenant.id,
+        entityType: a.entityType,
+        entityId: a.entityId,
+        action: a.action,
+        actorUserId: a.actorUserId,
+        actorType: "USER",
+        timestamp,
+        prevHash,
+        hash,
+        signatureVersion: "v1",
+      },
+    });
+
+    prevHash = hash;
+  }
+  console.log("  8 hash-chained audit log entries created.");
+
+  // 4) Demo Access Logs
+  const accessLogData = [
+    { accessType: "DOWNLOAD" as const, resourceType: "DOCUMENT" as const, resourceId: case1.id, caseId: case1.id, userId: admin.id, outcome: "ALLOWED" as const },
+    { accessType: "VIEW" as const, resourceType: "IDV_ARTIFACT" as const, resourceId: case2.id, caseId: case2.id, userId: dpo.id, outcome: "ALLOWED" as const },
+    { accessType: "EXPORT" as const, resourceType: "EXPORT_ARTIFACT" as const, resourceId: case1.id, caseId: case1.id, userId: admin.id, outcome: "ALLOWED" as const },
+    { accessType: "DOWNLOAD" as const, resourceType: "RESPONSE_DOC" as const, resourceId: case1.id, caseId: case1.id, userId: caseManager.id, outcome: "ALLOWED" as const },
+    { accessType: "DOWNLOAD" as const, resourceType: "VENDOR_ARTIFACT" as const, resourceId: case3.id, caseId: case3.id, userId: caseManager.id, outcome: "DENIED" as const, reason: "RBAC_DENY" },
+  ];
+
+  for (const log of accessLogData) {
+    await prisma.accessLog.create({
+      data: {
+        tenantId: tenant.id,
+        userId: log.userId,
+        accessType: log.accessType,
+        resourceType: log.resourceType,
+        resourceId: log.resourceId,
+        caseId: log.caseId,
+        outcome: log.outcome,
+        reason: (log as any).reason ?? null,
+        ipHash: seedSha256("assurance:127.0.0.1"),
+        userAgentHash: seedSha256("assurance:Mozilla/5.0 Demo"),
+      },
+    });
+  }
+  console.log("  5 demo access logs created.");
+
+  // 5) Demo Approval (SoD violation example)
+  await prisma.assuranceApproval.create({
+    data: {
+      tenantId: tenant.id,
+      scopeType: "RESPONSE",
+      scopeId: case1.id,
+      requestedBy: caseManager.id,
+      status: "PENDING",
+      reason: "SoD violation: Response Generator ≠ Approver. Another user must approve this action.",
+    },
+  });
+  console.log("  1 demo pending approval created.");
+
+  // 6) Demo Deletion Job + Events (to show proof)
+  const demoJob = await prisma.deletionJob.create({
+    data: {
+      tenantId: tenant.id,
+      status: "SUCCESS",
+      triggeredBy: "SYSTEM",
+      finishedAt: new Date(),
+      summaryJson: { totalEvaluated: 3, totalDeleted: 2, totalBlocked: 1, errors: [] },
+    },
+  });
+
+  // Successful deletion event
+  const delPayload1 = {
+    tenantId: tenant.id,
+    artifactType: "DELIVERY_LOG",
+    artifactId: "demo-delivery-log-001",
+    caseId: case1.id,
+    storageKey: null,
+    deletedAt: new Date().toISOString(),
+    deletionMethod: "SOFT",
+    checksumBefore: null,
+    legalHoldBlocked: false,
+    reason: "Retention policy: 365 days exceeded",
+  };
+  await prisma.deletionEvent.create({
+    data: {
+      tenantId: tenant.id,
+      artifactType: "DELIVERY_LOG",
+      artifactId: "demo-delivery-log-001",
+      caseId: case1.id,
+      deletionMethod: "SOFT",
+      proofHash: seedSha256(seedCanonicalJson(delPayload1)),
+      jobId: demoJob.id,
+      legalHoldBlocked: false,
+      reason: "Retention policy: 365 days exceeded",
+    },
+  });
+
+  // Legal hold blocked deletion event
+  const delPayload2 = {
+    tenantId: tenant.id,
+    artifactType: "IDV_ARTIFACT",
+    artifactId: "demo-idv-artifact-001",
+    caseId: case3.id,
+    storageKey: null,
+    deletedAt: new Date().toISOString(),
+    deletionMethod: "SOFT",
+    checksumBefore: null,
+    legalHoldBlocked: true,
+    reason: "Legal hold active on case",
+  };
+  await prisma.deletionEvent.create({
+    data: {
+      tenantId: tenant.id,
+      artifactType: "IDV_ARTIFACT",
+      artifactId: "demo-idv-artifact-001",
+      caseId: case3.id,
+      deletionMethod: "SOFT",
+      proofHash: seedSha256(seedCanonicalJson(delPayload2)),
+      jobId: demoJob.id,
+      legalHoldBlocked: true,
+      reason: "Legal hold active on case",
+    },
+  });
+
+  console.log("  1 demo deletion job + 2 deletion events created.");
+
+  // 7) Demo Job Run (observability)
+  await prisma.jobRun.create({
+    data: {
+      tenantId: tenant.id,
+      jobName: "retention_deletion",
+      status: "SUCCESS",
+      finishedAt: new Date(),
+      correlationId: demoJob.id,
+    },
+  });
+  console.log("  1 demo job run created.");
+
+  console.log("Module 8.4: Assurance Layer seed complete.");
+  console.log("\nAssurance dashboard: http://localhost:3000/governance/assurance");
 }
 
 main()

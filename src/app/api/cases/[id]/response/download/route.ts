@@ -34,6 +34,19 @@ export async function GET(
     const storage = getStorage();
     const baseFilename = `response-${doc.case.caseNumber}-v${doc.version}`;
 
+    // Module 8.4: Access logging for response doc download
+    const { logAllowedAccess } = await import("@/lib/access-log-middleware");
+    await logAllowedAccess({
+      tenantId: user.tenantId,
+      userId: user.id,
+      accessType: "DOWNLOAD",
+      resourceType: "RESPONSE_DOC",
+      resourceId: doc.id,
+      caseId: params.id,
+      ip: clientInfo.ip,
+      userAgent: clientInfo.userAgent,
+    });
+
     if (format === "html") {
       const buffer = Buffer.from(doc.fullHtml, "utf-8");
       await logAudit({

@@ -140,7 +140,18 @@ export type Permission =
   | "PARTIAL_DENIAL_CREATE"
   | "PARTIAL_DENIAL_APPROVE"
   | "REDACTION_REVIEW_STATE_VIEW"
-  | "REDACTION_REVIEW_STATE_MANAGE";
+  | "REDACTION_REVIEW_STATE_MANAGE"
+  // T) Assurance Layer (Module 8.4)
+  | "ASSURANCE_VIEW"
+  | "ASSURANCE_MANAGE"
+  | "ASSURANCE_AUDIT_VERIFY"
+  | "ASSURANCE_SOD_MANAGE"
+  | "ASSURANCE_RETENTION_VIEW"
+  | "ASSURANCE_RETENTION_MANAGE"
+  | "ASSURANCE_RETENTION_RUN"
+  | "ASSURANCE_DELETION_VIEW"
+  | "ASSURANCE_DELETION_EXPORT"
+  | "ASSURANCE_APPROVAL_DECIDE";
 
 // ─── Role → Permission Matrix ──────────────────────────────────────────────
 
@@ -180,6 +191,11 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "LEGAL_EXCEPTION_VIEW", "LEGAL_EXCEPTION_PROPOSE", "LEGAL_EXCEPTION_APPROVE",
     "PARTIAL_DENIAL_VIEW", "PARTIAL_DENIAL_CREATE", "PARTIAL_DENIAL_APPROVE",
     "REDACTION_REVIEW_STATE_VIEW", "REDACTION_REVIEW_STATE_MANAGE",
+    // T) Assurance Layer
+    "ASSURANCE_VIEW", "ASSURANCE_MANAGE", "ASSURANCE_AUDIT_VERIFY",
+    "ASSURANCE_SOD_MANAGE", "ASSURANCE_RETENTION_VIEW", "ASSURANCE_RETENTION_MANAGE",
+    "ASSURANCE_RETENTION_RUN", "ASSURANCE_DELETION_VIEW", "ASSURANCE_DELETION_EXPORT",
+    "ASSURANCE_APPROVAL_DECIDE",
   ]),
 
   TENANT_ADMIN: new Set<Permission>([
@@ -217,6 +233,11 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "LEGAL_EXCEPTION_VIEW", "LEGAL_EXCEPTION_PROPOSE", "LEGAL_EXCEPTION_APPROVE",
     "PARTIAL_DENIAL_VIEW", "PARTIAL_DENIAL_CREATE", "PARTIAL_DENIAL_APPROVE",
     "REDACTION_REVIEW_STATE_VIEW", "REDACTION_REVIEW_STATE_MANAGE",
+    // T) Assurance Layer
+    "ASSURANCE_VIEW", "ASSURANCE_MANAGE", "ASSURANCE_AUDIT_VERIFY",
+    "ASSURANCE_SOD_MANAGE", "ASSURANCE_RETENTION_VIEW", "ASSURANCE_RETENTION_MANAGE",
+    "ASSURANCE_RETENTION_RUN", "ASSURANCE_DELETION_VIEW", "ASSURANCE_DELETION_EXPORT",
+    "ASSURANCE_APPROVAL_DECIDE",
   ]),
 
   DPO: new Set<Permission>([
@@ -259,6 +280,9 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "LEGAL_EXCEPTION_VIEW", "LEGAL_EXCEPTION_PROPOSE", "LEGAL_EXCEPTION_APPROVE",
     "PARTIAL_DENIAL_VIEW", "PARTIAL_DENIAL_CREATE", "PARTIAL_DENIAL_APPROVE",
     "REDACTION_REVIEW_STATE_VIEW", "REDACTION_REVIEW_STATE_MANAGE",
+    // T) Assurance Layer (DPO: view + verify + approve, no manage)
+    "ASSURANCE_VIEW", "ASSURANCE_AUDIT_VERIFY", "ASSURANCE_RETENTION_VIEW",
+    "ASSURANCE_DELETION_VIEW", "ASSURANCE_DELETION_EXPORT", "ASSURANCE_APPROVAL_DECIDE",
   ]),
 
   CASE_MANAGER: new Set<Permission>([
@@ -297,6 +321,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "LEGAL_EXCEPTION_VIEW", "LEGAL_EXCEPTION_PROPOSE",
     "PARTIAL_DENIAL_VIEW", "PARTIAL_DENIAL_CREATE",
     "REDACTION_REVIEW_STATE_VIEW",
+    // T) Assurance Layer (view only)
+    "ASSURANCE_VIEW",
   ]),
 
   ANALYST: new Set<Permission>([
@@ -327,6 +353,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "LEGAL_EXCEPTION_VIEW",
     "PARTIAL_DENIAL_VIEW",
     "REDACTION_REVIEW_STATE_VIEW",
+    // T) Assurance Layer (view only)
+    "ASSURANCE_VIEW",
   ]),
 
   AUDITOR: new Set<Permission>([
@@ -359,6 +387,9 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "LEGAL_EXCEPTION_VIEW",
     "PARTIAL_DENIAL_VIEW",
     "REDACTION_REVIEW_STATE_VIEW",
+    // T) Assurance Layer (auditor: full read + verify + export)
+    "ASSURANCE_VIEW", "ASSURANCE_AUDIT_VERIFY",
+    "ASSURANCE_RETENTION_VIEW", "ASSURANCE_DELETION_VIEW", "ASSURANCE_DELETION_EXPORT",
   ]),
 
   // Legacy roles mapped for backward compatibility
@@ -443,7 +474,8 @@ type Resource =
   | "vendors" | "vendor_requests" | "vendor_templates" | "vendor_escalations"
   | "exec_dashboard" | "exec_reports" | "exec_kpi_config"
   | "delivery" | "delivery_settings"
-  | "sensitive_data" | "legal_exceptions" | "partial_denials" | "redaction_review_state";
+  | "sensitive_data" | "legal_exceptions" | "partial_denials" | "redaction_review_state"
+  | "assurance" | "assurance_audit" | "assurance_sod" | "assurance_retention" | "assurance_deletion" | "assurance_approvals";
 
 type Action = "create" | "read" | "update" | "delete" | "manage";
 
@@ -657,6 +689,36 @@ const LEGACY_MAP: Record<string, Record<string, Permission[]>> = {
     read: ["REDACTION_REVIEW_STATE_VIEW"],
     update: ["REDACTION_REVIEW_STATE_MANAGE"],
     manage: ["REDACTION_REVIEW_STATE_MANAGE"],
+  },
+  assurance: {
+    read: ["ASSURANCE_VIEW"],
+    update: ["ASSURANCE_MANAGE"],
+    manage: ["ASSURANCE_MANAGE"],
+  },
+  assurance_audit: {
+    read: ["ASSURANCE_VIEW"],
+    update: ["ASSURANCE_AUDIT_VERIFY"],
+    manage: ["ASSURANCE_AUDIT_VERIFY"],
+  },
+  assurance_sod: {
+    read: ["ASSURANCE_VIEW"],
+    update: ["ASSURANCE_SOD_MANAGE"],
+    manage: ["ASSURANCE_SOD_MANAGE"],
+  },
+  assurance_retention: {
+    read: ["ASSURANCE_RETENTION_VIEW"],
+    create: ["ASSURANCE_RETENTION_MANAGE"],
+    update: ["ASSURANCE_RETENTION_MANAGE"],
+    manage: ["ASSURANCE_RETENTION_MANAGE", "ASSURANCE_RETENTION_RUN"],
+  },
+  assurance_deletion: {
+    read: ["ASSURANCE_DELETION_VIEW"],
+    manage: ["ASSURANCE_DELETION_EXPORT"],
+  },
+  assurance_approvals: {
+    read: ["ASSURANCE_VIEW"],
+    update: ["ASSURANCE_APPROVAL_DECIDE"],
+    manage: ["ASSURANCE_APPROVAL_DECIDE"],
   },
 };
 

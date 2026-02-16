@@ -161,6 +161,19 @@ export async function GET(
       details: { caseId: params.id, filename: artifact.filename },
     });
 
+    // Module 8.4: Access logging for IDV artifact download
+    const { logAllowedAccess } = await import("@/lib/access-log-middleware");
+    await logAllowedAccess({
+      tenantId: user.tenantId,
+      userId: user.id,
+      accessType: "DOWNLOAD",
+      resourceType: "IDV_ARTIFACT",
+      resourceId: artifact.id,
+      caseId: params.id,
+      ip: clientInfo.ip,
+      userAgent: clientInfo.userAgent,
+    });
+
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
