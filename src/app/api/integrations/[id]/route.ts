@@ -7,19 +7,12 @@ import { ApiError, handleApiError } from "@/lib/errors";
 import { storeSecret } from "@/lib/secret-store";
 import { encryptIntegrationSecret } from "@/lib/integration-crypto";
 import { getConnector } from "@/lib/connectors/registry";
+import { updateIntegrationSchema } from "@/lib/validation";
 import { Prisma } from "@prisma/client";
-import { z } from "zod";
 
 interface RouteParams {
   params: { id: string };
 }
-
-const updateIntegrationSchema = z.object({
-  name: z.string().min(1).max(200).optional(),
-  status: z.enum(["ENABLED", "DISABLED"]).optional(),
-  config: z.record(z.unknown()).optional(),
-  secrets: z.record(z.string()).optional(),
-});
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {

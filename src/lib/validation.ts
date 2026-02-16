@@ -578,3 +578,43 @@ export const createKpiThresholdSchema = z.object({
   redMin: z.number().optional(),
   direction: z.enum(["lower_is_better", "higher_is_better"]).optional().default("lower_is_better"),
 });
+
+// ─── Integration Schemas ─────────────────────────────────────────────────────
+
+const INTEGRATION_PROVIDER_VALUES = [
+  "M365", "EXCHANGE_ONLINE", "SHAREPOINT", "ONEDRIVE",
+  "GOOGLE_WORKSPACE", "SALESFORCE", "SERVICENOW",
+  "ATLASSIAN_JIRA", "ATLASSIAN_CONFLUENCE", "WORKDAY", "SAP_SUCCESSFACTORS", "OKTA",
+  "AWS", "AZURE", "GCP",
+] as const;
+
+export const createIntegrationSchema = z.object({
+  provider: z.enum(INTEGRATION_PROVIDER_VALUES),
+  name: z.string().min(1, "Integration name is required").max(200),
+  config: z.record(z.unknown()).optional(),
+  secrets: z.record(z.string()).optional(),
+});
+
+export const updateIntegrationSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  status: z.enum(["ENABLED", "DISABLED"]).optional(),
+  config: z.record(z.unknown()).optional(),
+  secrets: z.record(z.string()).optional(),
+});
+
+/**
+ * Validates the decrypted AWS secrets payload structure.
+ * Used after decryption to ensure the JSON content is well-formed.
+ */
+export const awsSecretsPayloadSchema = z.object({
+  authType: z.enum(["access_keys", "assume_role"]).default("access_keys"),
+  accessKeyId: z.string().min(1, "Access Key ID is required"),
+  secretAccessKey: z.string().min(1, "Secret Access Key is required"),
+  sessionToken: z.string().optional(),
+  region: z.string().min(1, "AWS region is required"),
+  roleArn: z.string().optional(),
+  externalId: z.string().optional(),
+}).refine(
+  (data) => data.authType !== "assume_role" || !!data.roleArn,
+  { message: "Role ARN is required when authType is assume_role", path: ["roleArn"] }
+);
