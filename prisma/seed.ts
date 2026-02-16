@@ -1,4 +1,5 @@
-import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole, RiskLevel, EscalationSeverity, DeadlineEventType, MilestoneType, NotificationType, IdvRequestStatus, IdvMethod, IdvArtifactType, IdvDecisionOutcome, ResponseDocStatus, DeliveryMethod, IncidentSeverity, IncidentStatus, IncidentTimelineEventType, RegulatorRecordStatus, IncidentSourceType, DsarIncidentSubjectStatus, VendorStatus, VendorRequestStatus, VendorResponseType, VendorEscalationSeverity, KpiSnapshotPeriod, MaturityDomain } from "@prisma/client";
+import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole, RiskLevel, EscalationSeverity, DeadlineEventType, MilestoneType, NotificationType, IdvRequestStatus, IdvMethod, IdvArtifactType, IdvDecisionOutcome, ResponseDocStatus, DeliveryMethod, IncidentSeverity, IncidentStatus, IncidentTimelineEventType, RegulatorRecordStatus, IncidentSourceType, DsarIncidentSubjectStatus, VendorStatus, VendorRequestStatus, VendorResponseType, VendorEscalationSeverity, KpiSnapshotPeriod, MaturityDomain, DeliveryLinkStatus, DeliveryEventType } from "@prisma/client";
+import { createHash, randomBytes } from "crypto";
 import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -7,6 +8,11 @@ async function main() {
   console.log("Seeding database...");
 
   // Clean existing data (order matters for FK constraints)
+  // Module 8.2: Delivery Portal
+  await prisma.deliveryEvent.deleteMany();
+  await prisma.deliveryLink.deleteMany();
+  await prisma.deliveryPackage.deleteMany();
+  await prisma.deliverySettings.deleteMany();
   // Module 8.1: Intake Portal
   await prisma.clarificationRequest.deleteMany();
   await prisma.dedupeCandidate.deleteMany();
@@ -2365,6 +2371,159 @@ async function main() {
 
   console.log("Created 3 demo response documents (in_review, sent, approved)");
   console.log("Response Generator seed complete.");
+
+  // ─── MODULE 8.2: Secure Data Delivery Portal ──────────────────────────
+
+  // Delivery Settings (tenant defaults)
+  await prisma.deliverySettings.create({
+    data: {
+      tenantId: tenant.id,
+      defaultExpiresDays: 7,
+      otpRequiredDefault: true,
+      maxDownloadsDefault: 3,
+      logRetentionDays: 365,
+      allowOneTimeLinks: false,
+      otpMaxAttempts: 5,
+      otpLockoutMinutes: 15,
+      otpExpiryMinutes: 15,
+    },
+  });
+
+  // Helper for token hashing
+  function hashTokenSeed(token: string, salt: string): string {
+    return createHash("sha256").update(token + salt).digest("hex");
+  }
+
+  // Delivery Package for Case 2 (SENT response) — with OTP required
+  const deliveryPkg1 = await prisma.deliveryPackage.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case2.id,
+      generatedByUserId: dpo.id,
+      includedResponseDocIds: [responseDoc2.id],
+      includedDocumentIds: [],
+      checksumSha256: createHash("sha256").update(JSON.stringify([{ name: "response_v1_en.html", type: "text/html", source: "response", id: responseDoc2.id }])).digest("hex"),
+      manifestJson: {
+        files: [
+          { name: "response_v1_en.html", type: "text/html", source: "response", id: responseDoc2.id },
+        ],
+      },
+    },
+  });
+
+  // Active delivery link with OTP required (Case 2)
+  const demoToken1 = "demo-delivery-token-otp-required-case2";
+  const demoSalt1 = randomBytes(16).toString("hex");
+  const deliveryLink1 = await prisma.deliveryLink.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case2.id,
+      createdByUserId: dpo.id,
+      tokenHash: hashTokenSeed(demoToken1, demoSalt1),
+      tokenSalt: demoSalt1,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      maxDownloads: 3,
+      usedDownloads: 0,
+      status: DeliveryLinkStatus.ACTIVE,
+      otpRequired: true,
+      subjectContact: "em***@example.com",
+      recipientEmail: "emma.mueller@example.com",
+      language: "en",
+      packageId: deliveryPkg1.id,
+    },
+  });
+
+  // Delivery events for Case 2 link
+  await prisma.deliveryEvent.createMany({
+    data: [
+      {
+        tenantId: tenant.id,
+        caseId: case2.id,
+        deliveryLinkId: deliveryLink1.id,
+        eventType: DeliveryEventType.LINK_CREATED,
+        ipHash: createHash("sha256").update("192.168.1.100" + tenant.id).digest("hex"),
+        metadataJson: { expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), otpRequired: true, maxDownloads: 3 },
+      },
+      {
+        tenantId: tenant.id,
+        caseId: case2.id,
+        deliveryLinkId: deliveryLink1.id,
+        eventType: DeliveryEventType.OTP_SENT,
+        ipHash: createHash("sha256").update("10.0.0.50" + tenant.id).digest("hex"),
+        metadataJson: { channel: "EMAIL", recipientMasked: "em***@example.com" },
+      },
+    ],
+  });
+
+  // Delivery Package for Case 4 (APPROVED, awaiting send) — revoked link
+  const deliveryPkg2 = await prisma.deliveryPackage.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case4.id,
+      generatedByUserId: caseManager.id,
+      includedResponseDocIds: [],
+      includedDocumentIds: [],
+      checksumSha256: createHash("sha256").update("[]").digest("hex"),
+      manifestJson: { files: [] },
+    },
+  });
+
+  // Revoked delivery link (Case 4)
+  const demoToken2 = "demo-delivery-token-revoked-case4";
+  const demoSalt2 = randomBytes(16).toString("hex");
+  const deliveryLink2 = await prisma.deliveryLink.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case4.id,
+      createdByUserId: caseManager.id,
+      tokenHash: hashTokenSeed(demoToken2, demoSalt2),
+      tokenSalt: demoSalt2,
+      expiresAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // expired yesterday
+      maxDownloads: 1,
+      usedDownloads: 0,
+      status: DeliveryLinkStatus.REVOKED,
+      otpRequired: false,
+      subjectContact: "ma***@example.com",
+      recipientEmail: "max.mustermann@example.com",
+      language: "de",
+      packageId: deliveryPkg2.id,
+      revokedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
+      revokedByUserId: admin.id,
+    },
+  });
+
+  // Delivery events for Case 4 link
+  await prisma.deliveryEvent.createMany({
+    data: [
+      {
+        tenantId: tenant.id,
+        caseId: case4.id,
+        deliveryLinkId: deliveryLink2.id,
+        eventType: DeliveryEventType.LINK_CREATED,
+        timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+        metadataJson: { expiresAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), otpRequired: false, maxDownloads: 1 },
+      },
+      {
+        tenantId: tenant.id,
+        caseId: case4.id,
+        deliveryLinkId: deliveryLink2.id,
+        eventType: DeliveryEventType.PORTAL_VIEWED,
+        timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+        ipHash: createHash("sha256").update("172.16.0.5" + tenant.id).digest("hex"),
+      },
+      {
+        tenantId: tenant.id,
+        caseId: case4.id,
+        deliveryLinkId: deliveryLink2.id,
+        eventType: DeliveryEventType.LINK_REVOKED,
+        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
+        metadataJson: { reason: "Recipient reported wrong email address" },
+      },
+    ],
+  });
+
+  console.log("Created delivery settings, 2 packages, 2 links (1 active+OTP, 1 revoked), 5 events.");
+  console.log("Secure Data Delivery Portal (Module 8.2) seed complete.");
 
   // ─── MODULE 5: Incidents & Authority Linkage ────────────────────────
 

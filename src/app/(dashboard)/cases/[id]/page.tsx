@@ -8,6 +8,7 @@ import CopilotRunDialog from "@/components/CopilotRunDialog";
 import DeadlinePanel from "@/components/DeadlinePanel";
 import IdvPanel from "@/components/IdvPanel";
 import ResponsePanel from "@/components/ResponsePanel";
+import DeliveryPanel from "@/components/DeliveryPanel";
 import IncidentPanel from "@/components/IncidentPanel";
 import VendorPanel from "@/components/VendorPanel";
 
@@ -215,7 +216,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   OTHER: "bg-gray-100 text-gray-600",
 };
 
-type TabKey = "overview" | "tasks" | "documents" | "communications" | "data-collection" | "legal-review" | "copilot" | "response" | "timeline" | "deadlines" | "idv" | "incidents" | "vendors";
+type TabKey = "overview" | "tasks" | "documents" | "communications" | "data-collection" | "legal-review" | "copilot" | "response" | "delivery" | "timeline" | "deadlines" | "idv" | "incidents" | "vendors";
 
 /* ── Component ────────────────────────────────────────────────────────── */
 
@@ -604,6 +605,7 @@ export default function CaseDetailPage() {
     { key: "legal-review", label: "Legal Review", count: caseData.legalReviews?.length ?? 0 },
     { key: "copilot", label: "Copilot", count: copilotRuns.length },
     { key: "response", label: "Response" },
+    { key: "delivery", label: "Delivery" },
     { key: "idv", label: "Identity" },
     { key: "incidents", label: "Incidents" },
     { key: "vendors", label: "Vendors" },
@@ -1106,6 +1108,19 @@ export default function CaseDetailPage() {
 
           {activeTab === "response" && (
             <ResponsePanel caseId={caseId} userRole={session?.user?.role} />
+          )}
+
+          {activeTab === "delivery" && (
+            <DeliveryPanel
+              caseId={caseId}
+              responseDocs={[]}
+              caseDocuments={(caseData.documents || []).map((d: any) => ({
+                id: d.id,
+                filename: d.filename,
+                size: d.size,
+              }))}
+              userRole={session?.user?.role || "READ_ONLY"}
+            />
           )}
 
           {activeTab === "idv" && (

@@ -643,6 +643,41 @@ export const updateIntakeSettingsSchema = z.object({
   portalWelcomeText: z.record(z.string()).optional(),
 });
 
+// ─── Module 8.2: Delivery Portal Schemas ────────────────────────────────────
+
+export const createDeliveryPackageSchema = z.object({
+  responseDocIds: z.array(z.string().uuid()).min(1, "At least one response document is required"),
+  documentIds: z.array(z.string().uuid()).optional().default([]),
+});
+
+export const createDeliveryLinkSchema = z.object({
+  packageId: z.string().uuid("Valid package ID required"),
+  recipientEmail: z.string().email("Valid recipient email required"),
+  expiresDays: z.number().int().min(1).max(90).optional(),
+  otpRequired: z.boolean().optional(),
+  maxDownloads: z.number().int().min(1).max(100).optional(),
+  language: z.string().min(2).max(5).optional().default("en"),
+});
+
+export const revokeDeliveryLinkSchema = z.object({
+  reason: z.string().min(1, "Revocation reason is required"),
+});
+
+export const verifyDeliveryOtpSchema = z.object({
+  otp: z.string().length(6, "OTP must be 6 digits").regex(/^\d{6}$/, "OTP must be numeric"),
+});
+
+export const updateDeliverySettingsSchema = z.object({
+  defaultExpiresDays: z.number().int().min(1).max(90).optional(),
+  otpRequiredDefault: z.boolean().optional(),
+  maxDownloadsDefault: z.number().int().min(1).max(100).optional(),
+  logRetentionDays: z.number().int().min(30).max(3650).optional(),
+  allowOneTimeLinks: z.boolean().optional(),
+  otpMaxAttempts: z.number().int().min(3).max(10).optional(),
+  otpLockoutMinutes: z.number().int().min(5).max(60).optional(),
+  otpExpiryMinutes: z.number().int().min(5).max(30).optional(),
+});
+
 // ─── Integration Schemas ─────────────────────────────────────────────────────
 
 const INTEGRATION_PROVIDER_VALUES = [

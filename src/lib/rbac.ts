@@ -121,7 +121,14 @@ export type Permission =
   | "EXEC_REPORT_GENERATE"
   | "EXEC_REPORT_EXPORT"
   | "EXEC_KPI_CONFIG"
-  | "EXEC_FORECAST_VIEW";
+  | "EXEC_FORECAST_VIEW"
+  // R) Delivery Portal
+  | "DELIVERY_VIEW"
+  | "DELIVERY_CREATE_LINK"
+  | "DELIVERY_REVOKE_LINK"
+  | "DELIVERY_CREATE_PACKAGE"
+  | "DELIVERY_SETTINGS_VIEW"
+  | "DELIVERY_SETTINGS_EDIT";
 
 // ─── Role → Permission Matrix ──────────────────────────────────────────────
 
@@ -155,6 +162,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "VENDOR_ESCALATION_VIEW", "VENDOR_ESCALATION_MANAGE",
     "EXEC_DASHBOARD_VIEW", "EXEC_DASHBOARD_FULL", "EXEC_FINANCIAL_VIEW",
     "EXEC_REPORT_GENERATE", "EXEC_REPORT_EXPORT", "EXEC_KPI_CONFIG", "EXEC_FORECAST_VIEW",
+    "DELIVERY_VIEW", "DELIVERY_CREATE_LINK", "DELIVERY_REVOKE_LINK", "DELIVERY_CREATE_PACKAGE",
+    "DELIVERY_SETTINGS_VIEW", "DELIVERY_SETTINGS_EDIT",
   ]),
 
   TENANT_ADMIN: new Set<Permission>([
@@ -186,6 +195,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "VENDOR_ESCALATION_VIEW", "VENDOR_ESCALATION_MANAGE",
     "EXEC_DASHBOARD_VIEW", "EXEC_DASHBOARD_FULL", "EXEC_FINANCIAL_VIEW",
     "EXEC_REPORT_GENERATE", "EXEC_REPORT_EXPORT", "EXEC_KPI_CONFIG", "EXEC_FORECAST_VIEW",
+    "DELIVERY_VIEW", "DELIVERY_CREATE_LINK", "DELIVERY_REVOKE_LINK", "DELIVERY_CREATE_PACKAGE",
+    "DELIVERY_SETTINGS_VIEW", "DELIVERY_SETTINGS_EDIT",
   ]),
 
   DPO: new Set<Permission>([
@@ -222,6 +233,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "VENDOR_RESPONSE_LOG", "VENDOR_TEMPLATE_VIEW", "VENDOR_TEMPLATE_MANAGE",
     "VENDOR_ESCALATION_VIEW", "VENDOR_ESCALATION_MANAGE",
     "EXEC_DASHBOARD_VIEW", "EXEC_DASHBOARD_FULL", "EXEC_REPORT_GENERATE", "EXEC_FORECAST_VIEW",
+    "DELIVERY_VIEW", "DELIVERY_CREATE_LINK", "DELIVERY_REVOKE_LINK", "DELIVERY_CREATE_PACKAGE",
+    "DELIVERY_SETTINGS_VIEW",
   ]),
 
   CASE_MANAGER: new Set<Permission>([
@@ -255,6 +268,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "VENDOR_VIEW", "VENDOR_REQUEST_CREATE", "VENDOR_REQUEST_SEND", "VENDOR_REQUEST_VIEW",
     "VENDOR_RESPONSE_LOG", "VENDOR_TEMPLATE_VIEW", "VENDOR_ESCALATION_VIEW",
     "EXEC_DASHBOARD_VIEW",
+    "DELIVERY_VIEW",
   ]),
 
   ANALYST: new Set<Permission>([
@@ -280,6 +294,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "INCIDENT_VIEW",
     "VENDOR_VIEW", "VENDOR_REQUEST_VIEW", "VENDOR_TEMPLATE_VIEW", "VENDOR_ESCALATION_VIEW",
     "EXEC_DASHBOARD_VIEW",
+    "DELIVERY_VIEW",
   ]),
 
   AUDITOR: new Set<Permission>([
@@ -307,6 +322,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "INCIDENT_VIEW",
     "VENDOR_VIEW", "VENDOR_REQUEST_VIEW", "VENDOR_TEMPLATE_VIEW", "VENDOR_ESCALATION_VIEW",
     "EXEC_DASHBOARD_VIEW",
+    "DELIVERY_VIEW",
   ]),
 
   // Legacy roles mapped for backward compatibility
@@ -389,7 +405,8 @@ type Resource =
   | "response" | "response_templates"
   | "incidents" | "incident_linkage" | "incident_surge" | "authority_export"
   | "vendors" | "vendor_requests" | "vendor_templates" | "vendor_escalations"
-  | "exec_dashboard" | "exec_reports" | "exec_kpi_config";
+  | "exec_dashboard" | "exec_reports" | "exec_kpi_config"
+  | "delivery" | "delivery_settings";
 
 type Action = "create" | "read" | "update" | "delete" | "manage";
 
@@ -569,6 +586,17 @@ const LEGACY_MAP: Record<string, Record<string, Permission[]>> = {
     read: ["EXEC_DASHBOARD_VIEW"],
     update: ["EXEC_KPI_CONFIG"],
     manage: ["EXEC_KPI_CONFIG"],
+  },
+  delivery: {
+    read: ["DELIVERY_VIEW"],
+    create: ["DELIVERY_CREATE_LINK", "DELIVERY_CREATE_PACKAGE"],
+    update: ["DELIVERY_REVOKE_LINK"],
+    manage: ["DELIVERY_CREATE_LINK", "DELIVERY_REVOKE_LINK", "DELIVERY_CREATE_PACKAGE"],
+  },
+  delivery_settings: {
+    read: ["DELIVERY_SETTINGS_VIEW"],
+    update: ["DELIVERY_SETTINGS_EDIT"],
+    manage: ["DELIVERY_SETTINGS_EDIT"],
   },
 };
 

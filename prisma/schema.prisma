@@ -496,6 +496,12 @@ model Tenant {
   clarificationRequests  ClarificationRequest[]
   tenantIntakeSettings   TenantIntakeSettings?
 
+  // ─── Module 8.2: Delivery Portal ───
+  deliveryLinks          DeliveryLink[]
+  deliveryPackages       DeliveryPackage[]
+  deliveryEvents         DeliveryEvent[]
+  deliverySettings       DeliverySettings?
+
   @@map("tenants")
 }
 
@@ -559,6 +565,11 @@ model User {
   // ─── Module 8.1: Intake Portal ───
   clarificationsCreated ClarificationRequest[] @relation("ClarificationCreatedBy")
   intakeSubmissionsProcessed IntakeSubmission[] @relation("IntakeProcessedBy")
+
+  // ─── Module 8.2: Delivery Portal ───
+  deliveryLinksCreated   DeliveryLink[]    @relation("DeliveryLinkCreatedBy")
+  deliveryLinksRevoked   DeliveryLink[]    @relation("DeliveryLinkRevokedBy")
+  deliveryPackagesGenerated DeliveryPackage[] @relation("DeliveryPackageGeneratedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -648,6 +659,11 @@ model DSARCase {
   clarificationRequests ClarificationRequest[]
   intakeChannel         IntakeChannel?
   intakeReference       String?
+
+  // ─── Module 8.2: Delivery Portal ───
+  deliveryLinks         DeliveryLink[]
+  deliveryPackages      DeliveryPackage[]
+  deliveryEvents        DeliveryEvent[]
 
   @@unique([tenantId, caseNumber])
   @@index([tenantId])
@@ -2854,4 +2870,137 @@ model TenantIntakeSettings {
 
   @@index([tenantId])
   @@map("tenant_intake_settings")
+}
+
+// ─── Module 8.2: Secure Data Delivery Portal ────────────────────────────────
+
+enum DeliveryLinkStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+enum DeliveryEventType {
+  LINK_CREATED
+  OTP_SENT
+  OTP_VERIFIED
+  OTP_FAILED
+  PORTAL_VIEWED
+  FILE_DOWNLOADED
+  PACKAGE_DOWNLOADED
+  LINK_REVOKED
+  LINK_EXPIRED
+}
+
+enum OtpChannel {
+  EMAIL
+}
+
+model DeliveryLink {
+  id              String             @id @default(uuid())
+  tenantId        String
+  caseId          String
+  createdByUserId String
+  tokenHash       String             @unique // sha256(token + salt)
+  tokenSalt       String             // per-link salt
+  expiresAt       DateTime
+  maxDownloads    Int                @default(3)
+  usedDownloads   Int                @default(0)
+  status          DeliveryLinkStatus @default(ACTIVE)
+
+  // OTP
+  otpRequired     Boolean            @default(true)
+  otpChannel      OtpChannel         @default(EMAIL)
+  otpHash         String?            // sha256(otp)
+  otpExpiresAt    DateTime?
+  otpLastSentAt   DateTime?
+  otpAttempts     Int                @default(0)
+  otpMaxAttempts  Int                @default(5)
+  otpLockedUntil  DateTime?
+
+  // Recipient
+  subjectContact  String?            // masked email for display
+  recipientEmail  String?            // actual email for outbox
+  language        String             @default("en")
+
+  // Package reference
+  packageId       String?
+
+  revokedAt       DateTime?
+  revokedByUserId String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case        DSARCase          @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  createdBy   User              @relation("DeliveryLinkCreatedBy", fields: [createdByUserId], references: [id])
+  revokedBy   User?             @relation("DeliveryLinkRevokedBy", fields: [revokedByUserId], references: [id])
+  package     DeliveryPackage?  @relation(fields: [packageId], references: [id])
+  events      DeliveryEvent[]
+
+  @@index([tenantId, caseId])
+  @@index([tokenHash])
+  @@map("delivery_links")
+}
+
+model DeliveryPackage {
+  id                       String   @id @default(uuid())
+  tenantId                 String
+  caseId                   String
+  generatedByUserId        String
+  generatedAt              DateTime @default(now())
+  includedResponseDocIds   Json     // string[] of ResponseDocument IDs
+  includedDocumentIds      Json     // string[] of Document IDs (evidence/exports)
+  zipStorageKey            String?
+  checksumSha256           String?
+  manifestJson             Json?    // { files: [{ name, type, size }] }
+  createdAt                DateTime @default(now())
+
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case        DSARCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  generatedBy User           @relation("DeliveryPackageGeneratedBy", fields: [generatedByUserId], references: [id])
+  links       DeliveryLink[]
+
+  @@index([tenantId, caseId])
+  @@map("delivery_packages")
+}
+
+model DeliveryEvent {
+  id              String            @id @default(uuid())
+  tenantId        String
+  caseId          String
+  deliveryLinkId  String?
+  eventType       DeliveryEventType
+  timestamp       DateTime          @default(now())
+  ipHash          String?           // sha256(ip + tenant_salt) — privacy safe
+  userAgentHash   String?           // sha256(userAgent + tenant_salt)
+  metadataJson    Json?             // event-specific details
+  createdAt       DateTime          @default(now())
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case         DSARCase      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  deliveryLink DeliveryLink? @relation(fields: [deliveryLinkId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, caseId])
+  @@index([tenantId, deliveryLinkId])
+  @@map("delivery_events")
+}
+
+model DeliverySettings {
+  id                    String   @id @default(uuid())
+  tenantId              String   @unique
+  defaultExpiresDays    Int      @default(7)
+  otpRequiredDefault    Boolean  @default(true)
+  maxDownloadsDefault   Int      @default(3)
+  logRetentionDays      Int      @default(365)
+  allowOneTimeLinks     Boolean  @default(false)
+  otpMaxAttempts        Int      @default(5)
+  otpLockoutMinutes     Int      @default(15)
+  otpExpiryMinutes      Int      @default(15)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("delivery_settings")
 }
