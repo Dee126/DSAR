@@ -618,3 +618,21 @@ export const awsSecretsPayloadSchema = z.object({
   (data) => data.authType !== "assume_role" || !!data.roleArn,
   { message: "Role ARN is required when authType is assume_role", path: ["roleArn"] }
 );
+
+/**
+ * Validates the POST /api/integrations/aws request body.
+ * Accepts a flat structure with name + region + auth fields.
+ */
+export const createAwsIntegrationSchema = z.object({
+  name: z.string().min(1, "Integration name is required").max(200),
+  region: z.string().min(1, "AWS region is required"),
+  authType: z.enum(["access_keys", "assume_role"]).default("access_keys"),
+  accessKeyId: z.string().min(1, "Access Key ID is required"),
+  secretAccessKey: z.string().min(1, "Secret Access Key is required"),
+  sessionToken: z.string().optional(),
+  roleArn: z.string().optional(),
+  externalId: z.string().optional(),
+}).refine(
+  (data) => data.authType !== "assume_role" || !!data.roleArn,
+  { message: "Role ARN is required when authType is assume_role", path: ["roleArn"] }
+);

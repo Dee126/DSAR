@@ -56,6 +56,37 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       },
     });
 
+    // Fetch last run summary (if any integration_runs exist)
+    const lastRun = await prisma.integrationRun.findFirst({
+      where: { integrationId: integration.id, tenantId: user.tenantId },
+      orderBy: { createdAt: "desc" },
+      include: {
+        _count: { select: { items: true } },
+      },
+    });
+
+    let lastRunSummary = null;
+    if (lastRun) {
+      // Get resource type counts for the last run
+      const itemCounts = await prisma.integrationRunItem.groupBy({
+        by: ["resourceType"],
+        where: { runId: lastRun.id },
+        _count: { id: true },
+      });
+
+      lastRunSummary = {
+        id: lastRun.id,
+        status: lastRun.status,
+        startedAt: lastRun.startedAt,
+        finishedAt: lastRun.finishedAt,
+        error: lastRun.error,
+        totalItems: lastRun._count.items,
+        resourceCounts: Object.fromEntries(
+          itemCounts.map((c) => [c.resourceType, c._count.id])
+        ),
+      };
+    }
+
     const { secretRef, ...safeIntegration } = integration;
 
     return NextResponse.json({
@@ -64,6 +95,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       configFields,
       queryTemplates,
       auditEvents,
+      lastRunSummary,
     });
   } catch (error) {
     return handleApiError(error);

@@ -440,6 +440,7 @@ model Tenant {
   maturityScores       MaturityScore[]
   boardExportRuns      BoardExportRun[]
   forecastModels       ForecastModel[]
+  integrationRuns      IntegrationRun[]
 
   @@map("tenants")
 }
@@ -933,6 +934,7 @@ model Integration {
   copilotQueries      CopilotQuery[]
   evidenceItems       EvidenceItem[]      @relation("EvidenceIntegration")
   secrets             IntegrationSecret[]
+  runs                IntegrationRun[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -951,6 +953,49 @@ model IntegrationSecret {
 
   @@index([integrationId])
   @@map("integration_secrets")
+}
+
+enum IntegrationRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model IntegrationRun {
+  id              String               @id @default(uuid())
+  tenantId        String
+  integrationId   String
+  startedAt       DateTime             @default(now())
+  finishedAt      DateTime?
+  status          IntegrationRunStatus @default(RUNNING)
+  error           String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  integration     Integration          @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  items           IntegrationRunItem[]
+
+  @@index([tenantId])
+  @@index([integrationId])
+  @@map("integration_runs")
+}
+
+model IntegrationRunItem {
+  id             String         @id @default(uuid())
+  runId          String
+  resourceType   String
+  resourceId     String
+  resourceName   String?
+  region         String?
+  metaJson       Json?
+  createdAt      DateTime       @default(now())
+
+  run            IntegrationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([runId, resourceType])
+  @@map("integration_run_items")
 }
 
 // ─── Privacy Copilot Models ──────────────────────────────────────────────────
