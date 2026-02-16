@@ -908,3 +908,63 @@ export const ediscoveryQuerySchema = z.object({
   pageSize: z.number().int().min(1).max(200).optional().default(50),
   exportFormat: z.enum(["json", "csv"]).optional(),
 });
+
+// ─── Module 8.6: Integration Hardening Schemas ──────────────────────────────
+
+const API_KEY_SCOPE_VALUES = [
+  "cases:read", "cases:write", "systems:read", "vendors:write",
+  "webhooks:write", "connectors:run", "documents:read", "incidents:read", "admin:all",
+] as const;
+
+const WEBHOOK_EVENT_TYPE_VALUES = [
+  "case.created", "case.updated", "case.status_changed", "case.due_soon", "case.overdue",
+  "vendor_request.created", "vendor_request.overdue", "vendor_request.responded",
+  "response.approved", "response.sent",
+  "delivery.downloaded",
+  "incident.created", "incident.updated",
+] as const;
+
+const CONNECTOR_KIND_VALUES = ["M365", "GOOGLE", "CUSTOM"] as const;
+const CONNECTOR_RUN_TYPE_VALUES = ["IDENTITY_LOOKUP", "DATA_EXPORT", "ERASURE_REQUEST"] as const;
+
+export const createApiKeySchema = z.object({
+  name: z.string().min(1, "API key name is required").max(100),
+  scopes: z.array(z.enum(API_KEY_SCOPE_VALUES)).min(1, "At least one scope required"),
+});
+
+export const createWebhookEndpointSchema = z.object({
+  url: z.string().url("Valid URL required"),
+  subscribedEvents: z.array(z.enum(WEBHOOK_EVENT_TYPE_VALUES)).min(1, "At least one event type required"),
+  enabled: z.boolean().optional().default(true),
+});
+
+export const updateWebhookEndpointSchema = z.object({
+  url: z.string().url().optional(),
+  subscribedEvents: z.array(z.enum(WEBHOOK_EVENT_TYPE_VALUES)).optional(),
+  enabled: z.boolean().optional(),
+});
+
+export const createConnectorSchema = z.object({
+  type: z.enum(CONNECTOR_KIND_VALUES),
+  name: z.string().min(1, "Connector name is required").max(200),
+  config: z.record(z.unknown()).optional(),
+  secrets: z.record(z.string()).optional(),
+});
+
+export const updateConnectorSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  status: z.enum(["ACTIVE", "DISABLED"]).optional(),
+  config: z.record(z.unknown()).optional(),
+  secrets: z.record(z.string()).optional(),
+});
+
+export const createConnectorRunSchema = z.object({
+  runType: z.enum(CONNECTOR_RUN_TYPE_VALUES),
+  caseId: z.string().uuid().optional(),
+  systemId: z.string().uuid().optional(),
+});
+
+export const v1PaginationSchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).optional().default(20),
+});

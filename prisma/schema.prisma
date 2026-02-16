@@ -523,6 +523,14 @@ model Tenant {
   savedSearches            SavedSearch[]
   searchViews              SearchView[]
 
+  // ─── Module 8.6: Integration Hardening ───
+  apiKeys                  ApiKey[]
+  webhookEndpoints         WebhookEndpoint[]
+  webhookDeliveries        WebhookDelivery[]
+  connectors               Connector[]
+  connectorSecrets         ConnectorSecret[]
+  connectorRuns            ConnectorRun[]
+
   @@map("tenants")
 }
 
@@ -609,6 +617,9 @@ model User {
   assuranceApprovalsApproved  AssuranceApproval[]    @relation("AssuranceApprovalApprover")
   deletionJobsTriggered       DeletionJob[]          @relation("DeletionJobTriggeredBy")
   savedSearches               SavedSearch[]           @relation("SavedSearchCreator")
+
+  // ─── Module 8.6: Integration Hardening ───
+  apiKeysCreated              ApiKey[]                @relation("ApiKeyCreator")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -713,6 +724,9 @@ model DSARCase {
   // ─── Module 8.4: Assurance Layer ───
   accessLogs              AccessLog[]   @relation("AccessLogCase")
 
+  // ─── Module 8.6: Integration Hardening ───
+  connectorRuns           ConnectorRun[] @relation("ConnectorRunCase")
+
   @@unique([tenantId, caseNumber])
   @@index([tenantId])
   @@index([tenantId, status])
@@ -783,6 +797,7 @@ model Document {
   tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   case       DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
   uploadedBy User     @relation(fields: [uploadedByUserId], references: [id])
+  connectorRuns ConnectorRun[] @relation("ConnectorRunDocument")
 
   @@index([tenantId])
   @@index([tenantId, caseId])
@@ -871,6 +886,7 @@ model System {
   incidentSystems     IncidentSystem[]
   vendorRequests      VendorRequest[]   @relation("VendorRequestSystem")
   vendorRequestItems  VendorRequestItem[] @relation("VendorRequestItemSystem")
+  connectorRuns       ConnectorRun[]    @relation("ConnectorRunSystem")
 
   @@index([tenantId])
   @@map("systems")
@@ -3569,4 +3585,182 @@ model SearchView {
 
   @@index([tenantId])
   @@map("search_views")
+}
+
+// ─── Module 8.6: Integration Hardening ──────────────────────────────────────
+
+enum WebhookDeliveryStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum ConnectorKind {
+  M365
+  GOOGLE
+  CUSTOM
+}
+
+enum ConnectorStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum ConnectorSecretType {
+  OAUTH_CLIENT
+  ACCESS_TOKEN
+  REFRESH_TOKEN
+  API_KEY
+}
+
+enum ConnectorRunType {
+  IDENTITY_LOOKUP
+  DATA_EXPORT
+  ERASURE_REQUEST
+}
+
+enum ConnectorRunStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+// ─── API Keys (Tenant-Scoped) ───────────────────────────────────────────────
+
+model ApiKey {
+  id          String    @id @default(uuid())
+  tenantId    String
+  name        String
+  keyHash     String    // sha256 hash of the API key
+  prefix      String    // e.g. "pp_live_abc123" — first 12 chars for identification
+  scopesJson  Json      // ["cases:read", "cases:write", "webhooks:write", ...]
+  createdBy   String
+  createdAt   DateTime  @default(now())
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+
+  tenant  Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creator User   @relation("ApiKeyCreator", fields: [createdBy], references: [id])
+
+  @@index([tenantId])
+  @@index([keyHash])
+  @@map("api_keys")
+}
+
+// ─── Webhook Endpoints ──────────────────────────────────────────────────────
+
+model WebhookEndpoint {
+  id                String    @id @default(uuid())
+  tenantId          String
+  url               String
+  secret            String    // HMAC signing secret (encrypted or base64 in dev)
+  enabled           Boolean   @default(true)
+  subscribedEvents  String[]  @default([])
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  failureCount      Int       @default(0)
+  lastSuccessAt     DateTime?
+  lastFailureAt     DateTime?
+
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deliveries  WebhookDelivery[]
+
+  @@index([tenantId])
+  @@index([tenantId, enabled])
+  @@map("webhook_endpoints")
+}
+
+// ─── Webhook Deliveries ─────────────────────────────────────────────────────
+
+model WebhookDelivery {
+  id                  String                @id @default(uuid())
+  tenantId            String
+  endpointId          String
+  eventType           String
+  payloadJson         Json
+  deliveredAt         DateTime?
+  status              WebhookDeliveryStatus @default(PENDING)
+  responseCode        Int?
+  responseBodySnippet String?
+  attempts            Int                   @default(0)
+  nextRetryAt         DateTime?
+  createdAt           DateTime              @default(now())
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  endpoint  WebhookEndpoint  @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([endpointId])
+  @@index([status, nextRetryAt])
+  @@map("webhook_deliveries")
+}
+
+// ─── Connectors ─────────────────────────────────────────────────────────────
+
+model Connector {
+  id          String          @id @default(uuid())
+  tenantId    String
+  type        ConnectorKind
+  name        String
+  status      ConnectorStatus @default(ACTIVE)
+  configJson  Json?           // tenant-specific config (tenantDomain, clientId, mock_mode, etc.)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  tenant   Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  secrets  ConnectorSecret[]
+  runs     ConnectorRun[]
+
+  @@index([tenantId])
+  @@index([tenantId, type])
+  @@map("connectors")
+}
+
+// ─── Connector Secrets ──────────────────────────────────────────────────────
+
+model ConnectorSecret {
+  id               String              @id @default(uuid())
+  tenantId         String
+  connectorId      String
+  secretType       ConnectorSecretType
+  secretCiphertext String              // base64-encoded encrypted payload
+  createdAt        DateTime            @default(now())
+  rotatedAt        DateTime?
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  connector Connector @relation(fields: [connectorId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([connectorId])
+  @@map("connector_secrets")
+}
+
+// ─── Connector Runs ─────────────────────────────────────────────────────────
+
+model ConnectorRun {
+  id                String             @id @default(uuid())
+  tenantId          String
+  connectorId       String
+  caseId            String?
+  systemId          String?
+  runType           ConnectorRunType
+  status            ConnectorRunStatus @default(PENDING)
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  logsJson          Json?              // structured logs array
+  outputDocumentId  String?
+  createdAt         DateTime           @default(now())
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  connector Connector  @relation(fields: [connectorId], references: [id], onDelete: Cascade)
+  case      DSARCase?  @relation("ConnectorRunCase", fields: [caseId], references: [id])
+  system    System?    @relation("ConnectorRunSystem", fields: [systemId], references: [id])
+  document  Document?  @relation("ConnectorRunDocument", fields: [outputDocumentId], references: [id])
+
+  @@index([tenantId])
+  @@index([connectorId])
+  @@index([caseId])
+  @@index([tenantId, status])
+  @@map("connector_runs")
 }

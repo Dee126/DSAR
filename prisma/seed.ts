@@ -8,6 +8,13 @@ async function main() {
   console.log("Seeding database...");
 
   // Clean existing data (order matters for FK constraints)
+  // Module 8.6: Integration Hardening
+  await prisma.connectorRun.deleteMany();
+  await prisma.connectorSecret.deleteMany();
+  await prisma.connector.deleteMany();
+  await prisma.webhookDelivery.deleteMany();
+  await prisma.webhookEndpoint.deleteMany();
+  await prisma.apiKey.deleteMany();
   // Module 8.5: Enterprise Search & eDiscovery
   await prisma.searchView.deleteMany();
   await prisma.savedSearch.deleteMany();
@@ -4263,6 +4270,175 @@ async function main() {
   console.log("Module 8.5: Enterprise Search & eDiscovery seed complete.");
   console.log("\nSearch page: http://localhost:3000/search");
   console.log("eDiscovery: http://localhost:3000/ediscovery");
+
+  // ─── Module 8.6: Integration Hardening ──────────────────────────────────────
+  console.log("\n--- Module 8.6: Integration Hardening ---");
+
+  // API Keys
+  const readOnlyKeyHash = createHash("sha256").update("pp_live_readonly_demo_key_12345678").digest("hex");
+  const adminKeyHash = createHash("sha256").update("pp_live_admin_demo_key_987654321").digest("hex");
+
+  await prisma.apiKey.create({
+    data: {
+      tenantId: tenant.id,
+      name: "Read-Only Integration Key",
+      keyHash: readOnlyKeyHash,
+      prefix: "pp_live_readonl",
+      scopesJson: ["cases:read", "systems:read", "documents:read", "incidents:read"],
+      createdBy: admin.id,
+    },
+  });
+  await prisma.apiKey.create({
+    data: {
+      tenantId: tenant.id,
+      name: "Admin Integration Key",
+      keyHash: adminKeyHash,
+      prefix: "pp_live_admin_d",
+      scopesJson: ["admin:all"],
+      createdBy: admin.id,
+    },
+  });
+  console.log("  2 API keys created (read-only + admin).");
+
+  // Webhook Endpoints (disabled by default)
+  const webhook1 = await prisma.webhookEndpoint.create({
+    data: {
+      tenantId: tenant.id,
+      url: "https://hooks.example.com/privacy-pilot/cases",
+      secret: randomBytes(32).toString("hex"),
+      enabled: false,
+      subscribedEvents: ["case.created", "case.status_changed", "case.overdue"],
+    },
+  });
+  const webhook2 = await prisma.webhookEndpoint.create({
+    data: {
+      tenantId: tenant.id,
+      url: "https://siem.example.com/webhooks/dsar",
+      secret: randomBytes(32).toString("hex"),
+      enabled: false,
+      subscribedEvents: ["incident.created", "incident.updated", "vendor_request.overdue"],
+    },
+  });
+  console.log("  2 webhook endpoints created (disabled by default).");
+
+  // Sample webhook delivery
+  await prisma.webhookDelivery.create({
+    data: {
+      tenantId: tenant.id,
+      endpointId: webhook1.id,
+      eventType: "case.created",
+      payloadJson: {
+        id: "evt-demo-001",
+        type: "case.created",
+        created_at: new Date().toISOString(),
+        resource_type: "DSARCase",
+        resource_id: "demo-case-id",
+        data: { caseNumber: "DSAR-2026-DEMO", type: "ACCESS", status: "NEW" },
+      },
+      status: "SUCCESS",
+      responseCode: 200,
+      attempts: 1,
+      deliveredAt: new Date(),
+    },
+  });
+
+  // Connectors
+  const m365Connector = await prisma.connector.create({
+    data: {
+      tenantId: tenant.id,
+      type: "M365",
+      name: "Acme Microsoft 365",
+      status: "ACTIVE",
+      configJson: {
+        mock_mode: true,
+        tenantDomain: "acme-corp.onmicrosoft.com",
+        clientId: "demo-client-id-m365",
+      },
+    },
+  });
+
+  const googleConnector = await prisma.connector.create({
+    data: {
+      tenantId: tenant.id,
+      type: "GOOGLE",
+      name: "Acme Google Workspace",
+      status: "ACTIVE",
+      configJson: {
+        mock_mode: true,
+        domain: "acme-corp.com",
+        adminEmail: "admin@acme-corp.com",
+      },
+    },
+  });
+  console.log("  2 connectors created (M365 + Google, mock mode).");
+
+  // Demo connector secrets (encrypted with dev key)
+  const devEncrypt = (text: string) => {
+    const { createCipheriv } = require("crypto");
+    const key = Buffer.from("privacypilot-dev-key-do-not-use!");
+    const iv = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", key, iv);
+    const encrypted = Buffer.concat([cipher.update(text, "utf8"), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+    return Buffer.concat([iv, encrypted, authTag]).toString("base64");
+  };
+
+  await prisma.connectorSecret.create({
+    data: {
+      tenantId: tenant.id,
+      connectorId: m365Connector.id,
+      secretType: "OAUTH_CLIENT",
+      secretCiphertext: devEncrypt("demo-client-secret-m365"),
+    },
+  });
+  await prisma.connectorSecret.create({
+    data: {
+      tenantId: tenant.id,
+      connectorId: googleConnector.id,
+      secretType: "OAUTH_CLIENT",
+      secretCiphertext: devEncrypt('{"type":"service_account","project_id":"acme-demo"}'),
+    },
+  });
+
+  // Demo connector runs
+  const m365Run = await prisma.connectorRun.create({
+    data: {
+      tenantId: tenant.id,
+      connectorId: m365Connector.id,
+      runType: "IDENTITY_LOOKUP",
+      status: "SUCCESS",
+      startedAt: new Date(Date.now() - 3600_000),
+      finishedAt: new Date(Date.now() - 3500_000),
+      logsJson: [
+        { timestamp: new Date(Date.now() - 3600_000).toISOString(), level: "INFO", message: "Starting identity lookup for john.doe@acme-corp.com" },
+        { timestamp: new Date(Date.now() - 3550_000).toISOString(), level: "INFO", message: "Identity lookup result: found=true" },
+        { timestamp: new Date(Date.now() - 3500_000).toISOString(), level: "INFO", message: "Identity found in Exchange Online, OneDrive, SharePoint, Teams" },
+      ],
+    },
+  });
+
+  const googleRun = await prisma.connectorRun.create({
+    data: {
+      tenantId: tenant.id,
+      connectorId: googleConnector.id,
+      runType: "DATA_EXPORT",
+      status: "SUCCESS",
+      startedAt: new Date(Date.now() - 7200_000),
+      finishedAt: new Date(Date.now() - 7000_000),
+      logsJson: [
+        { timestamp: new Date(Date.now() - 7200_000).toISOString(), level: "INFO", message: "Starting data export for jane.smith@acme-corp.com" },
+        { timestamp: new Date(Date.now() - 7100_000).toISOString(), level: "INFO", message: "Mock export: 3256 emails, 892 Drive files, 178 calendar events" },
+        { timestamp: new Date(Date.now() - 7000_000).toISOString(), level: "INFO", message: "Export completed successfully" },
+      ],
+    },
+  });
+  console.log("  2 demo connector runs created.");
+
+  console.log("Module 8.6: Integration Hardening seed complete.");
+  console.log("\nConnectors: http://localhost:3000/integrations/connectors");
+  console.log("API Keys: http://localhost:3000/integrations/api-keys");
+  console.log("Webhooks: http://localhost:3000/integrations/webhooks");
+  console.log("Public API: http://localhost:3000/api/v1/cases");
 }
 
 main()

@@ -160,7 +160,13 @@ export type Permission =
   | "SEARCH_SAVED_MANAGE"
   | "EDISCOVERY_VIEW"
   | "EDISCOVERY_EXPORT"
-  | "SEARCH_INDEX_REBUILD";
+  | "SEARCH_INDEX_REBUILD"
+  // V) Integration Hardening (Module 8.6)
+  | "API_KEYS_MANAGE"
+  | "WEBHOOKS_MANAGE"
+  | "CONNECTORS_VIEW"
+  | "CONNECTORS_MANAGE"
+  | "CONNECTORS_RUN";
 
 // ─── Role → Permission Matrix ──────────────────────────────────────────────
 
@@ -208,6 +214,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     // U) Enterprise Search & eDiscovery
     "SEARCH_GLOBAL", "SEARCH_AUDIT", "SEARCH_SAVED_CREATE", "SEARCH_SAVED_VIEW",
     "SEARCH_SAVED_MANAGE", "EDISCOVERY_VIEW", "EDISCOVERY_EXPORT", "SEARCH_INDEX_REBUILD",
+    // V) Integration Hardening (Module 8.6)
+    "API_KEYS_MANAGE", "WEBHOOKS_MANAGE", "CONNECTORS_VIEW", "CONNECTORS_MANAGE", "CONNECTORS_RUN",
   ]),
 
   TENANT_ADMIN: new Set<Permission>([
@@ -253,6 +261,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     // U) Enterprise Search & eDiscovery
     "SEARCH_GLOBAL", "SEARCH_AUDIT", "SEARCH_SAVED_CREATE", "SEARCH_SAVED_VIEW",
     "SEARCH_SAVED_MANAGE", "EDISCOVERY_VIEW", "EDISCOVERY_EXPORT", "SEARCH_INDEX_REBUILD",
+    // V) Integration Hardening (Module 8.6)
+    "API_KEYS_MANAGE", "WEBHOOKS_MANAGE", "CONNECTORS_VIEW", "CONNECTORS_MANAGE", "CONNECTORS_RUN",
   ]),
 
   DPO: new Set<Permission>([
@@ -301,6 +311,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     // U) Enterprise Search & eDiscovery
     "SEARCH_GLOBAL", "SEARCH_AUDIT", "SEARCH_SAVED_CREATE", "SEARCH_SAVED_VIEW",
     "SEARCH_SAVED_MANAGE", "EDISCOVERY_VIEW", "EDISCOVERY_EXPORT",
+    // V) Integration Hardening (Module 8.6) — DPO can view + run connectors
+    "CONNECTORS_VIEW", "CONNECTORS_MANAGE", "CONNECTORS_RUN",
   ]),
 
   CASE_MANAGER: new Set<Permission>([
@@ -343,6 +355,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "ASSURANCE_VIEW",
     // U) Enterprise Search & eDiscovery
     "SEARCH_GLOBAL", "SEARCH_SAVED_CREATE", "SEARCH_SAVED_VIEW",
+    // V) Integration Hardening (Module 8.6)
+    "CONNECTORS_VIEW",
   ]),
 
   ANALYST: new Set<Permission>([
@@ -505,7 +519,8 @@ type Resource =
   | "delivery" | "delivery_settings"
   | "sensitive_data" | "legal_exceptions" | "partial_denials" | "redaction_review_state"
   | "assurance" | "assurance_audit" | "assurance_sod" | "assurance_retention" | "assurance_deletion" | "assurance_approvals"
-  | "search" | "search_audit" | "saved_searches" | "ediscovery";
+  | "search" | "search_audit" | "saved_searches" | "ediscovery"
+  | "api_keys" | "webhooks" | "connectors";
 
 type Action = "create" | "read" | "update" | "delete" | "manage";
 
@@ -768,6 +783,28 @@ const LEGACY_MAP: Record<string, Record<string, Permission[]>> = {
   ediscovery: {
     read: ["EDISCOVERY_VIEW"],
     manage: ["EDISCOVERY_VIEW", "EDISCOVERY_EXPORT"],
+  },
+  // V) Integration Hardening (Module 8.6)
+  api_keys: {
+    create: ["API_KEYS_MANAGE"],
+    read: ["API_KEYS_MANAGE"],
+    update: ["API_KEYS_MANAGE"],
+    delete: ["API_KEYS_MANAGE"],
+    manage: ["API_KEYS_MANAGE"],
+  },
+  webhooks: {
+    create: ["WEBHOOKS_MANAGE"],
+    read: ["WEBHOOKS_MANAGE"],
+    update: ["WEBHOOKS_MANAGE"],
+    delete: ["WEBHOOKS_MANAGE"],
+    manage: ["WEBHOOKS_MANAGE"],
+  },
+  connectors: {
+    read: ["CONNECTORS_VIEW"],
+    create: ["CONNECTORS_MANAGE"],
+    update: ["CONNECTORS_MANAGE"],
+    delete: ["CONNECTORS_MANAGE"],
+    manage: ["CONNECTORS_MANAGE", "CONNECTORS_RUN"],
   },
 };
 
