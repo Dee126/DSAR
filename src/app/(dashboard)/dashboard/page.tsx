@@ -6,6 +6,7 @@ import Link from "next/link";
 import IncidentDashboardWidget from "@/components/IncidentDashboardWidget";
 import VendorDashboardWidget from "@/components/VendorDashboardWidget";
 import ExecutiveKpiWidget from "@/components/ExecutiveKpiWidget";
+import { DashboardWidgetErrorBoundary } from "@/components/DashboardWidgetErrorBoundary";
 
 /* ── Display helpers ──────────────────────────────────────────────────── */
 
@@ -464,16 +465,24 @@ export default function DashboardPage() {
       )}
 
       {/* Response Generator Widget */}
-      <ResponseWidget />
+      <DashboardWidgetErrorBoundary widgetName="Response Generator">
+        <ResponseWidget />
+      </DashboardWidgetErrorBoundary>
 
       {/* Incident-Linked DSARs Widget */}
-      <IncidentDashboardWidget />
+      <DashboardWidgetErrorBoundary widgetName="Incident-Linked DSARs">
+        <IncidentDashboardWidget />
+      </DashboardWidgetErrorBoundary>
 
       {/* Vendor / Processor Tracking Widget */}
-      <VendorDashboardWidget />
+      <DashboardWidgetErrorBoundary widgetName="Vendor Tracking">
+        <VendorDashboardWidget />
+      </DashboardWidgetErrorBoundary>
 
       {/* Executive Privacy KPI Widget */}
-      <ExecutiveKpiWidget />
+      <DashboardWidgetErrorBoundary widgetName="Executive KPI">
+        <ExecutiveKpiWidget />
+      </DashboardWidgetErrorBoundary>
 
       {/* Recent Cases Table */}
       <div className="card p-0">
