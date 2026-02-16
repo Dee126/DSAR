@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import IncidentDashboardWidget from "@/components/IncidentDashboardWidget";
 import VendorDashboardWidget from "@/components/VendorDashboardWidget";
+import ExecutiveKpiWidget from "@/components/ExecutiveKpiWidget";
 
 /* ── Display helpers ──────────────────────────────────────────────────── */
 
@@ -470,6 +471,9 @@ export default function DashboardPage() {
 
       {/* Vendor / Processor Tracking Widget */}
       <VendorDashboardWidget />
+
+      {/* Executive Privacy KPI Widget */}
+      <ExecutiveKpiWidget />
 
       {/* Recent Cases Table */}
       <div className="card p-0">

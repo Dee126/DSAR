@@ -535,3 +535,46 @@ export const createVendorEscalationSchema = z.object({
   severity: z.enum(VENDOR_ESCALATION_SEVERITY_VALUES),
   reason: z.string().min(1, "Reason is required"),
 });
+
+// ─── Executive KPI & Board Reporting Schemas ─────────────────────────────────
+
+const KPI_PERIOD_VALUES = ["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"] as const;
+const REPORT_FORMAT_VALUES = ["PDF", "CSV", "JSON", "PPT_JSON"] as const;
+const MATURITY_DOMAIN_VALUES = ["DOCUMENTATION", "AUTOMATION", "SLA_COMPLIANCE", "INCIDENT_INTEGRATION", "VENDOR_COORDINATION"] as const;
+
+export const kpiDateRangeSchema = z.object({
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  snapshotDate: z.string().optional(),
+  period: z.enum(KPI_PERIOD_VALUES).optional(),
+});
+
+export const updateKpiConfigSchema = z.object({
+  estimatedCostPerDsar: z.number().min(0).optional(),
+  estimatedMinutesManual: z.number().min(0).optional(),
+  estimatedMinutesAutomated: z.number().min(0).optional(),
+  maturityWeights: z.object({
+    documentation: z.number().min(0).max(1),
+    automation: z.number().min(0).max(1),
+    sla_compliance: z.number().min(0).max(1),
+    incident_integration: z.number().min(0).max(1),
+    vendor_coordination: z.number().min(0).max(1),
+  }).optional(),
+  snapshotCron: z.string().optional(),
+});
+
+export const generateReportSchema = z.object({
+  title: z.string().optional(),
+  format: z.enum(REPORT_FORMAT_VALUES).optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  sections: z.array(z.string()).optional(),
+});
+
+export const createKpiThresholdSchema = z.object({
+  kpiKey: z.string().min(1, "KPI key is required"),
+  greenMax: z.number().optional(),
+  yellowMax: z.number().optional(),
+  redMin: z.number().optional(),
+  direction: z.enum(["lower_is_better", "higher_is_better"]).optional().default("lower_is_better"),
+});

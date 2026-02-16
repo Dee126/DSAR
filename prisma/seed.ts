@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole, RiskLevel, EscalationSeverity, DeadlineEventType, MilestoneType, NotificationType, IdvRequestStatus, IdvMethod, IdvArtifactType, IdvDecisionOutcome, ResponseDocStatus, DeliveryMethod, IncidentSeverity, IncidentStatus, IncidentTimelineEventType, RegulatorRecordStatus, IncidentSourceType, DsarIncidentSubjectStatus, VendorStatus, VendorRequestStatus, VendorResponseType, VendorEscalationSeverity } from "@prisma/client";
+import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole, RiskLevel, EscalationSeverity, DeadlineEventType, MilestoneType, NotificationType, IdvRequestStatus, IdvMethod, IdvArtifactType, IdvDecisionOutcome, ResponseDocStatus, DeliveryMethod, IncidentSeverity, IncidentStatus, IncidentTimelineEventType, RegulatorRecordStatus, IncidentSourceType, DsarIncidentSubjectStatus, VendorStatus, VendorRequestStatus, VendorResponseType, VendorEscalationSeverity, KpiSnapshotPeriod, MaturityDomain } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -7,6 +7,17 @@ async function main() {
   console.log("Seeding database...");
 
   // Clean existing data (order matters for FK constraints)
+  // Module 7: Executive KPI
+  await prisma.forecastModel.deleteMany();
+  await prisma.boardExportRun.deleteMany();
+  await prisma.maturityScore.deleteMany();
+  await prisma.kpiThreshold.deleteMany();
+  await prisma.executiveReportRun.deleteMany();
+  await prisma.executiveReport.deleteMany();
+  await prisma.automationMetric.deleteMany();
+  await prisma.privacyKpiConfig.deleteMany();
+  await prisma.privacyKpiSnapshot.deleteMany();
+  // Module 6: Vendor
   await prisma.vendorEscalation.deleteMany();
   await prisma.vendorSlaConfig.deleteMany();
   await prisma.vendorResponseArtifact.deleteMany();
@@ -2969,6 +2980,190 @@ async function main() {
 
   console.log("Created demo vendor requests for cases 1-4");
   console.log("Vendor / Processor Tracking (Module 6) seed complete.");
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // MODULE 7: Executive Privacy KPI & Board Reporting — 12-month history
+  // ═════════════════════════════════════════════════════════════════════════
+
+  console.log("Seeding Executive KPI data (Module 7)...");
+
+  // KPI Config
+  await prisma.privacyKpiConfig.create({
+    data: {
+      tenantId: tenant.id,
+      estimatedCostPerDsar: 150,
+      estimatedMinutesManual: 480,
+      estimatedMinutesAutomated: 120,
+      maturityWeights: {
+        documentation: 0.2,
+        automation: 0.25,
+        sla_compliance: 0.25,
+        incident_integration: 0.15,
+        vendor_coordination: 0.15,
+      },
+      snapshotCron: "0 2 1 * *",
+    },
+  });
+
+  // Generate 12 months of KPI snapshots with realistic trends
+  const now = new Date();
+  for (let m = 11; m >= 0; m--) {
+    const snapshotDate = new Date(now.getFullYear(), now.getMonth() - m, 1);
+
+    // Simulate growing DSAR volume with seasonal spike in month 6
+    const seasonalMultiplier = m === 5 ? 1.8 : m === 4 ? 1.3 : 1.0;
+    const baseDsars = Math.round((15 + (11 - m) * 2) * seasonalMultiplier);
+    const openRate = Math.max(0.1, 0.4 - (11 - m) * 0.02);
+    const openDsars = Math.round(baseDsars * openRate);
+    const closedDsars = baseDsars - openDsars;
+
+    // Improving close times over 12 months
+    const avgCloseTime = Math.round((25 - (11 - m) * 1.2) * 10) / 10;
+    const medianCloseTime = Math.round((avgCloseTime - 3) * 10) / 10;
+
+    // Decreasing overdue rate
+    const overdueRate = Math.max(0, Math.round((18 - (11 - m) * 1.5) * 10) / 10);
+    const extensionRate = Math.max(2, Math.round((12 - (11 - m) * 0.8) * 10) / 10);
+
+    // Risk distribution shift from red to green
+    const redCases = Math.max(0, Math.round(5 - (11 - m) * 0.4));
+    const yellowCases = Math.round(3 + Math.sin(m) * 1.5);
+    const greenCases = openDsars - redCases - yellowCases;
+
+    // Automation improving
+    const autoSuggested = Math.min(85, Math.round(20 + (11 - m) * 5.5));
+    const templateResponse = Math.min(90, Math.round(15 + (11 - m) * 6));
+    const idvAutomation = Math.min(75, Math.round(10 + (11 - m) * 5));
+    const apiReady = Math.min(80, Math.round(25 + (11 - m) * 4));
+
+    // Governance improving
+    const dpaOnFile = Math.min(95, Math.round(50 + (11 - m) * 4));
+    const systemsComplete = Math.min(90, Math.round(40 + (11 - m) * 4.5));
+    const retentionDefined = Math.min(85, Math.round(30 + (11 - m) * 4));
+    const thirdCountry = Math.round(15 + Math.sin(m) * 3);
+
+    // Incident linkage: spike month 6
+    const incidentLinked = m === 5 ? 35 : Math.round(10 + (11 - m) * 1.5);
+    const highRiskCases = redCases;
+    const incidentLinkedHighRisk = Math.min(highRiskCases, Math.round(highRiskCases * 0.6));
+    const vendorOverdue = Math.max(0, Math.round(4 - (11 - m) * 0.35));
+
+    // Financial
+    const costPerDsar = 150;
+    const timeSaved = 360;
+    const totalTimeSaved = closedDsars * timeSaved;
+
+    // Maturity score improving
+    const maturityScore = Math.min(95, Math.round((35 + (11 - m) * 5) * 10) / 10);
+
+    await prisma.privacyKpiSnapshot.create({
+      data: {
+        tenantId: tenant.id,
+        period: "MONTHLY" as KpiSnapshotPeriod,
+        snapshotDate,
+        totalDsars: baseDsars,
+        openDsars,
+        closedDsars,
+        avgTimeToCloseDays: avgCloseTime,
+        medianTimeToCloseDays: medianCloseTime,
+        extensionRatePct: extensionRate,
+        overdueRatePct: overdueRate,
+        dsarsByType: { ACCESS: Math.round(baseDsars * 0.5), ERASURE: Math.round(baseDsars * 0.25), RECTIFICATION: Math.round(baseDsars * 0.15), PORTABILITY: Math.round(baseDsars * 0.1) },
+        dsarsLinkedToIncidentPct: incidentLinked,
+        riskDistribution: { green: Math.max(0, greenCases), yellow: Math.max(0, yellowCases), red: redCases },
+        highRiskCasesCount: highRiskCases,
+        incidentLinkedHighRiskCount: incidentLinkedHighRisk,
+        vendorOverdueCount: vendorOverdue,
+        autoSuggestedSystemsPct: autoSuggested,
+        vendorAutoGeneratedPct: Math.min(70, Math.round(10 + (11 - m) * 5)),
+        templateResponsePct: templateResponse,
+        idvAutomationPct: idvAutomation,
+        apiReadySystemsPct: apiReady,
+        dpaOnFilePct: dpaOnFile,
+        systemsCompleteMetaPct: systemsComplete,
+        retentionDefinedPct: retentionDefined,
+        thirdCountryTransferRatio: thirdCountry,
+        estimatedCostPerDsar: costPerDsar,
+        estimatedTimeSavedPerDsar: timeSaved,
+        totalTimeSavedMonthly: totalTimeSaved,
+        maturityScore,
+        rawData: {},
+      },
+    });
+
+    // Maturity scores by domain
+    const domains: MaturityDomain[] = ["DOCUMENTATION", "AUTOMATION", "SLA_COMPLIANCE", "INCIDENT_INTEGRATION", "VENDOR_COORDINATION"];
+    const domainScores: Record<string, number> = {
+      DOCUMENTATION: systemsComplete,
+      AUTOMATION: Math.round((autoSuggested * 0.4 + templateResponse * 0.3 + apiReady * 0.3)),
+      SLA_COMPLIANCE: Math.max(0, 100 - overdueRate),
+      INCIDENT_INTEGRATION: Math.min(100, incidentLinked + 50),
+      VENDOR_COORDINATION: vendorOverdue === 0 ? 100 : Math.max(0, 100 - vendorOverdue * 10),
+    };
+
+    for (const domain of domains) {
+      await prisma.maturityScore.create({
+        data: {
+          tenantId: tenant.id,
+          domain,
+          month: snapshotDate,
+          score: domainScores[domain],
+          details: {},
+        },
+      });
+    }
+
+    // Automation metrics
+    await prisma.automationMetric.create({
+      data: {
+        tenantId: tenant.id,
+        month: snapshotDate,
+        totalCases: baseDsars,
+        casesWithAutoSystems: Math.round(baseDsars * autoSuggested / 100),
+        vendorRequestsTotal: Math.round(baseDsars * 0.6),
+        vendorRequestsAuto: Math.round(baseDsars * 0.6 * Math.min(70, Math.round(10 + (11 - m) * 5)) / 100),
+        responsesTotal: closedDsars,
+        responsesViaTemplate: Math.round(closedDsars * templateResponse / 100),
+        idvRequestsTotal: baseDsars,
+        idvRequestsAutomated: Math.round(baseDsars * idvAutomation / 100),
+      },
+    });
+  }
+
+  // KPI Thresholds
+  const thresholds = [
+    { kpiKey: "overdueRatePct", greenMax: 5, yellowMax: 15, direction: "lower_is_better" },
+    { kpiKey: "avgTimeToCloseDays", greenMax: 15, yellowMax: 25, direction: "lower_is_better" },
+    { kpiKey: "maturityScore", greenMax: 100, yellowMax: 70, direction: "higher_is_better" },
+    { kpiKey: "dpaOnFilePct", greenMax: 100, yellowMax: 80, direction: "higher_is_better" },
+    { kpiKey: "templateResponsePct", greenMax: 100, yellowMax: 60, direction: "higher_is_better" },
+  ];
+
+  for (const t of thresholds) {
+    await prisma.kpiThreshold.create({
+      data: {
+        tenantId: tenant.id,
+        kpiKey: t.kpiKey,
+        greenMax: t.greenMax,
+        yellowMax: t.yellowMax,
+        direction: t.direction,
+      },
+    });
+  }
+
+  // Executive Report definition
+  await prisma.executiveReport.create({
+    data: {
+      tenantId: tenant.id,
+      name: "Monthly Board Privacy Report",
+      description: "Comprehensive monthly privacy KPI report for board review",
+      sections: ["executive_summary", "dsar_metrics", "risk_compliance", "automation_efficiency", "governance_maturity", "forecasting", "recommendations"],
+      active: true,
+    },
+  });
+
+  console.log("Created 12-month KPI snapshot history with maturity scores, automation metrics, thresholds, and report template.");
+  console.log("Executive KPI & Board Reporting (Module 7) seed complete.");
 }
 
 main()

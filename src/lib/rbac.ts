@@ -113,7 +113,15 @@ export type Permission =
   | "VENDOR_TEMPLATE_VIEW"
   | "VENDOR_TEMPLATE_MANAGE"
   | "VENDOR_ESCALATION_VIEW"
-  | "VENDOR_ESCALATION_MANAGE";
+  | "VENDOR_ESCALATION_MANAGE"
+  // Q) Executive KPI & Board Reporting
+  | "EXEC_DASHBOARD_VIEW"
+  | "EXEC_DASHBOARD_FULL"
+  | "EXEC_FINANCIAL_VIEW"
+  | "EXEC_REPORT_GENERATE"
+  | "EXEC_REPORT_EXPORT"
+  | "EXEC_KPI_CONFIG"
+  | "EXEC_FORECAST_VIEW";
 
 // ─── Role → Permission Matrix ──────────────────────────────────────────────
 
@@ -145,6 +153,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "VENDOR_VIEW", "VENDOR_MANAGE", "VENDOR_REQUEST_CREATE", "VENDOR_REQUEST_SEND", "VENDOR_REQUEST_VIEW",
     "VENDOR_RESPONSE_LOG", "VENDOR_TEMPLATE_VIEW", "VENDOR_TEMPLATE_MANAGE",
     "VENDOR_ESCALATION_VIEW", "VENDOR_ESCALATION_MANAGE",
+    "EXEC_DASHBOARD_VIEW", "EXEC_DASHBOARD_FULL", "EXEC_FINANCIAL_VIEW",
+    "EXEC_REPORT_GENERATE", "EXEC_REPORT_EXPORT", "EXEC_KPI_CONFIG", "EXEC_FORECAST_VIEW",
   ]),
 
   TENANT_ADMIN: new Set<Permission>([
@@ -174,6 +184,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "VENDOR_VIEW", "VENDOR_MANAGE", "VENDOR_REQUEST_CREATE", "VENDOR_REQUEST_SEND", "VENDOR_REQUEST_VIEW",
     "VENDOR_RESPONSE_LOG", "VENDOR_TEMPLATE_VIEW", "VENDOR_TEMPLATE_MANAGE",
     "VENDOR_ESCALATION_VIEW", "VENDOR_ESCALATION_MANAGE",
+    "EXEC_DASHBOARD_VIEW", "EXEC_DASHBOARD_FULL", "EXEC_FINANCIAL_VIEW",
+    "EXEC_REPORT_GENERATE", "EXEC_REPORT_EXPORT", "EXEC_KPI_CONFIG", "EXEC_FORECAST_VIEW",
   ]),
 
   DPO: new Set<Permission>([
@@ -209,6 +221,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "VENDOR_VIEW", "VENDOR_MANAGE", "VENDOR_REQUEST_CREATE", "VENDOR_REQUEST_SEND", "VENDOR_REQUEST_VIEW",
     "VENDOR_RESPONSE_LOG", "VENDOR_TEMPLATE_VIEW", "VENDOR_TEMPLATE_MANAGE",
     "VENDOR_ESCALATION_VIEW", "VENDOR_ESCALATION_MANAGE",
+    "EXEC_DASHBOARD_VIEW", "EXEC_DASHBOARD_FULL", "EXEC_REPORT_GENERATE", "EXEC_FORECAST_VIEW",
   ]),
 
   CASE_MANAGER: new Set<Permission>([
@@ -241,6 +254,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "INCIDENT_VIEW", "INCIDENT_LINK_DSAR",
     "VENDOR_VIEW", "VENDOR_REQUEST_CREATE", "VENDOR_REQUEST_SEND", "VENDOR_REQUEST_VIEW",
     "VENDOR_RESPONSE_LOG", "VENDOR_TEMPLATE_VIEW", "VENDOR_ESCALATION_VIEW",
+    "EXEC_DASHBOARD_VIEW",
   ]),
 
   ANALYST: new Set<Permission>([
@@ -265,6 +279,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "RESPONSE_VIEW", "RESPONSE_TEMPLATE_VIEW",
     "INCIDENT_VIEW",
     "VENDOR_VIEW", "VENDOR_REQUEST_VIEW", "VENDOR_TEMPLATE_VIEW", "VENDOR_ESCALATION_VIEW",
+    "EXEC_DASHBOARD_VIEW",
   ]),
 
   AUDITOR: new Set<Permission>([
@@ -291,6 +306,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "RESPONSE_VIEW", "RESPONSE_TEMPLATE_VIEW",
     "INCIDENT_VIEW",
     "VENDOR_VIEW", "VENDOR_REQUEST_VIEW", "VENDOR_TEMPLATE_VIEW", "VENDOR_ESCALATION_VIEW",
+    "EXEC_DASHBOARD_VIEW",
   ]),
 
   // Legacy roles mapped for backward compatibility
@@ -372,7 +388,8 @@ type Resource =
   | "data_inventory" | "discovery_rules"
   | "response" | "response_templates"
   | "incidents" | "incident_linkage" | "incident_surge" | "authority_export"
-  | "vendors" | "vendor_requests" | "vendor_templates" | "vendor_escalations";
+  | "vendors" | "vendor_requests" | "vendor_templates" | "vendor_escalations"
+  | "exec_dashboard" | "exec_reports" | "exec_kpi_config";
 
 type Action = "create" | "read" | "update" | "delete" | "manage";
 
@@ -538,6 +555,20 @@ const LEGACY_MAP: Record<string, Record<string, Permission[]>> = {
     create: ["VENDOR_ESCALATION_MANAGE"],
     update: ["VENDOR_ESCALATION_MANAGE"],
     manage: ["VENDOR_ESCALATION_MANAGE"],
+  },
+  exec_dashboard: {
+    read: ["EXEC_DASHBOARD_VIEW"],
+    manage: ["EXEC_DASHBOARD_FULL"],
+  },
+  exec_reports: {
+    read: ["EXEC_DASHBOARD_VIEW"],
+    create: ["EXEC_REPORT_GENERATE"],
+    manage: ["EXEC_REPORT_GENERATE", "EXEC_REPORT_EXPORT"],
+  },
+  exec_kpi_config: {
+    read: ["EXEC_DASHBOARD_VIEW"],
+    update: ["EXEC_KPI_CONFIG"],
+    manage: ["EXEC_KPI_CONFIG"],
   },
 };
 
