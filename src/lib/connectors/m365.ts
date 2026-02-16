@@ -1,4 +1,4 @@
-import { retrieveSecret } from "@/lib/secret-store";
+import { decrypt } from "@/lib/security/encryption";
 import { createPendingResult, completeResult } from "@/lib/result-metadata";
 import type { QuerySpec } from "@/lib/query-spec";
 import type { ResultMetadata } from "@/lib/result-metadata";
@@ -438,7 +438,7 @@ export class M365Connector implements Connector {
     clientId: string,
     secretRef: string
   ): Promise<string> {
-    const clientSecret = await retrieveSecret(secretRef);
+    const clientSecret = decrypt(secretRef);
     const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
 
     const tokenResponse = await fetch(tokenUrl, {

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { checkPermission } from "@/lib/rbac";
 import { logAudit, getClientInfo } from "@/lib/audit";
 import { ApiError, handleApiError } from "@/lib/errors";
-import { decryptIntegrationSecret } from "@/lib/integration-crypto";
+import { decrypt } from "@/lib/security/encryption";
 import { awsSecretsPayloadSchema } from "@/lib/validation";
 import { testAwsConnection } from "@/lib/aws-clients";
 import type { AwsSecrets } from "@/lib/aws-clients";
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     let decryptedPayload: string;
     try {
-      decryptedPayload = decryptIntegrationSecret(latestSecret.encryptedBlob);
+      decryptedPayload = decrypt(latestSecret.encryptedBlob);
     } catch {
       // Update status to reflect decryption failure
       await prisma.integration.update({

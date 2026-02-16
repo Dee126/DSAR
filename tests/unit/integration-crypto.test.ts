@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
+  encrypt,
+  decrypt,
+  validateEncryptionKey,
+  _resetKeyCache,
+} from "@/lib/security/encryption";
+import {
   encryptIntegrationSecret,
   decryptIntegrationSecret,
 } from "@/lib/integration-crypto";
@@ -8,20 +14,22 @@ import { randomBytes } from "crypto";
 // Generate a valid 32-byte key for testing
 const TEST_KEY = randomBytes(32).toString("base64");
 
-describe("integration-crypto", () => {
+describe("security/encryption (AES-256-GCM)", () => {
   beforeEach(() => {
+    _resetKeyCache();
     process.env.INTEGRATION_ENCRYPTION_KEY = TEST_KEY;
   });
 
   afterEach(() => {
+    _resetKeyCache();
     delete process.env.INTEGRATION_ENCRYPTION_KEY;
   });
 
-  describe("encryptIntegrationSecret / decryptIntegrationSecret", () => {
+  describe("encrypt / decrypt", () => {
     it("should round-trip a simple string", () => {
       const plaintext = "hello world";
-      const encrypted = encryptIntegrationSecret(plaintext);
-      const decrypted = decryptIntegrationSecret(encrypted);
+      const encrypted = encrypt(plaintext);
+      const decrypted = decrypt(encrypted);
       expect(decrypted).toBe(plaintext);
     });
 
@@ -32,8 +40,8 @@ describe("integration-crypto", () => {
         secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
         region: "eu-central-1",
       });
-      const encrypted = encryptIntegrationSecret(payload);
-      const decrypted = decryptIntegrationSecret(encrypted);
+      const encrypted = encrypt(payload);
+      const decrypted = decrypt(encrypted);
       expect(JSON.parse(decrypted)).toEqual(JSON.parse(payload));
     });
 
@@ -46,79 +54,111 @@ describe("integration-crypto", () => {
         roleArn: "arn:aws:iam::123456789012:role/DSARCollector",
         externalId: "dsar-external-id-123",
       });
-      const encrypted = encryptIntegrationSecret(payload);
-      const decrypted = decryptIntegrationSecret(encrypted);
+      const encrypted = encrypt(payload);
+      const decrypted = decrypt(encrypted);
       expect(JSON.parse(decrypted)).toEqual(JSON.parse(payload));
     });
 
     it("should produce different ciphertext for the same plaintext (random IV)", () => {
       const plaintext = "same input twice";
-      const a = encryptIntegrationSecret(plaintext);
-      const b = encryptIntegrationSecret(plaintext);
+      const a = encrypt(plaintext);
+      const b = encrypt(plaintext);
       expect(a).not.toBe(b);
-      // But both decrypt to the same value
-      expect(decryptIntegrationSecret(a)).toBe(plaintext);
-      expect(decryptIntegrationSecret(b)).toBe(plaintext);
+      expect(decrypt(a)).toBe(plaintext);
+      expect(decrypt(b)).toBe(plaintext);
     });
 
     it("should produce a base64 output", () => {
-      const encrypted = encryptIntegrationSecret("test");
-      // base64 regex
+      const encrypted = encrypt("test");
       expect(encrypted).toMatch(/^[A-Za-z0-9+/]+=*$/);
     });
 
     it("should handle empty string", () => {
-      const encrypted = encryptIntegrationSecret("");
-      const decrypted = decryptIntegrationSecret(encrypted);
+      const encrypted = encrypt("");
+      const decrypted = decrypt(encrypted);
       expect(decrypted).toBe("");
     });
 
     it("should handle unicode characters", () => {
       const plaintext = "Ünîcödé tëst with Ñ and 日本語";
+      const encrypted = encrypt(plaintext);
+      const decrypted = decrypt(encrypted);
+      expect(decrypted).toBe(plaintext);
+    });
+
+    it("should fail to decrypt with a tampered blob", () => {
+      const encrypted = encrypt("secret");
+      const buf = Buffer.from(encrypted, "base64");
+      buf[Math.floor(buf.length / 2)] ^= 0xff;
+      const tampered = buf.toString("base64");
+      expect(() => decrypt(tampered)).toThrow();
+    });
+
+    it("should fail to decrypt with a truncated blob", () => {
+      const encrypted = encrypt("secret");
+      const truncated = encrypted.slice(0, 10);
+      expect(() => decrypt(truncated)).toThrow("Invalid encrypted payload: too short");
+    });
+
+    it("should fail to decrypt with a different key", () => {
+      const encrypted = encrypt("secret");
+      _resetKeyCache();
+      process.env.INTEGRATION_ENCRYPTION_KEY = randomBytes(32).toString("base64");
+      expect(() => decrypt(encrypted)).toThrow();
+    });
+  });
+
+  describe("payload format: base64(iv[12] + authTag[16] + ciphertext)", () => {
+    it("should encode iv (12 bytes) then authTag (16 bytes) then ciphertext", () => {
+      const encrypted = encrypt("test-payload");
+      const buf = Buffer.from(encrypted, "base64");
+      // Minimum length: 12 (IV) + 16 (tag) + at least 1 byte ciphertext
+      expect(buf.length).toBeGreaterThanOrEqual(12 + 16 + 1);
+    });
+  });
+
+  describe("validateEncryptionKey", () => {
+    it("should return a 32-byte buffer for a valid key", () => {
+      const key = validateEncryptionKey();
+      expect(key.length).toBe(32);
+    });
+
+    it("should throw if INTEGRATION_ENCRYPTION_KEY is not set", () => {
+      _resetKeyCache();
+      delete process.env.INTEGRATION_ENCRYPTION_KEY;
+      expect(() => validateEncryptionKey()).toThrow(
+        "Invalid INTEGRATION_ENCRYPTION_KEY: must be 32 bytes base64"
+      );
+    });
+
+    it("should throw if key is wrong length", () => {
+      _resetKeyCache();
+      process.env.INTEGRATION_ENCRYPTION_KEY = randomBytes(16).toString("base64");
+      expect(() => validateEncryptionKey()).toThrow(
+        "Invalid INTEGRATION_ENCRYPTION_KEY: must be 32 bytes base64"
+      );
+    });
+
+    it("should cache the key after first validation", () => {
+      const key1 = validateEncryptionKey();
+      const key2 = validateEncryptionKey();
+      expect(key1).toBe(key2); // same Buffer reference
+    });
+  });
+
+  describe("backward-compat: integration-crypto re-exports", () => {
+    it("encryptIntegrationSecret / decryptIntegrationSecret should round-trip", () => {
+      const plaintext = "backward-compat-test";
       const encrypted = encryptIntegrationSecret(plaintext);
       const decrypted = decryptIntegrationSecret(encrypted);
       expect(decrypted).toBe(plaintext);
     });
 
-    it("should fail to decrypt with a tampered blob", () => {
-      const encrypted = encryptIntegrationSecret("secret");
-      // Flip a byte in the middle
-      const buf = Buffer.from(encrypted, "base64");
-      buf[Math.floor(buf.length / 2)] ^= 0xff;
-      const tampered = buf.toString("base64");
-
-      expect(() => decryptIntegrationSecret(tampered)).toThrow();
-    });
-
-    it("should fail to decrypt with a truncated blob", () => {
-      const encrypted = encryptIntegrationSecret("secret");
-      const truncated = encrypted.slice(0, 10);
-      expect(() => decryptIntegrationSecret(truncated)).toThrow(
-        "Invalid encrypted blob: too short"
-      );
-    });
-
-    it("should fail to decrypt with a different key", () => {
-      const encrypted = encryptIntegrationSecret("secret");
-      // Switch key
-      process.env.INTEGRATION_ENCRYPTION_KEY = randomBytes(32).toString("base64");
-      expect(() => decryptIntegrationSecret(encrypted)).toThrow();
-    });
-  });
-
-  describe("key validation", () => {
-    it("should throw if INTEGRATION_ENCRYPTION_KEY is not set", () => {
-      delete process.env.INTEGRATION_ENCRYPTION_KEY;
-      expect(() => encryptIntegrationSecret("test")).toThrow(
-        "INTEGRATION_ENCRYPTION_KEY env var is not set"
-      );
-    });
-
-    it("should throw if key is wrong length", () => {
-      process.env.INTEGRATION_ENCRYPTION_KEY = randomBytes(16).toString("base64"); // 16 bytes instead of 32
-      expect(() => encryptIntegrationSecret("test")).toThrow(
-        "must decode to exactly 32 bytes"
-      );
+    it("encrypt output should be decryptable by decryptIntegrationSecret", () => {
+      const plaintext = "cross-module-test";
+      const encrypted = encrypt(plaintext);
+      const decrypted = decryptIntegrationSecret(encrypted);
+      expect(decrypted).toBe(plaintext);
     });
   });
 });

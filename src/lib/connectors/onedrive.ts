@@ -6,7 +6,7 @@ import type {
   ConfigField,
   QueryTemplate,
 } from "./types";
-import { retrieveSecret } from "@/lib/secret-store";
+import { decrypt } from "@/lib/security/encryption";
 import { createPendingResult, completeResult } from "@/lib/result-metadata";
 import type { QuerySpec } from "@/lib/query-spec";
 
@@ -148,7 +148,7 @@ export class OneDriveConnector implements Connector {
     }
 
     try {
-      const clientSecret = await retrieveSecret(secretRef);
+      const clientSecret = decrypt(secretRef);
       const tokenResult = await this.acquireToken(tenantId, clientId, clientSecret);
 
       if (!tokenResult.success) {
@@ -230,7 +230,7 @@ export class OneDriveConnector implements Connector {
     }
 
     try {
-      const clientSecret = await retrieveSecret(secretRef);
+      const clientSecret = decrypt(secretRef);
       const tokenResult = await this.acquireToken(tenantId, clientId, clientSecret);
 
       if (!tokenResult.success) {

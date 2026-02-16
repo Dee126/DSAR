@@ -1,4 +1,4 @@
-import { retrieveSecret } from "@/lib/secret-store";
+import { decrypt } from "@/lib/security/encryption";
 import { createPendingResult, completeResult } from "@/lib/result-metadata";
 import type { QuerySpec } from "@/lib/query-spec";
 import type {
@@ -160,7 +160,7 @@ export class AwsConnector implements Connector {
         };
       }
 
-      const secrets = JSON.parse(await retrieveSecret(secretRef));
+      const secrets = JSON.parse(decrypt(secretRef));
       const region = (config.region as string) || secrets.region;
       const authType = (config.authType as string) || secrets.authType || "access_keys";
 

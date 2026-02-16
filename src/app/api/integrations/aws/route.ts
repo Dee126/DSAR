@@ -4,8 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { checkPermission } from "@/lib/rbac";
 import { logAudit, getClientInfo } from "@/lib/audit";
 import { handleApiError } from "@/lib/errors";
-import { storeSecret } from "@/lib/secret-store";
-import { encryptIntegrationSecret } from "@/lib/integration-crypto";
+import { encrypt } from "@/lib/security/encryption";
 import { createAwsIntegrationSchema } from "@/lib/validation";
 import { Prisma } from "@prisma/client";
 
@@ -39,8 +38,8 @@ export async function POST(request: NextRequest) {
     };
     if (data.roleArn) config.roleArn = data.roleArn;
 
-    // Encrypt secrets for legacy secretRef
-    const secretRef = await storeSecret(JSON.stringify(secretsPayload));
+    // Encrypt secrets with AES-256-GCM
+    const secretRef = encrypt(JSON.stringify(secretsPayload));
 
     const integration = await prisma.integration.create({
       data: {
@@ -60,8 +59,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Store in IntegrationSecret table (new encrypted secrets model)
-    const encryptedBlob = encryptIntegrationSecret(JSON.stringify(secretsPayload));
+    // Store in IntegrationSecret table
+    const encryptedBlob = encrypt(JSON.stringify(secretsPayload));
     await prisma.integrationSecret.create({
       data: {
         integrationId: integration.id,

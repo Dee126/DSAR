@@ -4,8 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { checkPermission } from "@/lib/rbac";
 import { logAudit, getClientInfo } from "@/lib/audit";
 import { ApiError, handleApiError } from "@/lib/errors";
-import { storeSecret } from "@/lib/secret-store";
-import { encryptIntegrationSecret } from "@/lib/integration-crypto";
+import { encrypt } from "@/lib/security/encryption";
 import { getConnector } from "@/lib/connectors/registry";
 import { updateIntegrationSchema } from "@/lib/validation";
 import { Prisma } from "@prisma/client";
@@ -124,7 +123,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     // Handle secret update
     if (data.secrets && Object.keys(data.secrets).length > 0) {
       secretsPayload = data.secrets;
-      secretRef = await storeSecret(JSON.stringify(data.secrets));
     } else if (data.config) {
       // Extract secrets from config
       const connector = getConnector(existing.provider);
@@ -141,15 +139,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
       if (Object.keys(extractedSecrets).length > 0) {
         secretsPayload = extractedSecrets;
-        secretRef = await storeSecret(JSON.stringify(extractedSecrets));
       }
       data.config = cleanConfig;
     }
 
-    // Update IntegrationSecret table if new secrets were provided
+    // Encrypt and store secrets (single AES-256-GCM path)
     if (secretsPayload) {
-      const encryptedBlob = encryptIntegrationSecret(JSON.stringify(secretsPayload));
-      // Upsert: delete old secrets and create new one (single active secret per integration)
+      secretRef = encrypt(JSON.stringify(secretsPayload));
+      const encryptedBlob = encrypt(JSON.stringify(secretsPayload));
+      // Replace old secrets with new encrypted entry
       await prisma.integrationSecret.deleteMany({
         where: { integrationId: params.id },
       });

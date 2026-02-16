@@ -1,5 +1,5 @@
 import type { Connector, ConnectorConfig, HealthCheckResult, CollectionResult, ConfigField, QueryTemplate } from "./types";
-import { retrieveSecret } from "@/lib/secret-store";
+import { decrypt } from "@/lib/security/encryption";
 import { createPendingResult, completeResult } from "@/lib/result-metadata";
 import type { QuerySpec } from "@/lib/query-spec";
 
@@ -130,7 +130,7 @@ export class SharePointConnector implements Connector {
     }
 
     try {
-      const clientSecret = await retrieveSecret(secretRef);
+      const clientSecret = decrypt(secretRef);
 
       const tokenResponse = await fetch(
         `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
@@ -211,7 +211,7 @@ export class SharePointConnector implements Connector {
     }
 
     try {
-      const clientSecret = await retrieveSecret(secretRef);
+      const clientSecret = decrypt(secretRef);
       const tenantId = config.tenantId as string;
       const clientId = config.clientId as string;
 

@@ -4,8 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { checkPermission } from "@/lib/rbac";
 import { logAudit, getClientInfo } from "@/lib/audit";
 import { ApiError, handleApiError } from "@/lib/errors";
-import { storeSecret } from "@/lib/secret-store";
-import { encryptIntegrationSecret } from "@/lib/integration-crypto";
+import { encrypt } from "@/lib/security/encryption";
 import { getConnector, PROVIDER_INFO } from "@/lib/connectors/registry";
 import { createIntegrationSchema } from "@/lib/validation";
 import { Prisma } from "@prisma/client";
@@ -57,9 +56,8 @@ export async function POST(request: NextRequest) {
 
     if (data.secrets && Object.keys(data.secrets).length > 0) {
       secretsPayload = data.secrets;
-      secretRef = await storeSecret(JSON.stringify(data.secrets));
     } else {
-      // Check if secrets were passed in config (legacy)
+      // Check if secrets were passed in config (legacy path)
       const extractedSecrets: Record<string, string> = {};
       for (const field of secretFields) {
         if (cleanConfig[field.key] && typeof cleanConfig[field.key] === "string") {
@@ -69,8 +67,12 @@ export async function POST(request: NextRequest) {
       }
       if (Object.keys(extractedSecrets).length > 0) {
         secretsPayload = extractedSecrets;
-        secretRef = await storeSecret(JSON.stringify(extractedSecrets));
       }
+    }
+
+    // Encrypt secrets with AES-256-GCM (single encryption path)
+    if (secretsPayload) {
+      secretRef = encrypt(JSON.stringify(secretsPayload));
     }
 
     const integration = await prisma.integration.create({
@@ -91,9 +93,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Also store in IntegrationSecret table (new encrypted secrets model)
+    // Store in IntegrationSecret table (encrypted secrets model)
     if (secretsPayload) {
-      const encryptedBlob = encryptIntegrationSecret(JSON.stringify(secretsPayload));
+      const encryptedBlob = encrypt(JSON.stringify(secretsPayload));
       await prisma.integrationSecret.create({
         data: {
           integrationId: integration.id,

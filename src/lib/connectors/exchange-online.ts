@@ -6,7 +6,7 @@ import type {
   ConfigField,
   QueryTemplate,
 } from "./types";
-import { retrieveSecret } from "@/lib/secret-store";
+import { decrypt } from "@/lib/security/encryption";
 import { createPendingResult, completeResult } from "@/lib/result-metadata";
 import type { QuerySpec } from "@/lib/query-spec";
 
@@ -237,7 +237,7 @@ export class ExchangeOnlineConnector implements Connector {
     }
 
     try {
-      const clientSecret = await retrieveSecret(secretRef);
+      const clientSecret = decrypt(secretRef);
       const accessToken = await this.acquireToken(tenantId, clientId, clientSecret);
 
       // Verify token works by calling the /organization endpoint
@@ -296,7 +296,7 @@ export class ExchangeOnlineConnector implements Connector {
     }
 
     try {
-      const clientSecret = await retrieveSecret(secretRef);
+      const clientSecret = decrypt(secretRef);
       const tenantId = config.tenantId as string;
       const clientId = config.clientId as string;
 

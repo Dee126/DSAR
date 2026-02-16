@@ -4,8 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { checkPermission } from "@/lib/rbac";
 import { logAudit, getClientInfo } from "@/lib/audit";
 import { ApiError, handleApiError } from "@/lib/errors";
-import { storeSecret } from "@/lib/secret-store";
-import { encryptIntegrationSecret } from "@/lib/integration-crypto";
+import { encrypt } from "@/lib/security/encryption";
 import { Prisma } from "@prisma/client";
 
 /**
@@ -48,7 +47,7 @@ export async function POST(request: NextRequest) {
       mock: true,
     };
 
-    const secretRef = await storeSecret(JSON.stringify(secretsPayload));
+    const secretRef = encrypt(JSON.stringify(secretsPayload));
 
     const integration = await prisma.integration.create({
       data: {
@@ -68,9 +67,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const encryptedBlob = encryptIntegrationSecret(
-      JSON.stringify(secretsPayload)
-    );
+    const encryptedBlob = encrypt(JSON.stringify(secretsPayload));
     await prisma.integrationSecret.create({
       data: {
         integrationId: integration.id,
