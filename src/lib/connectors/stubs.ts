@@ -266,26 +266,7 @@ export const OktaConnector = new StubConnector(
    Phase 4 — Cloud Providers (DSAR-relevant only if PII in storage/logs)
    ═══════════════════════════════════════════════════════════════════════ */
 
-export const AWSConnector = new StubConnector(
-  "AWS",
-  [
-    { key: "accessKeyId", label: "Access Key ID", type: "text", required: true, placeholder: "AKIAIOSFODNN7EXAMPLE" },
-    { key: "secretAccessKey", label: "Secret Access Key", type: "password", required: true, placeholder: "Enter secret key", isSecret: true },
-    { key: "region", label: "Region", type: "text", required: true, placeholder: "eu-west-1" },
-  ],
-  [
-    {
-      id: "aws_s3_search",
-      name: "S3 Bucket Search",
-      description: "Search S3 bucket for objects matching subject identifiers (Phase 4)",
-      scopeFields: [
-        { key: "bucket", label: "Bucket Name", type: "text", required: true, placeholder: "my-data-bucket" },
-        { key: "prefix", label: "Key Prefix", type: "text", required: false, placeholder: "users/john.smith/" },
-      ],
-      defaultScope: {},
-    },
-  ]
-);
+// AWS connector moved to ./aws.ts (no longer a stub)
 
 export const AzureConnector = new StubConnector(
   "AZURE",

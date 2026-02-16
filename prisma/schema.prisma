@@ -932,10 +932,25 @@ model Integration {
   dataCollectionItems DataCollectionItem[]
   copilotQueries      CopilotQuery[]
   evidenceItems       EvidenceItem[]      @relation("EvidenceIntegration")
+  secrets             IntegrationSecret[]
 
   @@index([tenantId])
   @@index([tenantId, status])
   @@map("integrations")
+}
+
+model IntegrationSecret {
+  id             String      @id @default(uuid())
+  integrationId  String
+  encryptedBlob  String      // base64(iv + ciphertext + authTag), AES-256-GCM
+  keyVersion     Int         @default(1)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  integration    Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@index([integrationId])
+  @@map("integration_secrets")
 }
 
 // ─── Privacy Copilot Models ──────────────────────────────────────────────────

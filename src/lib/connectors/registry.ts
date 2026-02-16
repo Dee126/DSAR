@@ -17,10 +17,10 @@ import {
   WorkdayConnector,
   SAPSuccessFactorsConnector,
   OktaConnector,
-  AWSConnector,
   AzureConnector,
   GCPConnector,
 } from "./stubs";
+import { AwsConnector } from "./aws";
 
 /* ── Connector instances ──────────────────────────────────────────────── */
 
@@ -41,7 +41,7 @@ const connectors: Record<string, Connector> = {
   SAP_SUCCESSFACTORS: SAPSuccessFactorsConnector,
   OKTA: OktaConnector,
   // Phase 4
-  AWS: AWSConnector,
+  AWS: new AwsConnector(),
   AZURE: AzureConnector,
   GCP: GCPConnector,
 };
@@ -170,8 +170,7 @@ export const PROVIDER_INFO: ProviderInfo[] = [
     description: "S3, DynamoDB — only if PII resides in storage/logs",
     icon: "AWS",
     phase: 4,
-    available: false,
-    comingSoon: true,
+    available: true,
   },
   {
     provider: "AZURE",

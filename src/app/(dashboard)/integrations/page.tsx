@@ -88,7 +88,7 @@ const FALLBACK_PROVIDERS: ProviderInfo[] = [
   { provider: "SAP_SUCCESSFACTORS",   name: "SAP SuccessFactors",   description: "HR, employee records",         available: false, comingSoon: true, phase: 3 },
   { provider: "OKTA",                 name: "Okta",                 description: "Identity, SSO, directory",     available: false, comingSoon: true, phase: 3 },
   // Phase 4 - Cloud Infrastructure (Planned)
-  { provider: "AWS",   name: "AWS",   description: "S3, DynamoDB, RDS",        available: false, comingSoon: true, phase: 4 },
+  { provider: "AWS",   name: "AWS",   description: "S3, DynamoDB, RDS",        available: true,  phase: 4 },
   { provider: "AZURE", name: "Azure", description: "Blob Storage, SQL, AD",    available: false, comingSoon: true, phase: 4 },
   { provider: "GCP",   name: "GCP",   description: "Cloud Storage, BigQuery",  available: false, comingSoon: true, phase: 4 },
 ];
@@ -352,9 +352,10 @@ export default function IntegrationsPage() {
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {phaseProviders.map((p) => {
                   const icon = getProviderIcon(p.provider);
-                  const isAvailable = p.available && phase === 1;
-                  const badgeText =
-                    phase === 2
+                  const isAvailable = p.available;
+                  const badgeText = isAvailable
+                    ? null
+                    : phase === 2
                       ? "Coming Soon"
                       : phase >= 3
                       ? "Planned"

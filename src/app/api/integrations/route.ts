@@ -5,6 +5,7 @@ import { checkPermission } from "@/lib/rbac";
 import { logAudit, getClientInfo } from "@/lib/audit";
 import { ApiError, handleApiError } from "@/lib/errors";
 import { storeSecret } from "@/lib/secret-store";
+import { encryptIntegrationSecret } from "@/lib/integration-crypto";
 import { getConnector, PROVIDER_INFO } from "@/lib/connectors/registry";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
@@ -33,16 +34,16 @@ export async function GET(request: NextRequest) {
           select: { id: true, name: true, email: true },
         },
         _count: {
-          select: { dataCollectionItems: true },
+          select: { dataCollectionItems: true, secrets: true },
         },
       },
       orderBy: { createdAt: "desc" },
     });
 
-    // Strip secretRef from response
+    // Strip secretRef from response; flag hasSecret from either legacy secretRef or new secrets table
     const safe = integrations.map(({ secretRef, ...rest }) => ({
       ...rest,
-      hasSecret: !!secretRef,
+      hasSecret: !!secretRef || (rest._count.secrets ?? 0) > 0,
     }));
 
     return NextResponse.json({ data: safe, providers: PROVIDER_INFO });
@@ -61,11 +62,13 @@ export async function POST(request: NextRequest) {
 
     // Extract secrets from config and encrypt them
     let secretRef: string | null = null;
+    let secretsPayload: Record<string, string> | null = null;
     const connector = getConnector(data.provider);
     const secretFields = connector?.getConfigFields().filter((f) => f.isSecret) ?? [];
     const cleanConfig: Record<string, unknown> = { ...data.config };
 
     if (data.secrets && Object.keys(data.secrets).length > 0) {
+      secretsPayload = data.secrets;
       secretRef = await storeSecret(JSON.stringify(data.secrets));
     } else {
       // Check if secrets were passed in config (legacy)
@@ -77,6 +80,7 @@ export async function POST(request: NextRequest) {
         }
       }
       if (Object.keys(extractedSecrets).length > 0) {
+        secretsPayload = extractedSecrets;
         secretRef = await storeSecret(JSON.stringify(extractedSecrets));
       }
     }
@@ -98,6 +102,18 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    // Also store in IntegrationSecret table (new encrypted secrets model)
+    if (secretsPayload) {
+      const encryptedBlob = encryptIntegrationSecret(JSON.stringify(secretsPayload));
+      await prisma.integrationSecret.create({
+        data: {
+          integrationId: integration.id,
+          encryptedBlob,
+          keyVersion: 1,
+        },
+      });
+    }
 
     const clientInfo = getClientInfo(request);
     await logAudit({
