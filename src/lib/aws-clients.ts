@@ -4,6 +4,9 @@
  * Supports two auth modes:
  *   1. access_keys — direct credentials
  *   2. assume_role — STS AssumeRole then use temporary credentials
+ *
+ * When env AWS_INTEGRATION_MOCK=true, all calls return deterministic fake data
+ * so developers can test the full integration flow without real AWS credentials.
  */
 
 import { STSClient, GetCallerIdentityCommand, AssumeRoleCommand } from "@aws-sdk/client-sts";
@@ -12,6 +15,10 @@ import { RDSClient, DescribeDBInstancesCommand } from "@aws-sdk/client-rds";
 import { DynamoDBClient, ListTablesCommand } from "@aws-sdk/client-dynamodb";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
+
+function isMockMode(): boolean {
+  return process.env.AWS_INTEGRATION_MOCK === "true";
+}
 
 export interface AwsSecrets {
   authType: "access_keys" | "assume_role";
@@ -75,12 +82,25 @@ async function resolveCredentials(secrets: AwsSecrets): Promise<AwsCredentials> 
 
 /**
  * Test the connection by calling STS GetCallerIdentity.
+ * In mock mode, returns deterministic fake identity data.
  */
 export async function testAwsConnection(secrets: AwsSecrets): Promise<{
   account: string;
   arn: string;
   userId: string;
 }> {
+  if (isMockMode()) {
+    // Simulate a short network delay
+    await new Promise((r) => setTimeout(r, 300));
+    return {
+      account: "123456789012",
+      arn: secrets.authType === "assume_role"
+        ? `arn:aws:sts::123456789012:assumed-role/${secrets.roleArn?.split("/").pop() ?? "MockRole"}/PrivacyPilot-DSAR`
+        : "arn:aws:iam::123456789012:user/privacypilot-dev",
+      userId: "AIDAMOCKUSERID123456",
+    };
+  }
+
   const creds = await resolveCredentials(secrets);
 
   const stsClient = new STSClient({
@@ -115,8 +135,15 @@ export interface ScanItem {
 
 /**
  * Run a metadata inventory scan across S3, RDS, and DynamoDB.
+ * In mock mode, returns deterministic fake resources:
+ *   3 S3 buckets, 1 RDS instance, 2 DynamoDB tables.
  */
 export async function scanAwsResources(secrets: AwsSecrets): Promise<ScanSummary> {
+  if (isMockMode()) {
+    await new Promise((r) => setTimeout(r, 500));
+    return buildMockScanSummary(secrets.region);
+  }
+
   const creds = await resolveCredentials(secrets);
   const items: ScanItem[] = [];
 
@@ -222,4 +249,69 @@ export async function scanAwsResources(secrets: AwsSecrets): Promise<ScanSummary
   }
 
   return { s3Buckets, rdsInstances, dynamoTables, items };
+}
+
+/* ── Mock data (used when AWS_INTEGRATION_MOCK=true) ─────────────── */
+
+function buildMockScanSummary(region: string): ScanSummary {
+  const items: ScanItem[] = [
+    // 3 S3 buckets
+    {
+      resourceType: "s3_bucket",
+      resourceId: "acme-corp-data-lake",
+      resourceName: "acme-corp-data-lake",
+      region,
+      metaJson: { creationDate: "2024-03-15T10:30:00.000Z" },
+    },
+    {
+      resourceType: "s3_bucket",
+      resourceId: "acme-corp-logs",
+      resourceName: "acme-corp-logs",
+      region,
+      metaJson: { creationDate: "2024-06-01T08:00:00.000Z" },
+    },
+    {
+      resourceType: "s3_bucket",
+      resourceId: "acme-corp-backups",
+      resourceName: "acme-corp-backups",
+      region,
+      metaJson: { creationDate: "2025-01-10T14:22:00.000Z" },
+    },
+    // 1 RDS instance
+    {
+      resourceType: "rds_instance",
+      resourceId: "acme-production-db",
+      resourceName: "acme-production-db",
+      region: `${region}a`,
+      metaJson: {
+        engine: "postgres",
+        engineVersion: "15.4",
+        instanceClass: "db.r6g.large",
+        status: "available",
+        storageEncrypted: true,
+      },
+    },
+    // 2 DynamoDB tables
+    {
+      resourceType: "dynamodb_table",
+      resourceId: "UserSessions",
+      resourceName: "UserSessions",
+      region,
+      metaJson: {},
+    },
+    {
+      resourceType: "dynamodb_table",
+      resourceId: "AuditEvents",
+      resourceName: "AuditEvents",
+      region,
+      metaJson: {},
+    },
+  ];
+
+  return {
+    s3Buckets: 3,
+    rdsInstances: 1,
+    dynamoTables: 2,
+    items,
+  };
 }

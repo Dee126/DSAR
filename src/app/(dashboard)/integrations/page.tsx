@@ -198,6 +198,19 @@ export default function IntegrationsPage() {
   // AWS Details drawer
   const [drawerIntegrationId, setDrawerIntegrationId] = useState<string | null>(null);
 
+  // Mock mode
+  const [mockAvailable, setMockAvailable] = useState(false);
+  const [creatingMock, setCreatingMock] = useState(false);
+
+  /* -- Check mock mode availability ---------------------------------------- */
+
+  useEffect(() => {
+    fetch("/api/integrations/aws/mock")
+      .then((r) => r.json())
+      .then((data) => setMockAvailable(data.available === true))
+      .catch(() => {});
+  }, []);
+
   /* -- Fetch integrations -------------------------------------------------- */
 
   const fetchIntegrations = useCallback(async () => {
@@ -505,6 +518,28 @@ export default function IntegrationsPage() {
       addToast("error", "Failed to run scan.");
     } finally {
       setScanningId(null);
+    }
+  }
+
+  /* -- Create mock AWS integration ----------------------------------------- */
+
+  async function handleCreateMockAws() {
+    setCreatingMock(true);
+    try {
+      const res = await fetch("/api/integrations/aws/mock", { method: "POST" });
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        addToast("error", json?.error ?? "Failed to create mock integration");
+        return;
+      }
+      const created = await res.json();
+      addToast("success", "Mock AWS integration created! You can now Test and Scan it.");
+      fetchIntegrations();
+      router.push(`/integrations/${created.id}`);
+    } catch {
+      addToast("error", "An unexpected error occurred.");
+    } finally {
+      setCreatingMock(false);
     }
   }
 
@@ -1125,11 +1160,34 @@ export default function IntegrationsPage() {
             Manage data source connections for automated data collection
           </p>
         </div>
-        <button onClick={openAddModal} className="btn-primary">
-          <svg
-            className="mr-2 h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
+        <div className="flex items-center gap-2">
+          {mockAvailable && (
+            <button
+              onClick={handleCreateMockAws}
+              disabled={creatingMock}
+              className="btn-secondary"
+              title="Create a pre-configured AWS integration using mock data (dev only)"
+            >
+              {creatingMock ? (
+                <span className="flex items-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
+                  Creating...
+                </span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <svg className="h-4 w-4 text-yellow-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+                  </svg>
+                  Mock AWS
+                </span>
+              )}
+            </button>
+          )}
+          <button onClick={openAddModal} className="btn-primary">
+            <svg
+              className="mr-2 h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
             strokeWidth={2}
             stroke="currentColor"
           >
@@ -1140,7 +1198,8 @@ export default function IntegrationsPage() {
             />
           </svg>
           Add Integration
-        </button>
+          </button>
+        </div>
       </div>
 
       {/* Error banner */}
@@ -1237,6 +1296,15 @@ export default function IntegrationsPage() {
               </svg>
               Add Integration
             </button>
+            {mockAvailable && (
+              <button
+                onClick={handleCreateMockAws}
+                disabled={creatingMock}
+                className="btn-secondary mt-2"
+              >
+                {creatingMock ? "Creating..." : "Quick-start with Mock AWS"}
+              </button>
+            )}
           </div>
         </div>
       ) : (

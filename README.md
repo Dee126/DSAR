@@ -191,7 +191,74 @@ npm run test:e2e
 | `NEXTAUTH_URL` | App base URL | `http://localhost:3000` |
 | `STORAGE_TYPE` | `local` or `s3` | `local` |
 | `STORAGE_LOCAL_PATH` | Local file storage path | `./uploads` |
+| `INTEGRATION_ENCRYPTION_KEY` | AES-256 key for integration secrets (base64, 32 bytes) | (required for integrations) |
+| `AWS_INTEGRATION_MOCK` | Set `true` to enable mock AWS mode (no real credentials needed) | `undefined` (disabled) |
 | `DEFAULT_SLA_DAYS` | Default SLA deadline (days) | `30` |
+
+## AWS Integration
+
+PrivacyPilot can connect to AWS accounts to discover data stores (S3 buckets, RDS instances, DynamoDB tables) relevant to DSAR processing.
+
+### Required Environment Variables
+
+```bash
+# 32-byte base64 key for encrypting integration secrets at rest.
+# Generate with:  openssl rand -base64 32
+INTEGRATION_ENCRYPTION_KEY="<your-key>"
+```
+
+### Mock Mode (Development)
+
+To test the AWS integration UI without real AWS credentials:
+
+```bash
+# Add to .env
+AWS_INTEGRATION_MOCK=true
+INTEGRATION_ENCRYPTION_KEY="$(openssl rand -base64 32)"
+```
+
+With mock mode enabled:
+
+1. A **"Mock AWS"** button appears on the Integrations page header
+2. Clicking it creates a pre-configured integration with dummy credentials
+3. **Test connection** returns a fake caller identity (`123456789012`)
+4. **Run scan** returns deterministic resources: 3 S3 buckets, 1 RDS instance, 2 DynamoDB tables
+5. The full UI flow (create, test, scan, view details) works end-to-end
+
+### API Endpoints (AWS)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/integrations/aws` | Create AWS integration |
+| POST | `/api/integrations/aws/[id]/test` | Test connection (STS GetCallerIdentity) |
+| POST | `/api/integrations/aws/[id]/scan` | Scan resources (S3, RDS, DynamoDB) |
+| GET | `/api/integrations/aws/mock` | Check if mock mode is available |
+| POST | `/api/integrations/aws/mock` | Create mock AWS integration (dev only) |
+
+### Running API Tests
+
+```bash
+# 1. Ensure DB and app are running
+npm run docker:up
+npm run db:push
+npm run db:seed
+
+# 2. Start the dev server
+npm run dev
+
+# 3. Run unit tests
+npm test
+
+# 4. For manual API testing with mock mode:
+#    Set AWS_INTEGRATION_MOCK=true in .env, then:
+curl -X POST http://localhost:3000/api/integrations/aws/mock \
+  -H "Cookie: <session-cookie>"
+#    Use the returned integration ID to test:
+curl -X POST http://localhost:3000/api/integrations/aws/<id>/test \
+  -H "Cookie: <session-cookie>"
+curl -X POST http://localhost:3000/api/integrations/aws/<id>/scan \
+  -H "Cookie: <session-cookie>"
+```
 
 ## Roles & Permissions
 
