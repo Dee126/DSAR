@@ -4,9 +4,29 @@ import { createSubmission } from "@/lib/services/intake-service";
 import { getClientInfo } from "@/lib/audit";
 import { handleApiError } from "@/lib/errors";
 import { ApiError } from "@/lib/errors";
+import {
+  checkRateLimit,
+  hashIpForRateLimit,
+  rateKey,
+  RATE_LIMITS,
+} from "@/lib/security/rate-limiter";
 
 // Max body size for intake (with file uploads): 50MB
 const MAX_BODY_SIZE = 50 * 1024 * 1024;
+
+// Allowed MIME types for attachments
+const ALLOWED_MIME_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "text/plain",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10MB per file
+const MAX_ATTACHMENTS = 5;
 
 export async function POST(
   request: NextRequest,
@@ -21,6 +41,14 @@ export async function POST(
 
     const contentType = request.headers.get("content-type") || "";
     const clientInfo = getClientInfo(request);
+
+    // Sprint 9.2: Rate limit per IP + tenant slug
+    const ipHash = hashIpForRateLimit(clientInfo.ip);
+    checkRateLimit(
+      "intake_submit",
+      rateKey(ipHash, tenantSlug),
+      RATE_LIMITS.INTAKE_SUBMIT,
+    );
 
     let body: Record<string, unknown>;
     const attachmentInputs: Array<{
@@ -48,10 +76,21 @@ export async function POST(
         honeypot: formData.get("website_url") as string || undefined,
       };
 
-      // Extract file attachments
+      // Extract file attachments with security checks
       const files = formData.getAll("attachments");
+      if (files.length > MAX_ATTACHMENTS) {
+        throw new ApiError(400, `Maximum ${MAX_ATTACHMENTS} attachments allowed`);
+      }
       for (const file of files) {
         if (file instanceof File) {
+          // Sprint 9.2: Validate MIME type
+          if (!ALLOWED_MIME_TYPES.has(file.type)) {
+            throw new ApiError(400, `File type '${file.type}' is not allowed`);
+          }
+          // Sprint 9.2: Validate file size
+          if (file.size > MAX_ATTACHMENT_SIZE) {
+            throw new ApiError(400, `File '${file.name}' exceeds maximum size of 10MB`);
+          }
           const buffer = Buffer.from(await file.arrayBuffer());
           attachmentInputs.push({
             filename: file.name,
@@ -62,6 +101,15 @@ export async function POST(
       }
     } else {
       body = await request.json();
+    }
+
+    // Sprint 9.2: Honeypot check — if filled, silently accept but don't process
+    if (body.honeypot && typeof body.honeypot === "string" && body.honeypot.trim().length > 0) {
+      // Return success response to not reveal detection
+      return NextResponse.json(
+        { reference: `INTAKE-${Date.now()}` },
+        { status: 201 }
+      );
     }
 
     // Validate

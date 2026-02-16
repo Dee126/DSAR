@@ -4,18 +4,42 @@ import { prisma } from "@/lib/prisma";
 import { validatePortalToken } from "@/lib/idv-token";
 import { getStorage } from "@/lib/storage";
 import { logAudit, getClientInfo } from "@/lib/audit";
+import {
+  checkRateLimit,
+  hashIpForRateLimit,
+  RATE_LIMITS,
+} from "@/lib/security/rate-limiter";
+
+// Allowed MIME types for IDV artifacts
+const ALLOWED_IDV_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+]);
 
 /**
  * GET /api/idv/portal/[token] — Validate token and return portal data
  * This is an unauthenticated endpoint — token provides scoped access.
+ *
+ * Sprint 9.2 Hardening:
+ * - Invalid/expired token → 404 (not 401, prevents token enumeration)
+ * - Rate limiting per IP
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: { token: string } },
 ) {
   try {
+    const clientInfo = getClientInfo(request);
+
+    // Sprint 9.2: Rate limit per IP
+    const ipHash = hashIpForRateLimit(clientInfo.ip);
+    checkRateLimit("idv_portal_get", ipHash, RATE_LIMITS.PUBLIC_GENERAL);
+
     const payload = validatePortalToken(params.token);
-    if (!payload) throw new ApiError(401, "Invalid or expired verification link");
+    // Sprint 9.2: Invalid token → 404 (no info leakage)
+    if (!payload) throw new ApiError(404, "Not found");
 
     const idvRequest = await prisma.idvRequest.findFirst({
       where: {
@@ -34,7 +58,8 @@ export async function GET(
       },
     });
 
-    if (!idvRequest) throw new ApiError(404, "Verification request not found");
+    // Sprint 9.2: Not found → 404 (consistent)
+    if (!idvRequest) throw new ApiError(404, "Not found");
 
     // Check if already completed
     if (["APPROVED", "REJECTED"].includes(idvRequest.status)) {
@@ -74,10 +99,12 @@ export async function GET(
 
 /**
  * POST /api/idv/portal/[token] — Subject uploads verification documents
- * Accepts multipart/form-data with:
- *   - files: multiple File objects
- *   - artifactTypes: JSON array of types matching each file
- *   - consentGiven: "true"
+ *
+ * Sprint 9.2 Hardening:
+ * - Invalid token → 404
+ * - Rate limiting per token
+ * - MIME type validation
+ * - File size limits enforced
  */
 export async function POST(
   request: NextRequest,
@@ -85,8 +112,14 @@ export async function POST(
 ) {
   try {
     const clientInfo = getClientInfo(request);
+
+    // Sprint 9.2: Rate limit per IP for IDV submissions
+    const ipHash = hashIpForRateLimit(clientInfo.ip);
+    checkRateLimit("idv_portal_post", ipHash, RATE_LIMITS.IDV_SUBMIT);
+
     const payload = validatePortalToken(params.token);
-    if (!payload) throw new ApiError(401, "Invalid or expired verification link");
+    // Sprint 9.2: Invalid token → 404
+    if (!payload) throw new ApiError(404, "Not found");
 
     const idvRequest = await prisma.idvRequest.findFirst({
       where: {
@@ -96,7 +129,7 @@ export async function POST(
       },
     });
 
-    if (!idvRequest) throw new ApiError(404, "Verification request not found");
+    if (!idvRequest) throw new ApiError(404, "Not found");
 
     // Check status
     if (["APPROVED", "REJECTED"].includes(idvRequest.status)) {
@@ -130,6 +163,7 @@ export async function POST(
     });
 
     if (files.length === 0) throw new ApiError(400, "At least one file is required");
+    if (files.length > 5) throw new ApiError(400, "Maximum 5 files per submission");
     if (files.length !== artifactTypes.length) {
       throw new ApiError(400, "Number of files must match number of artifact types");
     }
@@ -161,9 +195,14 @@ export async function POST(
         throw new ApiError(400, "Selfie verification is not enabled for this organization");
       }
 
+      // Sprint 9.2: Validate MIME type
+      if (!ALLOWED_IDV_MIME_TYPES.has(file.type)) {
+        throw new ApiError(400, `File type '${file.type}' is not allowed. Accepted: JPEG, PNG, WebP, PDF`);
+      }
+
       // Size limit: 10MB
       if (file.size > 10 * 1024 * 1024) {
-        throw new ApiError(400, `File ${file.name} exceeds maximum size of 10MB`);
+        throw new ApiError(400, `File exceeds maximum size of 10MB`);
       }
 
       const buffer = Buffer.from(await file.arrayBuffer());

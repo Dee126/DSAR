@@ -5,6 +5,12 @@ import { sendOtp, verifyOtp } from "@/lib/delivery-otp-service";
 import { recordDeliveryEvent } from "@/lib/delivery-event-service";
 import { verifyDeliveryOtpSchema } from "@/lib/validation";
 import { prisma } from "@/lib/prisma";
+import {
+  checkRateLimit,
+  hashIpForRateLimit,
+  rateKey,
+  RATE_LIMITS,
+} from "@/lib/security/rate-limiter";
 
 function getPublicClientInfo(request: NextRequest) {
   const ip =
@@ -19,6 +25,12 @@ function getPublicClientInfo(request: NextRequest) {
  * POST /api/delivery/public
  * Public endpoint (no auth required) for delivery portal operations.
  * Actions: validate, send_otp, verify_otp, download
+ *
+ * Sprint 9.2 Hardening:
+ * - Invalid/expired tokens → 404 (no information leakage)
+ * - Rate limiting on OTP send/verify
+ * - No OTP in response (removed dev-mode disclosure)
+ * - Storage keys never exposed to client
  */
 export async function POST(request: NextRequest) {
   try {
@@ -28,12 +40,17 @@ export async function POST(request: NextRequest) {
     const { ip, userAgent } = getPublicClientInfo(request);
 
     if (!token) {
-      throw new ApiError(400, "Token is required");
+      // Sprint 9.2: Return 404 for missing token — no info leakage
+      throw new ApiError(404, "Not found");
     }
+
+    // Sprint 9.2: General rate limit for all public portal actions
+    const ipHash = hashIpForRateLimit(ip);
+    checkRateLimit("delivery_public", ipHash, RATE_LIMITS.PUBLIC_GENERAL);
 
     switch (action) {
       case "validate": {
-        // Validate token and return link info (minimal, no internal details)
+        // Sprint 9.2: Invalid token → 404 (validateToken already throws 404)
         const link = await validateToken(token);
 
         // Record portal view event
@@ -51,8 +68,8 @@ export async function POST(request: NextRequest) {
           linkId: link.id,
           otpRequired: link.otpRequired,
           otpVerified: !link.otpRequired || (!link.otpHash && link.otpAttempts === 0 && !link.otpExpiresAt)
-            ? false // OTP not yet sent/verified
-            : !link.otpHash, // if otpHash is null, it was verified (cleared on success)
+            ? false
+            : !link.otpHash,
           language: link.language,
           subjectContact: link.subjectContact,
           expiresAt: link.expiresAt,
@@ -64,6 +81,9 @@ export async function POST(request: NextRequest) {
       case "send_otp": {
         const link = await validateToken(token);
 
+        // Sprint 9.2: Rate limit OTP sends per link
+        checkRateLimit("otp_send", link.id, RATE_LIMITS.OTP_SEND);
+
         const result = await sendOtp({
           linkId: link.id,
           tenantId: link.tenantId,
@@ -71,18 +91,20 @@ export async function POST(request: NextRequest) {
           userAgent,
         });
 
+        // Sprint 9.2: NEVER return OTP in response — removed dev mode disclosure
         return NextResponse.json({
           success: true,
           expiresAt: result.expiresAt,
           contactMasked: link.subjectContact,
-          // In dev, return OTP for testing
-          otp: process.env.NODE_ENV !== "production" ? result.otp : undefined,
         });
       }
 
       case "verify_otp": {
         const link = await validateToken(token);
         const data = verifyDeliveryOtpSchema.parse(body);
+
+        // Sprint 9.2: Rate limit OTP verify attempts per link
+        checkRateLimit("otp_verify", link.id, RATE_LIMITS.OTP_VERIFY);
 
         const result = await verifyOtp({
           linkId: link.id,
@@ -96,17 +118,15 @@ export async function POST(request: NextRequest) {
       }
 
       case "get_package": {
-        // Return the package manifest (list of downloadable files)
         const link = await validateToken(token);
 
-        // If OTP is required and not yet verified, deny access
         if (link.otpRequired && link.otpHash) {
-          throw new ApiError(403, "OTP verification required");
+          // Sprint 9.2: Return 404 instead of 403 — no info leakage
+          throw new ApiError(404, "Not found");
         }
 
-        // Fetch package details
         if (!link.packageId) {
-          throw new ApiError(404, "No package associated with this link");
+          throw new ApiError(404, "Not found");
         }
 
         const pkg = await prisma.deliveryPackage.findFirst({
@@ -114,7 +134,7 @@ export async function POST(request: NextRequest) {
         });
 
         if (!pkg) {
-          throw new ApiError(404, "Package not found");
+          throw new ApiError(404, "Not found");
         }
 
         const manifest = pkg.manifestJson as any;
@@ -129,18 +149,22 @@ export async function POST(request: NextRequest) {
       }
 
       case "download": {
-        // Consume a download and return file info
         const link = await validateToken(token);
 
         if (link.otpRequired && link.otpHash) {
-          throw new ApiError(403, "OTP verification required");
+          throw new ApiError(404, "Not found");
         }
 
         const fileId = body.fileId as string;
-        const fileSource = body.fileSource as string; // "response" or "evidence"
+        const fileSource = body.fileSource as string;
 
         if (!fileId || !fileSource) {
           throw new ApiError(400, "fileId and fileSource are required");
+        }
+
+        // Sprint 9.2: Validate fileSource strictly
+        if (fileSource !== "response" && fileSource !== "evidence") {
+          throw new ApiError(400, "Invalid fileSource");
         }
 
         // Consume download counter
@@ -150,7 +174,7 @@ export async function POST(request: NextRequest) {
           fileSource,
         });
 
-        // Get the actual file info based on source
+        // Sprint 9.2: Only return metadata, never storage keys
         if (fileSource === "response") {
           const doc = await prisma.responseDocument.findFirst({
             where: { id: fileId, tenantId: link.tenantId, caseId: link.caseId },
@@ -159,34 +183,29 @@ export async function POST(request: NextRequest) {
               version: true,
               language: true,
               fullHtml: true,
-              storageKeyPdf: true,
-              storageKeyDocx: true,
             },
           });
-          if (!doc) throw new ApiError(404, "Document not found");
+          if (!doc) throw new ApiError(404, "Not found");
 
           return NextResponse.json({
             success: true,
             file: {
               id: doc.id,
               type: "response",
-              storageKeyPdf: doc.storageKeyPdf,
-              storageKeyDocx: doc.storageKeyDocx,
               htmlAvailable: !!doc.fullHtml,
             },
           });
-        } else if (fileSource === "evidence") {
+        } else {
           const doc = await prisma.document.findFirst({
             where: { id: fileId, tenantId: link.tenantId, caseId: link.caseId, deletedAt: null },
             select: {
               id: true,
               filename: true,
               contentType: true,
-              storageKey: true,
               size: true,
             },
           });
-          if (!doc) throw new ApiError(404, "Document not found");
+          if (!doc) throw new ApiError(404, "Not found");
 
           return NextResponse.json({
             success: true,
@@ -195,13 +214,10 @@ export async function POST(request: NextRequest) {
               type: "evidence",
               filename: doc.filename,
               contentType: doc.contentType,
-              storageKey: doc.storageKey,
               size: doc.size,
             },
           });
         }
-
-        throw new ApiError(400, "Invalid fileSource");
       }
 
       default:
