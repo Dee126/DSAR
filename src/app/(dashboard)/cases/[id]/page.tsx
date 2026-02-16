@@ -9,6 +9,7 @@ import DeadlinePanel from "@/components/DeadlinePanel";
 import IdvPanel from "@/components/IdvPanel";
 import ResponsePanel from "@/components/ResponsePanel";
 import IncidentPanel from "@/components/IncidentPanel";
+import VendorPanel from "@/components/VendorPanel";
 
 /* ── Display helpers ──────────────────────────────────────────────────── */
 
@@ -214,7 +215,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   OTHER: "bg-gray-100 text-gray-600",
 };
 
-type TabKey = "overview" | "tasks" | "documents" | "communications" | "data-collection" | "legal-review" | "copilot" | "response" | "timeline" | "deadlines" | "idv" | "incidents";
+type TabKey = "overview" | "tasks" | "documents" | "communications" | "data-collection" | "legal-review" | "copilot" | "response" | "timeline" | "deadlines" | "idv" | "incidents" | "vendors";
 
 /* ── Component ────────────────────────────────────────────────────────── */
 
@@ -605,6 +606,7 @@ export default function CaseDetailPage() {
     { key: "response", label: "Response" },
     { key: "idv", label: "Identity" },
     { key: "incidents", label: "Incidents" },
+    { key: "vendors", label: "Vendors" },
     { key: "deadlines", label: "Deadlines" },
     { key: "timeline", label: "Timeline" },
   ];
@@ -1112,6 +1114,10 @@ export default function CaseDetailPage() {
 
           {activeTab === "incidents" && (
             <IncidentPanel caseId={caseId} />
+          )}
+
+          {activeTab === "vendors" && (
+            <VendorPanel caseId={caseId} />
           )}
 
           {activeTab === "deadlines" && (

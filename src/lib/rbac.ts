@@ -102,7 +102,18 @@ export type Permission =
   | "INCIDENT_LINK_DSAR"
   | "INCIDENT_ASSESSMENT"
   | "INCIDENT_AUTHORITY_EXPORT"
-  | "INCIDENT_SURGE_MANAGE";
+  | "INCIDENT_SURGE_MANAGE"
+  // P) Vendor / Processor Tracking
+  | "VENDOR_VIEW"
+  | "VENDOR_MANAGE"
+  | "VENDOR_REQUEST_CREATE"
+  | "VENDOR_REQUEST_SEND"
+  | "VENDOR_REQUEST_VIEW"
+  | "VENDOR_RESPONSE_LOG"
+  | "VENDOR_TEMPLATE_VIEW"
+  | "VENDOR_TEMPLATE_MANAGE"
+  | "VENDOR_ESCALATION_VIEW"
+  | "VENDOR_ESCALATION_MANAGE";
 
 // ─── Role → Permission Matrix ──────────────────────────────────────────────
 
@@ -131,6 +142,9 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "RESPONSE_TEMPLATE_VIEW", "RESPONSE_TEMPLATE_MANAGE",
     "INCIDENT_VIEW", "INCIDENT_CREATE", "INCIDENT_UPDATE", "INCIDENT_DELETE",
     "INCIDENT_LINK_DSAR", "INCIDENT_ASSESSMENT", "INCIDENT_AUTHORITY_EXPORT", "INCIDENT_SURGE_MANAGE",
+    "VENDOR_VIEW", "VENDOR_MANAGE", "VENDOR_REQUEST_CREATE", "VENDOR_REQUEST_SEND", "VENDOR_REQUEST_VIEW",
+    "VENDOR_RESPONSE_LOG", "VENDOR_TEMPLATE_VIEW", "VENDOR_TEMPLATE_MANAGE",
+    "VENDOR_ESCALATION_VIEW", "VENDOR_ESCALATION_MANAGE",
   ]),
 
   TENANT_ADMIN: new Set<Permission>([
@@ -157,6 +171,9 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "RESPONSE_TEMPLATE_VIEW", "RESPONSE_TEMPLATE_MANAGE",
     "INCIDENT_VIEW", "INCIDENT_CREATE", "INCIDENT_UPDATE", "INCIDENT_DELETE",
     "INCIDENT_LINK_DSAR", "INCIDENT_ASSESSMENT", "INCIDENT_AUTHORITY_EXPORT", "INCIDENT_SURGE_MANAGE",
+    "VENDOR_VIEW", "VENDOR_MANAGE", "VENDOR_REQUEST_CREATE", "VENDOR_REQUEST_SEND", "VENDOR_REQUEST_VIEW",
+    "VENDOR_RESPONSE_LOG", "VENDOR_TEMPLATE_VIEW", "VENDOR_TEMPLATE_MANAGE",
+    "VENDOR_ESCALATION_VIEW", "VENDOR_ESCALATION_MANAGE",
   ]),
 
   DPO: new Set<Permission>([
@@ -189,6 +206,9 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "RESPONSE_TEMPLATE_VIEW", "RESPONSE_TEMPLATE_MANAGE",
     "INCIDENT_VIEW", "INCIDENT_CREATE", "INCIDENT_UPDATE",
     "INCIDENT_LINK_DSAR", "INCIDENT_ASSESSMENT", "INCIDENT_AUTHORITY_EXPORT", "INCIDENT_SURGE_MANAGE",
+    "VENDOR_VIEW", "VENDOR_MANAGE", "VENDOR_REQUEST_CREATE", "VENDOR_REQUEST_SEND", "VENDOR_REQUEST_VIEW",
+    "VENDOR_RESPONSE_LOG", "VENDOR_TEMPLATE_VIEW", "VENDOR_TEMPLATE_MANAGE",
+    "VENDOR_ESCALATION_VIEW", "VENDOR_ESCALATION_MANAGE",
   ]),
 
   CASE_MANAGER: new Set<Permission>([
@@ -219,6 +239,8 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "RESPONSE_VIEW", "RESPONSE_GENERATE", "RESPONSE_EDIT", "RESPONSE_SUBMIT_REVIEW",
     "RESPONSE_TEMPLATE_VIEW",
     "INCIDENT_VIEW", "INCIDENT_LINK_DSAR",
+    "VENDOR_VIEW", "VENDOR_REQUEST_CREATE", "VENDOR_REQUEST_SEND", "VENDOR_REQUEST_VIEW",
+    "VENDOR_RESPONSE_LOG", "VENDOR_TEMPLATE_VIEW", "VENDOR_ESCALATION_VIEW",
   ]),
 
   ANALYST: new Set<Permission>([
@@ -242,6 +264,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "IDV_VIEW",
     "RESPONSE_VIEW", "RESPONSE_TEMPLATE_VIEW",
     "INCIDENT_VIEW",
+    "VENDOR_VIEW", "VENDOR_REQUEST_VIEW", "VENDOR_TEMPLATE_VIEW", "VENDOR_ESCALATION_VIEW",
   ]),
 
   AUDITOR: new Set<Permission>([
@@ -267,6 +290,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "IDV_VIEW", "IDV_VIEW_ARTIFACTS", "IDV_SETTINGS_VIEW",
     "RESPONSE_VIEW", "RESPONSE_TEMPLATE_VIEW",
     "INCIDENT_VIEW",
+    "VENDOR_VIEW", "VENDOR_REQUEST_VIEW", "VENDOR_TEMPLATE_VIEW", "VENDOR_ESCALATION_VIEW",
   ]),
 
   // Legacy roles mapped for backward compatibility
@@ -347,7 +371,8 @@ type Resource =
   | "legal_hold" | "redaction" | "governance_report"
   | "data_inventory" | "discovery_rules"
   | "response" | "response_templates"
-  | "incidents" | "incident_linkage" | "incident_surge" | "authority_export";
+  | "incidents" | "incident_linkage" | "incident_surge" | "authority_export"
+  | "vendors" | "vendor_requests" | "vendor_templates" | "vendor_escalations";
 
 type Action = "create" | "read" | "update" | "delete" | "manage";
 
@@ -487,6 +512,32 @@ const LEGACY_MAP: Record<string, Record<string, Permission[]>> = {
     create: ["INCIDENT_AUTHORITY_EXPORT"],
     read: ["INCIDENT_VIEW"],
     manage: ["INCIDENT_AUTHORITY_EXPORT"],
+  },
+  vendors: {
+    read: ["VENDOR_VIEW"],
+    create: ["VENDOR_MANAGE"],
+    update: ["VENDOR_MANAGE"],
+    delete: ["VENDOR_MANAGE"],
+    manage: ["VENDOR_MANAGE"],
+  },
+  vendor_requests: {
+    read: ["VENDOR_REQUEST_VIEW"],
+    create: ["VENDOR_REQUEST_CREATE"],
+    update: ["VENDOR_REQUEST_SEND"],
+    manage: ["VENDOR_REQUEST_CREATE", "VENDOR_REQUEST_SEND", "VENDOR_RESPONSE_LOG"],
+  },
+  vendor_templates: {
+    read: ["VENDOR_TEMPLATE_VIEW"],
+    create: ["VENDOR_TEMPLATE_MANAGE"],
+    update: ["VENDOR_TEMPLATE_MANAGE"],
+    delete: ["VENDOR_TEMPLATE_MANAGE"],
+    manage: ["VENDOR_TEMPLATE_MANAGE"],
+  },
+  vendor_escalations: {
+    read: ["VENDOR_ESCALATION_VIEW"],
+    create: ["VENDOR_ESCALATION_MANAGE"],
+    update: ["VENDOR_ESCALATION_MANAGE"],
+    manage: ["VENDOR_ESCALATION_MANAGE"],
   },
 };
 

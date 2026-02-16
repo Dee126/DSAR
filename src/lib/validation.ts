@@ -424,3 +424,114 @@ export const incidentCommunicationSchema = z.object({
   documentRef: z.string().optional(),
   sentAt: z.string().datetime().optional(),
 });
+
+// ─── Vendor / Processor Tracking Schemas ─────────────────────────────────────
+
+const VENDOR_STATUS_VALUES = ["ACTIVE", "INACTIVE", "UNDER_REVIEW"] as const;
+const VENDOR_REQUEST_STATUS_VALUES = ["DRAFT", "SENT", "ACKNOWLEDGED", "PARTIALLY_RESPONDED", "RESPONDED", "OVERDUE", "ESCALATED", "CLOSED"] as const;
+const VENDOR_REQUEST_ITEM_STATUS_VALUES = ["PENDING", "IN_PROGRESS", "COMPLETED", "FAILED", "NOT_APPLICABLE"] as const;
+const VENDOR_RESPONSE_TYPE_VALUES = ["DATA_EXTRACT", "CONFIRMATION", "PARTIAL", "REJECTION", "QUESTION"] as const;
+const VENDOR_ESCALATION_SEVERITY_VALUES = ["WARNING", "CRITICAL", "BREACH"] as const;
+
+export const createVendorSchema = z.object({
+  name: z.string().min(1, "Vendor name is required"),
+  shortCode: z.string().max(10).optional(),
+  status: z.enum(VENDOR_STATUS_VALUES).optional().default("ACTIVE"),
+  website: z.string().url().optional().or(z.literal("")),
+  headquartersCountry: z.string().optional(),
+  dpaOnFile: z.boolean().optional().default(false),
+  dpaExpiresAt: z.string().datetime().optional(),
+  contractReference: z.string().optional(),
+  notes: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+export const updateVendorSchema = createVendorSchema.partial();
+
+export const createVendorContactSchema = z.object({
+  name: z.string().min(1, "Contact name is required"),
+  email: z.string().email("Valid email required"),
+  phone: z.string().optional(),
+  role: z.string().optional(),
+  isPrimary: z.boolean().optional().default(false),
+  notes: z.string().optional(),
+});
+
+export const createVendorDpaSchema = z.object({
+  title: z.string().min(1, "DPA title is required"),
+  signedAt: z.string().datetime().optional(),
+  expiresAt: z.string().datetime().optional(),
+  sccsIncluded: z.boolean().optional().default(false),
+  subprocessorListUrl: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const createVendorRequestTemplateSchema = z.object({
+  vendorId: z.string().uuid().optional(),
+  name: z.string().min(1, "Template name is required"),
+  language: z.string().min(2).max(5).optional().default("en"),
+  dsarTypes: z.array(z.enum(DSAR_TYPE_VALUES)).min(1, "At least one DSAR type required"),
+  subject: z.string().min(1, "Subject template is required"),
+  bodyHtml: z.string().min(1, "Body template is required"),
+  placeholders: z.array(z.object({
+    key: z.string(),
+    label: z.string(),
+    description: z.string().optional(),
+  })).optional(),
+  isDefault: z.boolean().optional().default(false),
+});
+
+export const updateVendorRequestTemplateSchema = createVendorRequestTemplateSchema.partial();
+
+export const createVendorRequestSchema = z.object({
+  vendorId: z.string().uuid("Valid vendor ID required"),
+  systemId: z.string().uuid().optional(),
+  templateId: z.string().uuid().optional(),
+  subject: z.string().min(1, "Subject is required"),
+  bodyHtml: z.string().min(1, "Body is required"),
+  dueAt: z.string().datetime().optional(),
+  items: z.array(z.object({
+    systemId: z.string().uuid().optional(),
+    description: z.string().min(1, "Item description is required"),
+  })).optional().default([]),
+});
+
+export const updateVendorRequestSchema = z.object({
+  status: z.enum(VENDOR_REQUEST_STATUS_VALUES).optional(),
+  subject: z.string().optional(),
+  bodyHtml: z.string().optional(),
+  dueAt: z.string().datetime().optional(),
+  closedReason: z.string().optional(),
+});
+
+export const sendVendorRequestSchema = z.object({
+  recipientEmail: z.string().email().optional(),
+});
+
+export const createVendorResponseSchema = z.object({
+  requestId: z.string().uuid("Valid request ID required"),
+  responseType: z.enum(VENDOR_RESPONSE_TYPE_VALUES).optional().default("DATA_EXTRACT"),
+  receivedAt: z.string().datetime().optional(),
+  summary: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const updateVendorRequestItemSchema = z.object({
+  status: z.enum(VENDOR_REQUEST_ITEM_STATUS_VALUES),
+  notes: z.string().optional(),
+});
+
+export const createVendorSlaConfigSchema = z.object({
+  defaultDueDays: z.number().int().min(1).max(90).optional().default(14),
+  reminderAfterDays: z.number().int().min(1).max(60).optional().default(7),
+  escalationAfterDays: z.number().int().min(1).max(90).optional().default(14),
+  maxReminders: z.number().int().min(0).max(10).optional().default(3),
+  autoEscalate: z.boolean().optional().default(true),
+});
+
+export const createVendorEscalationSchema = z.object({
+  vendorId: z.string().uuid("Valid vendor ID required"),
+  requestId: z.string().uuid().optional(),
+  severity: z.enum(VENDOR_ESCALATION_SEVERITY_VALUES),
+  reason: z.string().min(1, "Reason is required"),
+});

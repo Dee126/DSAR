@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole, RiskLevel, EscalationSeverity, DeadlineEventType, MilestoneType, NotificationType, IdvRequestStatus, IdvMethod, IdvArtifactType, IdvDecisionOutcome, ResponseDocStatus, DeliveryMethod, IncidentSeverity, IncidentStatus, IncidentTimelineEventType, RegulatorRecordStatus, IncidentSourceType, DsarIncidentSubjectStatus } from "@prisma/client";
+import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole, RiskLevel, EscalationSeverity, DeadlineEventType, MilestoneType, NotificationType, IdvRequestStatus, IdvMethod, IdvArtifactType, IdvDecisionOutcome, ResponseDocStatus, DeliveryMethod, IncidentSeverity, IncidentStatus, IncidentTimelineEventType, RegulatorRecordStatus, IncidentSourceType, DsarIncidentSubjectStatus, VendorStatus, VendorRequestStatus, VendorResponseType, VendorEscalationSeverity } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -7,6 +7,16 @@ async function main() {
   console.log("Seeding database...");
 
   // Clean existing data (order matters for FK constraints)
+  await prisma.vendorEscalation.deleteMany();
+  await prisma.vendorSlaConfig.deleteMany();
+  await prisma.vendorResponseArtifact.deleteMany();
+  await prisma.vendorResponse.deleteMany();
+  await prisma.vendorRequestItem.deleteMany();
+  await prisma.vendorRequest.deleteMany();
+  await prisma.vendorRequestTemplate.deleteMany();
+  await prisma.vendorDpa.deleteMany();
+  await prisma.vendorContact.deleteMany();
+  await prisma.vendor.deleteMany();
   await prisma.surgeGroupMember.deleteMany();
   await prisma.surgeGroup.deleteMany();
   await prisma.dsarIncident.deleteMany();
@@ -2546,6 +2556,419 @@ async function main() {
 
   console.log("Created Incident 2: Data exfiltration suspected (HIGH / OPEN)");
   console.log("Incidents & Authority Linkage (Module 5) seed complete.");
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // MODULE 6 — Vendor / Processor Tracking Seed Data
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // ── Vendors ───────────────────────────────────────────────────────────────
+
+  const vendorSalesforce = await prisma.vendor.create({
+    data: {
+      tenantId: tenant.id,
+      name: "Salesforce Inc.",
+      shortCode: "SF",
+      status: VendorStatus.ACTIVE,
+      website: "https://salesforce.com",
+      headquartersCountry: "US",
+      dpaOnFile: true,
+      dpaExpiresAt: new Date("2027-06-30"),
+      contractReference: "DPA-2024-001",
+    },
+  });
+
+  const vendorWorkday = await prisma.vendor.create({
+    data: {
+      tenantId: tenant.id,
+      name: "Workday Inc.",
+      shortCode: "WD",
+      status: VendorStatus.ACTIVE,
+      website: "https://workday.com",
+      headquartersCountry: "US",
+      dpaOnFile: true,
+      dpaExpiresAt: new Date("2027-03-15"),
+      contractReference: "DPA-2024-002",
+    },
+  });
+
+  const vendorMixpanel = await prisma.vendor.create({
+    data: {
+      tenantId: tenant.id,
+      name: "Mixpanel Inc.",
+      shortCode: "MX",
+      status: VendorStatus.ACTIVE,
+      website: "https://mixpanel.com",
+      headquartersCountry: "US",
+      dpaOnFile: true,
+      contractReference: "DPA-2024-003",
+    },
+  });
+
+  const vendorMailchimp = await prisma.vendor.create({
+    data: {
+      tenantId: tenant.id,
+      name: "Intuit (Mailchimp)",
+      shortCode: "MC",
+      status: VendorStatus.ACTIVE,
+      website: "https://mailchimp.com",
+      headquartersCountry: "US",
+      dpaOnFile: true,
+      contractReference: "DPA-2024-004",
+    },
+  });
+
+  const vendorMicrosoft = await prisma.vendor.create({
+    data: {
+      tenantId: tenant.id,
+      name: "Microsoft Corporation",
+      shortCode: "MS",
+      status: VendorStatus.ACTIVE,
+      website: "https://microsoft.com",
+      headquartersCountry: "US",
+      dpaOnFile: true,
+      dpaExpiresAt: new Date("2028-01-01"),
+      contractReference: "DPA-2024-005",
+    },
+  });
+
+  const vendorSap = await prisma.vendor.create({
+    data: {
+      tenantId: tenant.id,
+      name: "SAP SE",
+      shortCode: "SAP",
+      status: VendorStatus.ACTIVE,
+      website: "https://sap.com",
+      headquartersCountry: "DE",
+      dpaOnFile: true,
+      contractReference: "DPA-2024-006",
+    },
+  });
+
+  const vendorZendesk = await prisma.vendor.create({
+    data: {
+      tenantId: tenant.id,
+      name: "Zendesk Inc.",
+      shortCode: "ZD",
+      status: VendorStatus.ACTIVE,
+      website: "https://zendesk.com",
+      headquartersCountry: "US",
+      dpaOnFile: true,
+      contractReference: "DPA-2024-007",
+    },
+  });
+
+  const vendorOkta = await prisma.vendor.create({
+    data: {
+      tenantId: tenant.id,
+      name: "Okta Inc.",
+      shortCode: "OK",
+      status: VendorStatus.ACTIVE,
+      website: "https://okta.com",
+      headquartersCountry: "US",
+      dpaOnFile: true,
+      contractReference: "DPA-2024-008",
+    },
+  });
+
+  const vendorHubspot = await prisma.vendor.create({
+    data: {
+      tenantId: tenant.id,
+      name: "HubSpot Inc.",
+      shortCode: "HS",
+      status: VendorStatus.UNDER_REVIEW,
+      website: "https://hubspot.com",
+      headquartersCountry: "US",
+      dpaOnFile: false,
+      notes: "DPA renewal pending — expiry date 2025-12-31. Under review for GDPR compliance updates.",
+    },
+  });
+
+  const vendorAws = await prisma.vendor.create({
+    data: {
+      tenantId: tenant.id,
+      name: "Amazon Web Services",
+      shortCode: "AWS",
+      status: VendorStatus.ACTIVE,
+      website: "https://aws.amazon.com",
+      headquartersCountry: "US",
+      dpaOnFile: true,
+    },
+  });
+
+  console.log("Created 10 vendors");
+
+  // ── Vendor Contacts ──────────────────────────────────────────────────────
+
+  await prisma.vendorContact.createMany({
+    data: [
+      { tenantId: tenant.id, vendorId: vendorSalesforce.id, name: "Sarah Chen", email: "privacy@salesforce.com", role: "Privacy Lead", isPrimary: true },
+      { tenantId: tenant.id, vendorId: vendorSalesforce.id, name: "Account Team", email: "account@salesforce.com", role: "Account Manager", isPrimary: false },
+      { tenantId: tenant.id, vendorId: vendorWorkday.id, name: "Mark Taylor", email: "dpo@workday.com", role: "DPO", isPrimary: true },
+      { tenantId: tenant.id, vendorId: vendorMixpanel.id, name: "Privacy Team", email: "privacy@mixpanel.com", role: "Privacy", isPrimary: true },
+      { tenantId: tenant.id, vendorId: vendorMailchimp.id, name: "Compliance Desk", email: "gdpr@mailchimp.com", role: "Compliance", isPrimary: true },
+      { tenantId: tenant.id, vendorId: vendorMicrosoft.id, name: "GDPR Response", email: "gdpr@microsoft.com", role: "DPO Office", isPrimary: true },
+      { tenantId: tenant.id, vendorId: vendorSap.id, name: "Datenschutz Team", email: "datenschutz@sap.com", role: "DPO", isPrimary: true },
+      { tenantId: tenant.id, vendorId: vendorZendesk.id, name: "Privacy Office", email: "privacy@zendesk.com", role: "Privacy Lead", isPrimary: true },
+      { tenantId: tenant.id, vendorId: vendorOkta.id, name: "Security Team", email: "security@okta.com", role: "Security", isPrimary: true },
+      { tenantId: tenant.id, vendorId: vendorHubspot.id, name: "Legal Dept", email: "legal@hubspot.com", role: "Legal", isPrimary: true },
+      { tenantId: tenant.id, vendorId: vendorAws.id, name: "Data Privacy", email: "privacy@aws.amazon.com", role: "Privacy", isPrimary: true },
+    ],
+  });
+
+  console.log("Created vendor contacts");
+
+  // ── Vendor DPAs ──────────────────────────────────────────────────────────
+
+  await prisma.vendorDpa.createMany({
+    data: [
+      { tenantId: tenant.id, vendorId: vendorSalesforce.id, title: "Salesforce DPA v3.1", signedAt: new Date("2024-01-15"), expiresAt: new Date("2027-06-30"), sccsIncluded: true },
+      { tenantId: tenant.id, vendorId: vendorWorkday.id, title: "Workday Data Processing Addendum", signedAt: new Date("2024-03-01"), expiresAt: new Date("2027-03-15"), sccsIncluded: true },
+      { tenantId: tenant.id, vendorId: vendorMicrosoft.id, title: "Microsoft Products & Services DPA", signedAt: new Date("2024-02-01"), expiresAt: new Date("2028-01-01"), sccsIncluded: true },
+      { tenantId: tenant.id, vendorId: vendorSap.id, title: "SAP Cloud DPA (DE)", signedAt: new Date("2024-04-15"), sccsIncluded: false, notes: "EU data residency — no third country transfer" },
+      { tenantId: tenant.id, vendorId: vendorZendesk.id, title: "Zendesk DPA", signedAt: new Date("2024-05-01"), sccsIncluded: true },
+      { tenantId: tenant.id, vendorId: vendorAws.id, title: "AWS GDPR DPA", signedAt: new Date("2024-06-01"), sccsIncluded: true },
+    ],
+  });
+
+  console.log("Created vendor DPAs");
+
+  // ── Link SystemProcessors to Vendors ─────────────────────────────────────
+
+  // Update existing system processors to link to normalized vendors
+  await prisma.systemProcessor.updateMany({ where: { tenantId: tenant.id, vendorName: "Salesforce Inc." }, data: { vendorId: vendorSalesforce.id } });
+  await prisma.systemProcessor.updateMany({ where: { tenantId: tenant.id, vendorName: "Workday Inc." }, data: { vendorId: vendorWorkday.id } });
+  await prisma.systemProcessor.updateMany({ where: { tenantId: tenant.id, vendorName: "Mixpanel Inc." }, data: { vendorId: vendorMixpanel.id } });
+  await prisma.systemProcessor.updateMany({ where: { tenantId: tenant.id, vendorName: "Intuit (Mailchimp)" }, data: { vendorId: vendorMailchimp.id } });
+  await prisma.systemProcessor.updateMany({ where: { tenantId: tenant.id, vendorName: "Microsoft Corporation" }, data: { vendorId: vendorMicrosoft.id } });
+  await prisma.systemProcessor.updateMany({ where: { tenantId: tenant.id, vendorName: "SAP SE" }, data: { vendorId: vendorSap.id } });
+  await prisma.systemProcessor.updateMany({ where: { tenantId: tenant.id, vendorName: "Zendesk Inc." }, data: { vendorId: vendorZendesk.id } });
+  await prisma.systemProcessor.updateMany({ where: { tenantId: tenant.id, vendorName: "AWS (Zendesk hosting)" }, data: { vendorId: vendorAws.id } });
+  await prisma.systemProcessor.updateMany({ where: { tenantId: tenant.id, vendorName: "Okta Inc." }, data: { vendorId: vendorOkta.id } });
+  await prisma.systemProcessor.updateMany({ where: { tenantId: tenant.id, vendorName: "HubSpot Inc." }, data: { vendorId: vendorHubspot.id } });
+
+  console.log("Linked system processors to vendors");
+
+  // ── Vendor SLA Configs ───────────────────────────────────────────────────
+
+  await prisma.vendorSlaConfig.createMany({
+    data: [
+      { tenantId: tenant.id, vendorId: vendorSalesforce.id, defaultDueDays: 10, reminderAfterDays: 5, escalationAfterDays: 10, maxReminders: 2, autoEscalate: true },
+      { tenantId: tenant.id, vendorId: vendorWorkday.id, defaultDueDays: 14, reminderAfterDays: 7, escalationAfterDays: 14, maxReminders: 3, autoEscalate: true },
+      { tenantId: tenant.id, vendorId: vendorSap.id, defaultDueDays: 7, reminderAfterDays: 3, escalationAfterDays: 7, maxReminders: 2, autoEscalate: true },
+    ],
+  });
+
+  console.log("Created vendor SLA configs");
+
+  // ── Vendor Request Templates ─────────────────────────────────────────────
+
+  await prisma.vendorRequestTemplate.create({
+    data: {
+      tenantId: tenant.id,
+      name: "Standard DSAR Data Request (EN)",
+      language: "en",
+      dsarTypes: [DSARType.ACCESS, DSARType.PORTABILITY],
+      subject: "Data Subject Access Request – {{caseNumber}}",
+      bodyHtml: `<p>Dear {{vendorName}} Privacy Team,</p>
+<p>We are processing a Data Subject Access Request (case {{caseNumber}}) under the GDPR and require your assistance.</p>
+<p><strong>Data Subject:</strong> {{subjectName}}<br/><strong>Request Type:</strong> {{dsarType}}<br/><strong>Deadline:</strong> {{dueDate}}</p>
+<p>Please provide all personal data held about this individual within the agreed SLA period.</p>
+<p>Best regards,<br/>{{tenantName}} Privacy Team</p>`,
+      placeholders: [
+        { key: "caseNumber", label: "Case Number", description: "DSAR case reference" },
+        { key: "vendorName", label: "Vendor Name" },
+        { key: "subjectName", label: "Data Subject Name" },
+        { key: "dsarType", label: "DSAR Type" },
+        { key: "dueDate", label: "Due Date" },
+        { key: "tenantName", label: "Organization Name" },
+      ],
+      isDefault: true,
+    },
+  });
+
+  await prisma.vendorRequestTemplate.create({
+    data: {
+      tenantId: tenant.id,
+      name: "Standardanfrage Betroffenenanfrage (DE)",
+      language: "de",
+      dsarTypes: [DSARType.ACCESS, DSARType.ERASURE, DSARType.PORTABILITY],
+      subject: "Betroffenenanfrage – {{caseNumber}}",
+      bodyHtml: `<p>Sehr geehrtes {{vendorName}} Datenschutz-Team,</p>
+<p>Wir bearbeiten eine Betroffenenanfrage (Aktenzeichen {{caseNumber}}) gemäß DSGVO und benötigen Ihre Unterstützung.</p>
+<p><strong>Betroffene Person:</strong> {{subjectName}}<br/><strong>Art der Anfrage:</strong> {{dsarType}}<br/><strong>Frist:</strong> {{dueDate}}</p>
+<p>Bitte übermitteln Sie alle personenbezogenen Daten dieser Person innerhalb der vereinbarten SLA-Frist.</p>
+<p>Mit freundlichen Grüßen,<br/>{{tenantName}} Datenschutzteam</p>`,
+      placeholders: [
+        { key: "caseNumber", label: "Aktenzeichen" },
+        { key: "vendorName", label: "Auftragsverarbeiter" },
+        { key: "subjectName", label: "Betroffene Person" },
+        { key: "dsarType", label: "Anfrageart" },
+        { key: "dueDate", label: "Frist" },
+        { key: "tenantName", label: "Organisation" },
+      ],
+      isDefault: false,
+    },
+  });
+
+  await prisma.vendorRequestTemplate.create({
+    data: {
+      tenantId: tenant.id,
+      vendorId: vendorSalesforce.id,
+      name: "Salesforce-Specific Data Export Request",
+      language: "en",
+      dsarTypes: [DSARType.ACCESS],
+      subject: "Salesforce Data Export – {{caseNumber}}",
+      bodyHtml: `<p>Dear Salesforce Privacy Team,</p>
+<p>Please export the following data for DSAR case {{caseNumber}}:</p>
+<ul><li>Contact records matching: {{subjectName}}</li><li>Activity history</li><li>Case attachments</li></ul>
+<p>Please deliver via Salesforce Data Export API or encrypted file transfer.</p>
+<p>Best regards,<br/>{{tenantName}}</p>`,
+      placeholders: [
+        { key: "caseNumber", label: "Case Number" },
+        { key: "subjectName", label: "Data Subject Name" },
+        { key: "tenantName", label: "Organization Name" },
+      ],
+      isDefault: false,
+    },
+  });
+
+  console.log("Created vendor request templates");
+
+  // ── Demo Vendor Requests ─────────────────────────────────────────────────
+
+  // Case 1 — vendor request to Salesforce (SENT, approaching due)
+  const vendorReq1 = await prisma.vendorRequest.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case1.id,
+      vendorId: vendorSalesforce.id,
+      systemId: crmSystem.id,
+      status: VendorRequestStatus.SENT,
+      subject: "Data Subject Access Request – " + case1.caseNumber,
+      bodyHtml: "<p>Dear Salesforce Privacy Team,</p><p>Please provide all personal data for John Smith (john.smith@example.com).</p>",
+      sentAt: daysAgo(7),
+      dueAt: daysFromNow(3),
+      createdByUserId: caseManager.id,
+      items: {
+        create: [
+          { tenantId: tenant.id, systemId: crmSystem.id, description: "Export contact record and activity history from Salesforce CRM", status: "IN_PROGRESS" },
+        ],
+      },
+    },
+  });
+
+  // Case 1 — vendor request to Mixpanel (RESPONDED)
+  const vendorReq2 = await prisma.vendorRequest.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case1.id,
+      vendorId: vendorMixpanel.id,
+      systemId: analyticsSystem.id,
+      status: VendorRequestStatus.RESPONDED,
+      subject: "Data Subject Access Request – " + case1.caseNumber,
+      bodyHtml: "<p>Dear Mixpanel Privacy Team,</p><p>Please provide analytics data for user john.smith@example.com.</p>",
+      sentAt: daysAgo(10),
+      dueAt: daysAgo(3),
+      createdByUserId: caseManager.id,
+      items: {
+        create: [
+          { tenantId: tenant.id, systemId: analyticsSystem.id, description: "Export user events and profile data from Mixpanel", status: "COMPLETED", completedAt: daysAgo(2) },
+        ],
+      },
+    },
+  });
+
+  // Add vendor response for Mixpanel
+  await prisma.vendorResponse.create({
+    data: {
+      tenantId: tenant.id,
+      requestId: vendorReq2.id,
+      responseType: VendorResponseType.DATA_EXTRACT,
+      receivedAt: daysAgo(2),
+      summary: "Full user event export (1,247 events) and profile data provided as JSON",
+      createdByUserId: contributor.id,
+    },
+  });
+
+  // Case 2 — vendor request to SAP (OVERDUE)
+  const vendorReq3 = await prisma.vendorRequest.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case2.id,
+      vendorId: vendorSap.id,
+      systemId: financeSystem.id,
+      status: VendorRequestStatus.OVERDUE,
+      subject: "Erasure Request – " + case2.caseNumber,
+      bodyHtml: "<p>Dear SAP Datenschutz Team,</p><p>We require confirmation of data erasure for Jane Doe across all SAP modules.</p>",
+      sentAt: daysAgo(20),
+      dueAt: daysAgo(6),
+      reminderCount: 2,
+      lastReminderAt: daysAgo(3),
+      createdByUserId: dpo.id,
+      items: {
+        create: [
+          { tenantId: tenant.id, systemId: financeSystem.id, description: "Confirm erasure of financial records for data subject", status: "PENDING" },
+        ],
+      },
+    },
+  });
+
+  // Escalation for overdue SAP request
+  await prisma.vendorEscalation.create({
+    data: {
+      tenantId: tenant.id,
+      vendorId: vendorSap.id,
+      requestId: vendorReq3.id,
+      severity: VendorEscalationSeverity.WARNING,
+      reason: "SAP erasure request overdue by 6 days. Two reminders sent without response.",
+      createdByUserId: dpo.id,
+    },
+  });
+
+  // Case 3 — vendor request to Workday (DRAFT — not yet sent)
+  await prisma.vendorRequest.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case3.id,
+      vendorId: vendorWorkday.id,
+      systemId: hrSystem.id,
+      status: VendorRequestStatus.DRAFT,
+      subject: "Rectification Request – " + case3.caseNumber,
+      bodyHtml: "<p>Dear Workday DPO,</p><p>We have received a request to rectify the address and phone number for Robert Johnson in Workday HR.</p>",
+      dueAt: daysFromNow(14),
+      createdByUserId: admin.id,
+      items: {
+        create: [
+          { tenantId: tenant.id, systemId: hrSystem.id, description: "Update employee record: address and phone number correction", status: "PENDING" },
+        ],
+      },
+    },
+  });
+
+  // Case 4 — vendor request to Microsoft (ACKNOWLEDGED)
+  await prisma.vendorRequest.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case4.id,
+      vendorId: vendorMicrosoft.id,
+      systemId: m365System.id,
+      status: VendorRequestStatus.ACKNOWLEDGED,
+      subject: "Data Subject Access Request – " + case4.caseNumber,
+      bodyHtml: "<p>Dear Microsoft GDPR Team,</p><p>Please export all M365 data for the data subject (Emily Wilson).</p>",
+      sentAt: daysAgo(5),
+      acknowledgedAt: daysAgo(3),
+      dueAt: daysFromNow(9),
+      createdByUserId: caseManager.id,
+      items: {
+        create: [
+          { tenantId: tenant.id, systemId: m365System.id, description: "Export mailbox, OneDrive, and Teams data for data subject", status: "IN_PROGRESS" },
+        ],
+      },
+    },
+  });
+
+  console.log("Created demo vendor requests for cases 1-4");
+  console.log("Vendor / Processor Tracking (Module 6) seed complete.");
 }
 
 main()

@@ -421,6 +421,16 @@ model Tenant {
   surgeGroups          SurgeGroup[]
   surgeGroupMembers    SurgeGroupMember[]
   authorityExportRuns  AuthorityExportRun[]
+  vendors              Vendor[]
+  vendorContacts       VendorContact[]
+  vendorDpas           VendorDpa[]
+  vendorRequestTemplates VendorRequestTemplate[]
+  vendorRequests       VendorRequest[]
+  vendorRequestItems   VendorRequestItem[]
+  vendorResponses      VendorResponse[]
+  vendorResponseArtifacts VendorResponseArtifact[]
+  vendorSlaConfigs     VendorSlaConfig[]
+  vendorEscalations    VendorEscalation[]
 
   @@map("tenants")
 }
@@ -476,6 +486,9 @@ model User {
   dsarIncidentsLinked   DsarIncident[]      @relation("DsarIncidentLinkedBy")
   surgeGroupsCreated    SurgeGroup[]        @relation("SurgeGroupCreatedBy")
   authorityExportRuns   AuthorityExportRun[] @relation("AuthorityExportCreatedBy")
+  vendorRequestsCreated VendorRequest[]     @relation("VendorRequestCreatedBy")
+  vendorResponsesCreated VendorResponse[]   @relation("VendorResponseCreatedBy")
+  vendorEscalationsCreated VendorEscalation[] @relation("VendorEscalationCreatedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -553,6 +566,7 @@ model DSARCase {
   responseDocuments   ResponseDocument[]
   dsarIncidents       DsarIncident[]
   surgeGroupMembers   SurgeGroupMember[]
+  vendorRequests      VendorRequest[]
 
   @@unique([tenantId, caseNumber])
   @@index([tenantId])
@@ -710,6 +724,8 @@ model System {
   discoveryRules      DiscoveryRule[]
   caseSystemLinks     CaseSystemLink[]
   incidentSystems     IncidentSystem[]
+  vendorRequests      VendorRequest[]   @relation("VendorRequestSystem")
+  vendorRequestItems  VendorRequestItem[] @relation("VendorRequestItemSystem")
 
   @@index([tenantId])
   @@map("systems")
@@ -750,6 +766,7 @@ model SystemProcessor {
   tenantId          String
   systemId          String
   vendorName        String
+  vendorId          String?       // Normalized vendor reference
   role              ProcessorRole @default(PROCESSOR)
   contractReference String?
   dpaOnFile         Boolean       @default(false)
@@ -757,11 +774,13 @@ model SystemProcessor {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  system System @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  system System  @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  vendor Vendor? @relation("VendorProcessors", fields: [vendorId], references: [id])
 
   @@index([tenantId])
   @@index([systemId])
+  @@index([vendorId])
   @@map("system_processors")
 }
 
@@ -2026,4 +2045,276 @@ model AuthorityExportRun {
 
   @@index([tenantId, incidentId])
   @@map("authority_export_runs")
+}
+
+// ─── Vendor / Processor Tracking Enums ──────────────────────────────────────
+
+enum VendorStatus {
+  ACTIVE
+  INACTIVE
+  UNDER_REVIEW
+}
+
+enum VendorRequestStatus {
+  DRAFT
+  SENT
+  ACKNOWLEDGED
+  PARTIALLY_RESPONDED
+  RESPONDED
+  OVERDUE
+  ESCALATED
+  CLOSED
+}
+
+enum VendorRequestItemStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  NOT_APPLICABLE
+}
+
+enum VendorResponseType {
+  DATA_EXTRACT
+  CONFIRMATION
+  PARTIAL
+  REJECTION
+  QUESTION
+}
+
+enum VendorEscalationSeverity {
+  WARNING
+  CRITICAL
+  BREACH
+}
+
+// ─── Vendor / Processor Tracking Models ─────────────────────────────────────
+
+model Vendor {
+  id                String       @id @default(uuid())
+  tenantId          String
+  name              String
+  shortCode         String?      // e.g. "SF", "WD", "MX"
+  status            VendorStatus @default(ACTIVE)
+  website           String?
+  headquartersCountry String?
+  dpaOnFile         Boolean      @default(false)
+  dpaExpiresAt      DateTime?
+  contractReference String?
+  notes             String?
+  tags              Json?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contacts        VendorContact[]
+  dpas            VendorDpa[]
+  systemProcessors SystemProcessor[]   @relation("VendorProcessors")
+  requests        VendorRequest[]
+  slaConfig       VendorSlaConfig?
+  escalations     VendorEscalation[]
+  templates       VendorRequestTemplate[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("vendors")
+}
+
+model VendorContact {
+  id        String   @id @default(uuid())
+  tenantId  String
+  vendorId  String
+  name      String
+  email     String
+  phone     String?
+  role      String?  // e.g. "DPO", "Privacy Lead", "Account Manager"
+  isPrimary Boolean  @default(false)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, vendorId])
+  @@map("vendor_contacts")
+}
+
+model VendorDpa {
+  id                String    @id @default(uuid())
+  tenantId          String
+  vendorId          String
+  title             String
+  signedAt          DateTime?
+  expiresAt         DateTime?
+  storageKey        String?   // link to uploaded DPA document
+  sccsIncluded      Boolean   @default(false)  // Standard Contractual Clauses
+  subprocessorListUrl String?
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, vendorId])
+  @@map("vendor_dpas")
+}
+
+model VendorRequestTemplate {
+  id           String    @id @default(uuid())
+  tenantId     String
+  vendorId     String?   // null = generic template
+  name         String
+  language     String    @default("en")
+  dsarTypes    DSARType[]
+  subject      String    // email subject template
+  bodyHtml     String    // HTML body template with {{placeholders}}
+  placeholders Json?     // array of { key, label, description }
+  isDefault    Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor  Vendor? @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, vendorId])
+  @@map("vendor_request_templates")
+}
+
+model VendorRequest {
+  id                 String              @id @default(uuid())
+  tenantId           String
+  caseId             String
+  vendorId           String
+  systemId           String?             // which system triggered this
+  status             VendorRequestStatus @default(DRAFT)
+  templateId         String?
+  subject            String
+  bodyHtml           String
+  sentAt             DateTime?
+  acknowledgedAt     DateTime?
+  dueAt              DateTime?
+  closedAt           DateTime?
+  closedReason       String?
+  reminderCount      Int                 @default(0)
+  lastReminderAt     DateTime?
+  createdByUserId    String
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  tenant    Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case      DSARCase                @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  vendor    Vendor                  @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  system    System?                 @relation("VendorRequestSystem", fields: [systemId], references: [id])
+  createdBy User                    @relation("VendorRequestCreatedBy", fields: [createdByUserId], references: [id])
+  items     VendorRequestItem[]
+  responses VendorResponse[]
+
+  @@index([tenantId, caseId])
+  @@index([tenantId, vendorId])
+  @@index([tenantId, status])
+  @@map("vendor_requests")
+}
+
+model VendorRequestItem {
+  id          String                  @id @default(uuid())
+  tenantId    String
+  requestId   String
+  systemId    String?
+  description String
+  status      VendorRequestItemStatus @default(PENDING)
+  notes       String?
+  completedAt DateTime?
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+
+  tenant  Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  request VendorRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  system  System?       @relation("VendorRequestItemSystem", fields: [systemId], references: [id])
+
+  @@index([tenantId, requestId])
+  @@map("vendor_request_items")
+}
+
+model VendorResponse {
+  id              String             @id @default(uuid())
+  tenantId        String
+  requestId       String
+  responseType    VendorResponseType @default(DATA_EXTRACT)
+  receivedAt      DateTime           @default(now())
+  summary         String?
+  notes           String?
+  createdByUserId String
+  createdAt       DateTime           @default(now())
+
+  tenant    Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  request   VendorRequest            @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  createdBy User                     @relation("VendorResponseCreatedBy", fields: [createdByUserId], references: [id])
+  artifacts VendorResponseArtifact[]
+
+  @@index([tenantId, requestId])
+  @@map("vendor_responses")
+}
+
+model VendorResponseArtifact {
+  id          String   @id @default(uuid())
+  tenantId    String
+  responseId  String
+  filename    String
+  contentType String
+  storageKey  String
+  sizeBytes   Int
+  sha256Hash  String?
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  response VendorResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, responseId])
+  @@map("vendor_response_artifacts")
+}
+
+model VendorSlaConfig {
+  id                    String   @id @default(uuid())
+  tenantId              String
+  vendorId              String   @unique
+  defaultDueDays        Int      @default(14)
+  reminderAfterDays     Int      @default(7)
+  escalationAfterDays   Int      @default(14)
+  maxReminders          Int      @default(3)
+  autoEscalate          Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("vendor_sla_configs")
+}
+
+model VendorEscalation {
+  id              String                   @id @default(uuid())
+  tenantId        String
+  vendorId        String
+  requestId       String?
+  severity        VendorEscalationSeverity
+  reason          String
+  acknowledged    Boolean                  @default(false)
+  acknowledgedAt  DateTime?
+  resolvedAt      DateTime?
+  createdByUserId String?
+  createdAt       DateTime                 @default(now())
+
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor    Vendor         @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  createdBy User?          @relation("VendorEscalationCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([tenantId, vendorId])
+  @@index([tenantId, severity])
+  @@map("vendor_escalations")
 }
