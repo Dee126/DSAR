@@ -16,6 +16,7 @@
     "test:e2e": "playwright test",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
+    "reset:test-user": "npx tsx scripts/reset-test-user.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

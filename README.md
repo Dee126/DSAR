@@ -166,6 +166,28 @@ Every transition requires a reason and is logged in the audit trail.
 
 All endpoints enforce authentication, tenant isolation, and RBAC.
 
+## Reset Test User (Demo/Dev only)
+
+If you cannot log in, reset the test user with:
+
+```bash
+npm run reset:test-user
+```
+
+**Required ENV**: `DATABASE_URL` must point to your PostgreSQL database.
+
+This will upsert the following user (password is always reset):
+
+| Email | Password | Role |
+|---|---|---|
+| `daniel.schormann@gmail.com` | `admin123` | TENANT_ADMIN |
+
+**Safety**: The script refuses to run when `NODE_ENV=production` or `VERCEL_ENV=production`.
+
+The build process (`npm run build`) also ensures this user exists via `prisma/ensure-admin.mjs`, so a fresh Vercel deploy will fix the login as well.
+
+For the full auth architecture diagnosis, see [`docs/auth-diagnosis.md`](docs/auth-diagnosis.md).
+
 ## Running Tests
 
 ### Unit Tests

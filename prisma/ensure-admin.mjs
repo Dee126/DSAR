@@ -24,12 +24,12 @@ async function main() {
     },
   });
 
-  // 2. Ensure admin user exists
+  // 2. Ensure admin user exists (always reset password on deploy)
   const passwordHash = await bcrypt.hash("admin123", 12);
 
   await prisma.user.upsert({
     where: { tenantId_email: { tenantId, email: "daniel.schormann@gmail.com" } },
-    update: {},
+    update: { passwordHash, role: "TENANT_ADMIN" },
     create: {
       tenantId,
       email: "daniel.schormann@gmail.com",
