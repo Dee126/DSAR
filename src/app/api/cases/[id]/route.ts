@@ -45,6 +45,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           orderBy: { createdAt: "desc" },
         },
         documents: {
+          where: { deletedAt: null },
           include: {
             uploadedBy: {
               select: { id: true, name: true, email: true },
@@ -59,6 +60,25 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             },
           },
           orderBy: { createdAt: "asc" },
+        },
+        communicationLogs: {
+          orderBy: { sentAt: "desc" },
+        },
+        dataCollectionItems: {
+          include: {
+            system: {
+              select: { id: true, name: true, description: true, owner: true },
+            },
+          },
+          orderBy: { createdAt: "asc" },
+        },
+        legalReviews: {
+          include: {
+            reviewer: {
+              select: { id: true, name: true, email: true },
+            },
+          },
+          orderBy: { createdAt: "desc" },
         },
       },
     });

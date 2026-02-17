@@ -143,7 +143,7 @@ export default function NewCasePage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-4 md:space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Link
@@ -165,7 +165,7 @@ export default function NewCasePage() {
           </svg>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Create New Case</h1>
+          <h1 className="text-xl font-bold text-gray-900 md:text-2xl">Create New Case</h1>
           <p className="mt-1 text-sm text-gray-500">
             Submit a new data subject access request
           </p>
@@ -502,11 +502,11 @@ export default function NewCasePage() {
         </div>
 
         {/* Submit */}
-        <div className="flex items-center justify-end gap-3">
-          <Link href="/cases" className="btn-secondary">
+        <div className="sticky bottom-16 flex items-center justify-end gap-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm md:static md:border-0 md:p-0 md:shadow-none">
+          <Link href="/cases" className="btn-secondary flex-1 sm:flex-none">
             Cancel
           </Link>
-          <button type="submit" disabled={submitting} className="btn-primary">
+          <button type="submit" disabled={submitting} className="btn-primary flex-1 sm:flex-none">
             {submitting ? (
               <span className="flex items-center gap-2">
                 <svg

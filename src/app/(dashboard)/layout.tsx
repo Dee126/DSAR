@@ -1,17 +1,52 @@
 "use client";
 
+import { useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
-import Sidebar from "@/components/Sidebar";
+import Sidebar, { NAV_ITEMS } from "@/components/Sidebar";
+import { MobileHeader, MobileDrawer, BottomNav } from "@/components/MobileNav";
+import NotificationBell from "@/components/NotificationBell";
+
+/* ── Page title from pathname ──────────────────────────────────────── */
+
+const PAGE_TITLES: Record<string, string> = {
+  "/dashboard": "Dashboard",
+  "/cases": "Cases",
+  "/cases/new": "New Case",
+  "/tasks": "Tasks",
+  "/documents": "Documents",
+  "/copilot": "Privacy Copilot",
+  "/data-inventory": "Data Inventory",
+  "/integrations": "Integrations",
+  "/governance": "Governance",
+  "/governance/sla": "SLA Configuration",
+  "/settings": "Settings",
+};
+
+function getPageTitle(pathname: string): string {
+  if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
+  if (pathname.startsWith("/cases/")) return "Case Detail";
+  if (pathname.startsWith("/data-inventory/")) return "System Detail";
+  if (pathname.startsWith("/governance/")) return "Governance";
+  if (pathname.startsWith("/integrations/")) return "Integration";
+  return "PrivacyPilot";
+}
+
+/* ── Layout ────────────────────────────────────────────────────────── */
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const { data: session, status } = useSession();
   const router = useRouter();
+  const pathname = usePathname();
+
+  const handleDrawerClose = useCallback(() => setDrawerOpen(false), []);
+  const handleDrawerOpen = useCallback(() => setDrawerOpen(true), []);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -52,14 +87,32 @@ export default function DashboardLayout({
     return null;
   }
 
+  const pageTitle = getPageTitle(pathname);
+
   return (
     <div className="flex min-h-screen bg-gray-50">
-      <div className="fixed inset-y-0 left-0 z-30 w-64">
+      {/* Desktop sidebar — hidden on mobile */}
+      <div className="fixed inset-y-0 left-0 z-30 hidden w-64 md:block">
         <Sidebar />
       </div>
-      <main className="ml-64 flex-1">
-        <div className="p-8">{children}</div>
+
+      {/* Mobile header — visible below md */}
+      <MobileHeader onMenuOpen={handleDrawerOpen} pageTitle={pageTitle} action={<NotificationBell />} />
+
+      {/* Mobile drawer overlay */}
+      <MobileDrawer open={drawerOpen} onClose={handleDrawerClose} navItems={NAV_ITEMS} />
+
+      {/* Main content */}
+      <main className="w-full flex-1 md:ml-64">
+        {/* Desktop notification bell */}
+        <div className="hidden md:flex items-center justify-end px-8 pt-4 pb-0">
+          <NotificationBell />
+        </div>
+        <div className="px-4 pb-24 pt-[4.25rem] md:px-8 md:pt-2 md:pb-8">{children}</div>
       </main>
+
+      {/* Mobile bottom nav — visible below md */}
+      <BottomNav />
     </div>
   );
 }

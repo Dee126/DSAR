@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     checkPermission(user.role, "documents", "read");
 
     const documents = await prisma.document.findMany({
-      where: { tenantId: user.tenantId },
+      where: { tenantId: user.tenantId, deletedAt: null },
       include: {
         uploadedBy: {
           select: { id: true, name: true, email: true },
