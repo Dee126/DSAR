@@ -531,6 +531,10 @@ model Tenant {
   connectorSecrets         ConnectorSecret[]
   connectorRuns            ConnectorRun[]
 
+  // ─── Sprint 9.5: Feature Flags ───
+  featureFlags             FeatureFlag[]
+  featureFlagAudits        FeatureFlagAudit[]
+
   @@map("tenants")
 }
 
@@ -3763,4 +3767,37 @@ model ConnectorRun {
   @@index([caseId])
   @@index([tenantId, status])
   @@map("connector_runs")
+}
+
+// ─── Feature Flags (Sprint 9.5) ─────────────────────────────────────────
+
+model FeatureFlag {
+  id         String   @id @default(uuid())
+  tenantId   String
+  key        String
+  enabled    Boolean  @default(false)
+  configJson Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, key])
+  @@index([tenantId])
+  @@map("feature_flags")
+}
+
+model FeatureFlagAudit {
+  id              String   @id @default(uuid())
+  tenantId        String
+  key             String
+  previousEnabled Boolean
+  newEnabled      Boolean
+  changedByUserId String
+  createdAt       DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@map("feature_flag_audits")
 }

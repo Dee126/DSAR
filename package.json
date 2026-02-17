@@ -11,9 +11,12 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:seed": "npx tsx prisma/seed.ts",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:ci": "vitest run --reporter=default",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "migrate:preflight": "npx tsx scripts/migrate-preflight.ts",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "postinstall": "prisma generate"
