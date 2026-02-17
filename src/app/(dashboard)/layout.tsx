@@ -94,10 +94,18 @@ export default function DashboardLayout({
 
   return (
     <div className="flex min-h-screen bg-gray-50">
+      {/* Skip to content link for keyboard users */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[200] focus:rounded-md focus:bg-brand-600 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:shadow-lg"
+      >
+        Skip to main content
+      </a>
+
       {/* Desktop sidebar — hidden on mobile */}
-      <div className="fixed inset-y-0 left-0 z-30 hidden w-64 md:block">
+      <nav className="fixed inset-y-0 left-0 z-30 hidden w-64 md:block" aria-label="Main navigation">
         <Sidebar />
-      </div>
+      </nav>
 
       {/* Mobile header — visible below md */}
       <MobileHeader onMenuOpen={handleDrawerOpen} pageTitle={pageTitle} action={<NotificationBell />} />
@@ -106,7 +114,7 @@ export default function DashboardLayout({
       <MobileDrawer open={drawerOpen} onClose={handleDrawerClose} navItems={NAV_ITEMS} />
 
       {/* Main content */}
-      <main className="w-full flex-1 md:ml-64">
+      <main id="main-content" className="w-full flex-1 md:ml-64" role="main" aria-label={pageTitle}>
         {/* Desktop top bar: search + notification */}
         <div className="hidden md:flex items-center justify-end gap-3 px-8 pt-4 pb-0">
           <CommandPalette />

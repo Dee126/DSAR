@@ -7,6 +7,12 @@ import IncidentDashboardWidget from "@/components/IncidentDashboardWidget";
 import VendorDashboardWidget from "@/components/VendorDashboardWidget";
 import ExecutiveKpiWidget from "@/components/ExecutiveKpiWidget";
 import { DashboardWidgetErrorBoundary } from "@/components/DashboardWidgetErrorBoundary";
+import { api } from "@/lib/api-client";
+import { LoadingSkeleton } from "@/components/ui/LoadingSkeleton";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { DataBadge } from "@/components/ui/DataBadge";
+import { useToast } from "@/components/ui/Toast";
 
 /* ── Display helpers ──────────────────────────────────────────────────── */
 
@@ -75,8 +81,10 @@ interface DSARCase {
 
 export default function DashboardPage() {
   const { data: session } = useSession();
+  const { error: showError } = useToast();
   const [cases, setCases] = useState<DSARCase[]>([]);
   const [loading, setLoading] = useState(true);
+  const [casesError, setCasesError] = useState<string | null>(null);
   const [integrationHealth, setIntegrationHealth] = useState<{
     total: number;
     connected: number;
@@ -113,61 +121,44 @@ export default function DashboardPage() {
     }>;
   } | null>(null);
 
-  useEffect(() => {
-    async function fetchCases() {
-      try {
-        const res = await fetch("/api/cases?limit=100");
-        if (res.ok) {
-          const json = await res.json();
-          setCases(json.data ?? []);
-        }
-      } catch {
-        /* silently fail */
-      } finally {
-        setLoading(false);
-      }
+  async function fetchCases() {
+    setLoading(true);
+    setCasesError(null);
+    const result = await api.get<DSARCase[]>("/api/cases?limit=100");
+    if (result.error) {
+      setCasesError(result.error.message);
+      showError("Failed to load cases", result.error.message);
+    } else {
+      const raw = result.data as unknown as { data?: DSARCase[] } | DSARCase[];
+      setCases(Array.isArray(raw) ? raw : raw?.data ?? []);
     }
+    setLoading(false);
+  }
+
+  useEffect(() => {
     fetchCases();
   }, []);
 
   useEffect(() => {
     async function fetchIntegrationHealth() {
-      try {
-        const res = await fetch("/api/integrations/health");
-        if (res.ok) {
-          setIntegrationHealth(await res.json());
-        }
-      } catch {
-        /* silently fail */
-      }
+      const result = await api.get<typeof integrationHealth>("/api/integrations/health");
+      if (result.data) setIntegrationHealth(result.data);
     }
     fetchIntegrationHealth();
   }, []);
 
   useEffect(() => {
     async function fetchCopilotStats() {
-      try {
-        const res = await fetch("/api/copilot/stats");
-        if (res.ok) {
-          setCopilotStats(await res.json());
-        }
-      } catch {
-        /* silently fail */
-      }
+      const result = await api.get<typeof copilotStats>("/api/copilot/stats");
+      if (result.data) setCopilotStats(result.data);
     }
     fetchCopilotStats();
   }, []);
 
   useEffect(() => {
     async function fetchSlaReport() {
-      try {
-        const res = await fetch("/api/sla-report");
-        if (res.ok) {
-          setSlaReport(await res.json());
-        }
-      } catch {
-        /* silently fail */
-      }
+      const result = await api.get<typeof slaReport>("/api/sla-report");
+      if (result.data) setSlaReport(result.data);
     }
     fetchSlaReport();
   }, []);
@@ -262,13 +253,12 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats Cards */}
-      {loading ? (
+      {casesError && !loading ? (
+        <ErrorBanner title="Failed to load dashboard" message={casesError} onRetry={fetchCases} />
+      ) : loading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="card animate-pulse">
-              <div className="h-4 w-20 rounded bg-gray-200" />
-              <div className="mt-3 h-8 w-12 rounded bg-gray-200" />
-            </div>
+            <LoadingSkeleton key={i} variant="stat" />
           ))}
         </div>
       ) : (
@@ -441,14 +431,7 @@ export default function DashboardPage() {
                   className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-gray-100 px-3 py-2 transition-colors hover:bg-gray-50"
                 >
                   <div className="flex items-center gap-3">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                      run.status === "COMPLETED" ? "bg-green-100 text-green-700" :
-                      run.status === "RUNNING" ? "bg-yellow-100 text-yellow-700" :
-                      run.status === "FAILED" ? "bg-red-100 text-red-700" :
-                      "bg-gray-100 text-gray-700"
-                    }`}>
-                      {run.status}
-                    </span>
+                    <DataBadge label={run.status} variant="status" />
                     <span className="text-sm font-medium text-gray-900">{run.case.caseNumber}</span>
                     <span className="text-sm text-gray-500">{run.case.dataSubject.fullName}</span>
                   </div>
@@ -497,33 +480,17 @@ export default function DashboardPage() {
         </div>
 
         {loading ? (
-          <div className="space-y-4 p-6">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="h-10 animate-pulse rounded bg-gray-100" />
-            ))}
-          </div>
+          <LoadingSkeleton variant="table" rows={5} />
         ) : recentCases.length === 0 ? (
-          <div className="px-6 py-12 text-center">
-            <svg
-              className="mx-auto h-12 w-12 text-gray-300"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1}
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"
-              />
-            </svg>
-            <p className="mt-2 text-sm text-gray-500">
-              No cases yet. Create your first case to get started.
-            </p>
-            <Link href="/cases/new" className="btn-primary mt-4 inline-flex">
-              Create Case
-            </Link>
-          </div>
+          <EmptyState
+            title="No cases yet"
+            description="Create your first case to get started."
+            action={
+              <Link href="/cases/new" className="btn-primary inline-flex">
+                Create Case
+              </Link>
+            }
+          />
         ) : (
           <>
             {/* Desktop Table */}
@@ -557,23 +524,10 @@ export default function DashboardPage() {
                           {c.type}
                         </td>
                         <td className="whitespace-nowrap px-6 py-4">
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                              STATUS_COLORS[c.status] ?? "bg-gray-100 text-gray-800"
-                            }`}
-                          >
-                            {STATUS_LABELS[c.status] ?? c.status}
-                          </span>
+                          <DataBadge label={c.status} variant="status" />
                         </td>
                         <td className="whitespace-nowrap px-6 py-4">
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                              PRIORITY_COLORS[c.priority] ??
-                              "bg-gray-100 text-gray-700"
-                            }`}
-                          >
-                            {c.priority}
-                          </span>
+                          <DataBadge label={c.priority} variant="priority" />
                         </td>
                         <td className="whitespace-nowrap px-6 py-4 text-sm">
                           <span
@@ -621,26 +575,13 @@ export default function DashboardPage() {
                       <span className="text-sm font-medium text-brand-600">
                         {c.caseNumber}
                       </span>
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          STATUS_COLORS[c.status] ?? "bg-gray-100 text-gray-800"
-                        }`}
-                      >
-                        {STATUS_LABELS[c.status] ?? c.status}
-                      </span>
+                      <DataBadge label={c.status} variant="status" />
                     </div>
 
                     {/* Row 2: Type + Priority */}
                     <div className="mt-2 flex items-center gap-3 text-sm">
-                      <span className="text-gray-700">{c.type}</span>
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          PRIORITY_COLORS[c.priority] ??
-                          "bg-gray-100 text-gray-700"
-                        }`}
-                      >
-                        {c.priority}
-                      </span>
+                      <DataBadge label={c.type} variant="type" />
+                      <DataBadge label={c.priority} variant="priority" />
                     </div>
 
                     {/* Row 3: Due Date + Assignee + Chevron */}
