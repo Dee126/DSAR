@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus } from "@prisma/client";
 import { hash } from "bcryptjs";
