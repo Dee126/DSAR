@@ -5,6 +5,15 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+export const forgotPasswordSchema = z.object({
+  email: z.string().email("Please provide a valid email address"),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().uuid("Invalid reset token"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
 export const createCaseSchema = z.object({
   type: z.enum(["ACCESS", "ERASURE", "RECTIFICATION", "RESTRICTION", "PORTABILITY", "OBJECTION"]),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional().default("MEDIUM"),

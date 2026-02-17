@@ -500,10 +500,26 @@ model User {
   vendorEscalationsCreated VendorEscalation[] @relation("VendorEscalationCreatedBy")
   executiveReportRunsCreated ExecutiveReportRun[] @relation("ExecReportRunCreatedBy")
   boardExportRunsCreated     BoardExportRun[]     @relation("BoardExportCreatedBy")
+  passwordResetTokens        PasswordResetToken[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
   @@map("users")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@map("password_reset_tokens")
 }
 
 model DataSubject {
