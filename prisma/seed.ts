@@ -4439,6 +4439,105 @@ async function main() {
   console.log("API Keys: http://localhost:3000/integrations/api-keys");
   console.log("Webhooks: http://localhost:3000/integrations/webhooks");
   console.log("Public API: http://localhost:3000/api/v1/cases");
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Sprint 9.7: Second Tenant — for cross-tenant isolation E2E testing
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  console.log("\n--- Second Tenant (for cross-tenant E2E testing) ---");
+
+  const tenant2 = await prisma.tenant.create({
+    data: {
+      name: "Beta Industries",
+      slug: "beta-industries",
+      slaDefaultDays: 45,
+      dueSoonDays: 10,
+      retentionDays: 730,
+    },
+  });
+  console.log(`Created tenant2: ${tenant2.name} (${tenant2.id})`);
+
+  const t2PasswordHash = await hash("beta123456", 12);
+
+  const t2Admin = await prisma.user.create({
+    data: {
+      tenantId: tenant2.id,
+      email: "admin@beta-industries.com",
+      name: "Bob Beta-Admin",
+      passwordHash: t2PasswordHash,
+      role: UserRole.TENANT_ADMIN,
+    },
+  });
+
+  const t2Viewer = await prisma.user.create({
+    data: {
+      tenantId: tenant2.id,
+      email: "viewer@beta-industries.com",
+      name: "Vicky Beta-Viewer",
+      passwordHash: t2PasswordHash,
+      role: UserRole.READ_ONLY,
+    },
+  });
+
+  console.log("Created 2 users for tenant2");
+
+  // One system for tenant2
+  await prisma.system.create({
+    data: {
+      tenantId: tenant2.id,
+      name: "Beta ERP",
+      description: "Enterprise resource planning system",
+      owner: "IT Department",
+      contactEmail: "it@beta-industries.com",
+      tags: ["erp", "internal"],
+    },
+  });
+
+  // One data subject + case for tenant2
+  const t2Subject = await prisma.dataSubject.create({
+    data: {
+      tenantId: tenant2.id,
+      fullName: "Beta Test Subject",
+      email: "subject@beta-industries.com",
+    },
+  });
+
+  const t2Case = await prisma.dSARCase.create({
+    data: {
+      tenantId: tenant2.id,
+      caseNumber: "BETA-2026-0001",
+      type: DSARType.ACCESS,
+      status: CaseStatus.NEW,
+      priority: CasePriority.MEDIUM,
+      description: "Cross-tenant test case for Beta Industries",
+      dataSubjectId: t2Subject.id,
+      createdByUserId: t2Admin.id,
+      assignedToUserId: t2Admin.id,
+      dueDate: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  console.log(`Created case ${t2Case.caseNumber} for tenant2`);
+
+  // SLA config for tenant2
+  await prisma.tenantSlaConfig.create({
+    data: {
+      tenantId: tenant2.id,
+      initialDeadlineDays: 45,
+      timezone: "America/New_York",
+    },
+  });
+
+  // Intake settings for tenant2
+  await prisma.tenantIntakeSettings.create({
+    data: {
+      tenantId: tenant2.id,
+      autoCreateCase: true,
+      dedupeWindowDays: 60,
+    },
+  });
+
+  console.log("Sprint 9.7: Second tenant seed complete.\n");
 }
 
 main()

@@ -1,5 +1,5 @@
 /**
- * Sprint 9.6: System Validation — Unit/Integration Smoke Tests
+ * Sprint 9.6 + 9.7: System Validation — Unit/Integration Smoke Tests
  *
  * Tests critical business logic, API contracts, and defensive coding
  * without requiring a running server or database.
@@ -13,11 +13,12 @@
  * 6. Response generation + approval
  * 7. Incident linking
  * 8. Search + eDiscovery
- * 9. Security / RBAC regression
+ * 9. Security / RBAC regression + cross-tenant isolation
  * 10. Performance / health
+ * 11. Storage provider resilience (Sprint 9.7)
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FLOW 1: State Machine + Case Logic
@@ -466,5 +467,184 @@ describe("Cross-cutting: i18n Coverage", () => {
     }
 
     setLocale("en");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Sprint 9.7: Storage Provider Resilience
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("Sprint 9.7: Storage Provider", () => {
+  it("getStorage returns a provider with required methods", async () => {
+    const { getStorage } = await import("@/lib/storage");
+
+    const storage = getStorage();
+    expect(typeof storage.upload).toBe("function");
+    expect(typeof storage.download).toBe("function");
+    expect(typeof storage.delete).toBe("function");
+  });
+
+  it("local storage uploads and downloads correctly", async () => {
+    const { getStorage } = await import("@/lib/storage");
+
+    const storage = getStorage();
+    const testData = Buffer.from("Sprint 9.7 validation test content");
+    const result = await storage.upload(testData, "test-validation.txt", "text/plain");
+
+    expect(result.storageKey).toBeTruthy();
+    expect(result.hash).toBeTruthy();
+    expect(result.hash.length).toBe(64); // SHA-256 hex
+    expect(result.size).toBe(testData.length);
+
+    // Download and verify
+    const downloaded = await storage.download(result.storageKey);
+    expect(downloaded.toString()).toBe(testData.toString());
+
+    // Clean up
+    await storage.delete(result.storageKey);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Sprint 9.7: RBAC Complete Permission Matrix
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("Sprint 9.7: RBAC Permission Completeness", () => {
+  it("every role has a defined permission set", async () => {
+    const { getPermissions } = await import("@/lib/rbac");
+
+    const roles = ["SUPER_ADMIN", "TENANT_ADMIN", "DPO", "CASE_MANAGER", "CONTRIBUTOR", "READ_ONLY"];
+    for (const role of roles) {
+      const perms = getPermissions(role);
+      expect(Array.isArray(perms)).toBe(true);
+      expect(perms.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("SUPER_ADMIN has all permissions that TENANT_ADMIN has", async () => {
+    const { getPermissions } = await import("@/lib/rbac");
+
+    const superPerms = new Set(getPermissions("SUPER_ADMIN"));
+    const adminPerms = getPermissions("TENANT_ADMIN");
+
+    for (const perm of adminPerms) {
+      expect(superPerms.has(perm)).toBe(true);
+    }
+  });
+
+  it("role hierarchy is monotonically increasing", async () => {
+    const { getPermissions } = await import("@/lib/rbac");
+
+    const hierarchy = ["READ_ONLY", "CONTRIBUTOR", "CASE_MANAGER", "DPO", "TENANT_ADMIN", "SUPER_ADMIN"];
+    let prevCount = 0;
+    for (const role of hierarchy) {
+      const count = getPermissions(role).length;
+      expect(count).toBeGreaterThanOrEqual(prevCount);
+      prevCount = count;
+    }
+  });
+
+  it("delivery permissions are correctly scoped", async () => {
+    const { has } = await import("@/lib/rbac");
+
+    // Admin can manage delivery
+    expect(has("TENANT_ADMIN", "DELIVERY_VIEW")).toBe(true);
+    expect(has("TENANT_ADMIN", "DELIVERY_CREATE_LINK")).toBe(true);
+    expect(has("TENANT_ADMIN", "DELIVERY_CREATE_PACKAGE")).toBe(true);
+
+    // Viewer cannot create delivery
+    expect(has("READ_ONLY", "DELIVERY_CREATE_LINK")).toBe(false);
+    expect(has("READ_ONLY", "DELIVERY_CREATE_PACKAGE")).toBe(false);
+  });
+
+  it("assurance permissions are restricted to appropriate roles", async () => {
+    const { has } = await import("@/lib/rbac");
+
+    // Assurance should be viewable by DPO+ but not contributors
+    expect(has("DPO", "ASSURANCE_VIEW")).toBe(true);
+    expect(has("TENANT_ADMIN", "ASSURANCE_MANAGE")).toBe(true);
+
+    // Viewer cannot manage assurance
+    expect(has("READ_ONLY", "ASSURANCE_MANAGE")).toBe(false);
+  });
+
+  it("search/eDiscovery permissions are correct", async () => {
+    const { has } = await import("@/lib/rbac");
+
+    // Admin can do everything search-related
+    expect(has("TENANT_ADMIN", "SEARCH_GLOBAL")).toBe(true);
+    expect(has("TENANT_ADMIN", "SEARCH_AUDIT")).toBe(true);
+    expect(has("TENANT_ADMIN", "EDISCOVERY_VIEW")).toBe(true);
+
+    // Viewer cannot search audit logs
+    expect(has("READ_ONLY", "SEARCH_AUDIT")).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Sprint 9.7: Rate Limiter Regression
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("Sprint 9.7: Rate Limiter", () => {
+  it("rate limit exports are available", async () => {
+    const mod = await import("@/lib/security/rate-limiter");
+    expect(typeof mod.checkRateLimit).toBe("function");
+    expect(typeof mod.hashIpForRateLimit).toBe("function");
+    expect(typeof mod.rateKey).toBe("function");
+    expect(mod.RATE_LIMITS).toBeTruthy();
+  });
+
+  it("IP hashing produces consistent non-reversible hashes", async () => {
+    const { hashIpForRateLimit } = await import("@/lib/security/rate-limiter");
+
+    const hash1 = hashIpForRateLimit("192.168.1.1");
+    const hash2 = hashIpForRateLimit("192.168.1.1");
+    const hash3 = hashIpForRateLimit("192.168.1.2");
+
+    // Consistent
+    expect(hash1).toBe(hash2);
+    // Different IPs produce different hashes
+    expect(hash1).not.toBe(hash3);
+    // Not the original IP (no PII leak)
+    expect(hash1).not.toContain("192.168");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Sprint 9.7: Pagination Utility
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("Sprint 9.7: Pagination", () => {
+  it("parsePagination returns defaults for empty params", async () => {
+    const { parsePagination } = await import("@/lib/pagination");
+
+    const params = new URLSearchParams();
+    const result = parsePagination(params);
+
+    expect(result.page).toBeGreaterThanOrEqual(1);
+    expect(result.pageSize).toBeGreaterThan(0);
+    expect(result.skip).toBeGreaterThanOrEqual(0);
+  });
+
+  it("parsePagination handles custom page/size", async () => {
+    const { parsePagination } = await import("@/lib/pagination");
+
+    const params = new URLSearchParams({ page: "3", pageSize: "25" });
+    const result = parsePagination(params);
+
+    expect(result.page).toBe(3);
+    expect(result.pageSize).toBe(25);
+    expect(result.skip).toBe(50); // (3-1) * 25
+  });
+
+  it("parsePagination rejects invalid values gracefully", async () => {
+    const { parsePagination } = await import("@/lib/pagination");
+
+    // Negative page should fall back to defaults
+    const params = new URLSearchParams({ page: "-1", pageSize: "0" });
+    const result = parsePagination(params);
+
+    expect(result.page).toBeGreaterThanOrEqual(1);
+    expect(result.pageSize).toBeGreaterThan(0);
   });
 });

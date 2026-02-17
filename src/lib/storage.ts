@@ -43,28 +43,98 @@ class LocalStorageProvider implements StorageProvider {
 }
 
 class S3StorageProvider implements StorageProvider {
-  async upload(buffer: Buffer, filename: string, _contentType: string) {
+  private bucket: string;
+  private region: string;
+  private localFallback: LocalStorageProvider;
+
+  constructor() {
+    this.bucket = process.env.S3_BUCKET || "";
+    this.region = process.env.S3_REGION || process.env.AWS_REGION || "eu-central-1";
+    this.localFallback = new LocalStorageProvider();
+  }
+
+  private get isConfigured(): boolean {
+    return Boolean(this.bucket);
+  }
+
+  async upload(buffer: Buffer, filename: string, contentType: string) {
     const hash = createHash("sha256").update(buffer).digest("hex");
     const ext = filename.split(".").pop() || "bin";
     const storageKey = `${uuidv4()}.${ext}`;
-    // TODO: Implement real S3 upload using @aws-sdk/client-s3
-    // const command = new PutObjectCommand({ Bucket, Key: storageKey, Body: buffer, ContentType });
-    // await s3Client.send(command);
-    console.warn("S3 storage not implemented; falling back to local");
-    const local = new LocalStorageProvider();
-    return local.upload(buffer, filename, _contentType);
+
+    if (!this.isConfigured) {
+      console.warn("[S3] S3_BUCKET not set; using local storage fallback");
+      return this.localFallback.upload(buffer, filename, contentType);
+    }
+
+    try {
+      const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3");
+      const client = new S3Client({ region: this.region });
+      await client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: storageKey,
+          Body: buffer,
+          ContentType: contentType,
+          ChecksumSHA256: Buffer.from(hash, "hex").toString("base64"),
+        }),
+      );
+      return { storageKey, hash, size: buffer.length };
+    } catch (err) {
+      console.error("[S3] Upload failed, falling back to local:", (err as Error).message);
+      return this.localFallback.upload(buffer, filename, contentType);
+    }
   }
 
   async download(storageKey: string): Promise<Buffer> {
-    console.warn("S3 download not implemented; falling back to local");
-    const local = new LocalStorageProvider();
-    return local.download(storageKey);
+    if (!this.isConfigured) {
+      console.warn("[S3] S3_BUCKET not set; using local storage fallback");
+      return this.localFallback.download(storageKey);
+    }
+
+    try {
+      const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
+      const client = new S3Client({ region: this.region });
+      const response = await client.send(
+        new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: storageKey,
+        }),
+      );
+
+      if (!response.Body) {
+        throw new Error(`S3 object ${storageKey} has no body`);
+      }
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+        chunks.push(chunk);
+      }
+      return Buffer.concat(chunks);
+    } catch (err) {
+      console.error("[S3] Download failed, falling back to local:", (err as Error).message);
+      return this.localFallback.download(storageKey);
+    }
   }
 
   async delete(storageKey: string): Promise<void> {
-    console.warn("S3 delete not implemented; falling back to local");
-    const local = new LocalStorageProvider();
-    return local.delete(storageKey);
+    if (!this.isConfigured) {
+      console.warn("[S3] S3_BUCKET not set; using local storage fallback");
+      return this.localFallback.delete(storageKey);
+    }
+
+    try {
+      const { S3Client, DeleteObjectCommand } = await import("@aws-sdk/client-s3");
+      const client = new S3Client({ region: this.region });
+      await client.send(
+        new DeleteObjectCommand({
+          Bucket: this.bucket,
+          Key: storageKey,
+        }),
+      );
+    } catch (err) {
+      console.error("[S3] Delete failed, falling back to local:", (err as Error).message);
+      return this.localFallback.delete(storageKey);
+    }
   }
 }
 

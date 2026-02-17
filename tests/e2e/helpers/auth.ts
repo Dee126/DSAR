@@ -7,40 +7,65 @@
 
 import { Page, expect } from "@playwright/test";
 
+// Tenant 1: Acme Corp (primary test tenant)
 export const TEST_USERS = {
   admin: {
     email: "admin@acme-corp.com",
     password: "admin123456",
     role: "TENANT_ADMIN",
     name: "Alice Admin",
+    tenant: "acme-corp",
   },
   dpo: {
     email: "dpo@acme-corp.com",
     password: "admin123456",
     role: "DPO",
     name: "David DPO",
+    tenant: "acme-corp",
   },
   caseManager: {
     email: "manager@acme-corp.com",
     password: "admin123456",
     role: "CASE_MANAGER",
     name: "Maria Manager",
+    tenant: "acme-corp",
   },
   contributor: {
     email: "contributor@acme-corp.com",
     password: "admin123456",
     role: "CONTRIBUTOR",
     name: "Charlie Contributor",
+    tenant: "acme-corp",
   },
   viewer: {
     email: "viewer@acme-corp.com",
     password: "admin123456",
     role: "READ_ONLY",
     name: "Vera Viewer",
+    tenant: "acme-corp",
+  },
+} as const;
+
+// Tenant 2: Beta Industries (for cross-tenant isolation tests)
+export const TENANT2_USERS = {
+  admin: {
+    email: "admin@beta-industries.com",
+    password: "beta123456",
+    role: "TENANT_ADMIN",
+    name: "Bob Beta-Admin",
+    tenant: "beta-industries",
+  },
+  viewer: {
+    email: "viewer@beta-industries.com",
+    password: "beta123456",
+    role: "READ_ONLY",
+    name: "Vicky Beta-Viewer",
+    tenant: "beta-industries",
   },
 } as const;
 
 export type TestUserKey = keyof typeof TEST_USERS;
+export type Tenant2UserKey = keyof typeof TENANT2_USERS;
 
 /**
  * Log in as a test user via the login page.
@@ -57,37 +82,51 @@ export async function loginAs(page: Page, userKey: TestUserKey): Promise<void> {
 }
 
 /**
- * Get an auth cookie by performing a CSR login via the API.
- * Returns cookies as a string for use in fetch headers.
+ * Internal: perform API-based login and return cookies.
  */
-export async function getAuthCookies(
+async function apiLogin(
   baseURL: string,
-  userKey: TestUserKey,
+  email: string,
+  password: string,
 ): Promise<string> {
-  const user = TEST_USERS[userKey];
-
-  // Get CSRF token first
   const csrfRes = await fetch(`${baseURL}/api/auth/csrf`);
   const { csrfToken } = await csrfRes.json();
   const csrfCookies = csrfRes.headers.get("set-cookie") || "";
 
-  // Sign in
   const signInRes = await fetch(`${baseURL}/api/auth/callback/credentials`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Cookie: csrfCookies,
     },
-    body: new URLSearchParams({
-      csrfToken,
-      email: user.email,
-      password: user.password,
-    }),
+    body: new URLSearchParams({ csrfToken, email, password }),
     redirect: "manual",
   });
 
   const setCookies = signInRes.headers.get("set-cookie") || "";
   return [csrfCookies, setCookies].filter(Boolean).join("; ");
+}
+
+/**
+ * Get auth cookies for a Tenant 1 (Acme Corp) user.
+ */
+export async function getAuthCookies(
+  baseURL: string,
+  userKey: TestUserKey,
+): Promise<string> {
+  const user = TEST_USERS[userKey];
+  return apiLogin(baseURL, user.email, user.password);
+}
+
+/**
+ * Get auth cookies for a Tenant 2 (Beta Industries) user.
+ */
+export async function getAuthCookiesTenant2(
+  baseURL: string,
+  userKey: Tenant2UserKey,
+): Promise<string> {
+  const user = TENANT2_USERS[userKey];
+  return apiLogin(baseURL, user.email, user.password);
 }
 
 /**
