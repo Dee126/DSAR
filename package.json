@@ -16,6 +16,8 @@
     "test:ci": "vitest run --reporter=default",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:smoke": "vitest run tests/unit/smoke-validation.test.ts",
+    "validate": "npm run lint && npm run typecheck && npm run test",
     "migrate:preflight": "npx tsx scripts/migrate-preflight.ts",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",

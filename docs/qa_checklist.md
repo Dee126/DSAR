@@ -116,5 +116,32 @@ npm run dev
 ## Automated Tests
 
 ```bash
+# Sprint 9.4 UX tests
 npm test -- tests/unit/ux-hardening.test.ts
+
+# Sprint 9.6 Smoke validation (all 10 flows)
+npm test -- tests/unit/smoke-validation.test.ts
+
+# Full validation (lint + typecheck + all unit tests)
+npm run validate
+
+# E2E smoke tests (requires running server + seeded DB)
+npm run test:e2e
 ```
+
+## Sprint 9.6: System Validation Flows
+
+These smoke tests cover the 10 critical business flows:
+
+- [ ] **Flow 1**: Intake → Case creation → Deadlines (state machine lifecycle)
+- [ ] **Flow 2**: Dedupe & Clarification (submission validation, dedupe API)
+- [ ] **Flow 3**: IDV Portal + Approval (token generation, portal endpoints)
+- [ ] **Flow 4**: Data Collection — Systems + Vendors (API accessibility)
+- [ ] **Flow 5**: Redaction / Exceptions gating (service exports, gate logic)
+- [ ] **Flow 6**: Response Generator → Approval → Delivery (export modules, API)
+- [ ] **Flow 7**: Incident Linking + Authority Export (schemas, executive dashboard)
+- [ ] **Flow 8**: Search & eDiscovery (search API, audit trail)
+- [ ] **Flow 9**: Security Regression (RBAC: 7 permission tests, auth enforcement)
+- [ ] **Flow 10**: Performance Sanity (health, metrics, error reporter, feature flags)
+
+See `docs/validation_report.md` for detailed results.
