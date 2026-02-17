@@ -5,11 +5,13 @@ import { handleApiError } from "@/lib/errors";
 import { logAudit, getClientInfo } from "@/lib/audit";
 import { calculateKPIs, storeKpiSnapshot } from "@/lib/kpi-service";
 import { kpiDateRangeSchema } from "@/lib/validation";
+import { createRequestProfiler, recordEndpointDiagnostics } from "@/lib/query-profiler";
 
 /**
- * GET /api/executive/kpis — Calculate current KPIs
+ * GET /api/executive/kpis — Calculate current KPIs (cached, batched queries)
  */
 export async function GET(request: NextRequest) {
+  const profiler = createRequestProfiler();
   try {
     const user = await requireAuth();
     enforce(user.role, "EXEC_DASHBOARD_VIEW");
@@ -31,7 +33,14 @@ export async function GET(request: NextRequest) {
       kpi.totalTimeSavedMonthly = null;
     }
 
-    return NextResponse.json(kpi);
+    recordEndpointDiagnostics("/api/executive/kpis", profiler);
+
+    return NextResponse.json(kpi, {
+      headers: {
+        "Cache-Control": "private, max-age=60",
+        ...profiler.getHeaders(),
+      },
+    });
   } catch (error) {
     return handleApiError(error);
   }

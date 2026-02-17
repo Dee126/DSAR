@@ -5,89 +5,131 @@ import { checkPermission } from "@/lib/rbac";
 import { logAudit, getClientInfo } from "@/lib/audit";
 import { ApiError, handleApiError } from "@/lib/errors";
 import { updateCaseSchema } from "@/lib/validation";
+import { createRequestProfiler, recordEndpointDiagnostics } from "@/lib/query-profiler";
 
 interface RouteParams {
   params: { id: string };
 }
 
+/**
+ * GET /api/cases/[id] — Case detail with tab-based lazy loading
+ *
+ * Query params:
+ *   ?include=overview  (default: core data + state transitions)
+ *   ?include=tasks
+ *   ?include=documents
+ *   ?include=comments
+ *   ?include=communications
+ *   ?include=data-collection
+ *   ?include=legal
+ *   ?include=all        (legacy: loads everything — heavier)
+ *
+ * Multiple includes: ?include=tasks,documents
+ */
 export async function GET(request: NextRequest, { params }: RouteParams) {
+  const profiler = createRequestProfiler();
   try {
     const user = await requireAuth();
     checkPermission(user.role, "cases", "read");
+
+    const url = request.nextUrl;
+    const includeParam = url.searchParams.get("include") ?? "overview";
+    const includes = new Set(includeParam.split(",").map((s) => s.trim()));
+    const loadAll = includes.has("all");
+
+    // Core case data — always loaded (lightweight)
+    const caseInclude: Record<string, unknown> = {
+      dataSubject: true,
+      createdBy: { select: { id: true, name: true, email: true } },
+      assignedTo: { select: { id: true, name: true, email: true } },
+    };
+
+    // State transitions — included in overview (small, important for timeline)
+    if (loadAll || includes.has("overview")) {
+      caseInclude.stateTransitions = {
+        include: {
+          changedBy: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { changedAt: "asc" },
+      };
+    }
+
+    // Tab-specific includes — only loaded when requested
+    if (loadAll || includes.has("tasks")) {
+      caseInclude.tasks = {
+        include: {
+          assignee: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      };
+    }
+
+    if (loadAll || includes.has("documents")) {
+      caseInclude.documents = {
+        where: { deletedAt: null },
+        include: {
+          uploadedBy: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { uploadedAt: "desc" },
+        take: 50,
+      };
+    }
+
+    if (loadAll || includes.has("comments")) {
+      caseInclude.comments = {
+        include: {
+          author: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { createdAt: "asc" },
+        take: 100,
+      };
+    }
+
+    if (loadAll || includes.has("communications")) {
+      caseInclude.communicationLogs = {
+        orderBy: { sentAt: "desc" },
+        take: 50,
+      };
+    }
+
+    if (loadAll || includes.has("data-collection")) {
+      caseInclude.dataCollectionItems = {
+        include: {
+          system: {
+            select: { id: true, name: true, description: true, owner: true },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+      };
+    }
+
+    if (loadAll || includes.has("legal")) {
+      caseInclude.legalReviews = {
+        include: {
+          reviewer: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      };
+    }
 
     const dsarCase = await prisma.dSARCase.findFirst({
       where: {
         id: params.id,
         tenantId: user.tenantId,
       },
-      include: {
-        dataSubject: true,
-        createdBy: {
-          select: { id: true, name: true, email: true },
-        },
-        assignedTo: {
-          select: { id: true, name: true, email: true },
-        },
-        stateTransitions: {
-          include: {
-            changedBy: {
-              select: { id: true, name: true, email: true },
-            },
-          },
-          orderBy: { changedAt: "asc" },
-        },
-        tasks: {
-          include: {
-            assignee: {
-              select: { id: true, name: true, email: true },
-            },
-          },
-          orderBy: { createdAt: "desc" },
-        },
-        documents: {
-          where: { deletedAt: null },
-          include: {
-            uploadedBy: {
-              select: { id: true, name: true, email: true },
-            },
-          },
-          orderBy: { uploadedAt: "desc" },
-        },
-        comments: {
-          include: {
-            author: {
-              select: { id: true, name: true, email: true },
-            },
-          },
-          orderBy: { createdAt: "asc" },
-        },
-        communicationLogs: {
-          orderBy: { sentAt: "desc" },
-        },
-        dataCollectionItems: {
-          include: {
-            system: {
-              select: { id: true, name: true, description: true, owner: true },
-            },
-          },
-          orderBy: { createdAt: "asc" },
-        },
-        legalReviews: {
-          include: {
-            reviewer: {
-              select: { id: true, name: true, email: true },
-            },
-          },
-          orderBy: { createdAt: "desc" },
-        },
-      },
+      include: caseInclude,
     });
 
     if (!dsarCase) {
       throw new ApiError(404, "Case not found");
     }
 
-    return NextResponse.json(dsarCase);
+    recordEndpointDiagnostics(`/api/cases/${params.id}`, profiler);
+
+    return NextResponse.json(dsarCase, {
+      headers: profiler.getHeaders(),
+    });
   } catch (error) {
     return handleApiError(error);
   }

@@ -7,6 +7,8 @@ import { handleApiError } from "@/lib/errors";
 import { createCaseSchema } from "@/lib/validation";
 import { generateCaseNumber, calculateDueDate } from "@/lib/utils";
 import { CaseStatus, DSARType, Prisma } from "@prisma/client";
+import { parsePagination } from "@/lib/pagination";
+import { invalidateWidgetCache } from "@/lib/cache-service";
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,9 +20,7 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get("type") as DSARType | null;
     const assignee = searchParams.get("assignee");
     const search = searchParams.get("search");
-    const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "20", 10)));
-    const skip = (page - 1) * limit;
+    const { page, pageSize: limit, skip } = parsePagination(searchParams);
 
     const where: Prisma.DSARCaseWhereInput = {
       tenantId: user.tenantId,
@@ -180,6 +180,9 @@ export async function POST(request: NextRequest) {
         dataSubjectName: dataSubject.fullName,
       },
     });
+
+    // Invalidate dashboard caches on case creation
+    await invalidateWidgetCache(user.tenantId, "kpi").catch(() => {});
 
     return NextResponse.json(newCase, { status: 201 });
   } catch (error) {

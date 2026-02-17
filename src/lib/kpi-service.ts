@@ -5,9 +5,14 @@
  * into strategic KPIs. Stores snapshots for trend analysis.
  *
  * Multi-tenant safe: all queries scoped by tenantId.
+ *
+ * Sprint 9.3: Optimized with batched queries (Promise.all),
+ * groupBy aggregation instead of loading full rows,
+ * and cache integration.
  */
 
 import { prisma } from "./prisma";
+import { cache, cacheKey, CacheTTL } from "./cache-service";
 import type { KpiSnapshotPeriod } from "@prisma/client";
 
 export interface KpiResult {
@@ -61,153 +66,171 @@ function median(values: number[]): number | null {
 
 /**
  * Calculate all KPIs for a tenant within a date range.
+ *
+ * Optimized: uses batched parallel queries instead of sequential N+1.
+ * Uses groupBy for type/status aggregation instead of loading full rows.
  */
 export async function calculateKPIs(
   tenantId: string,
   startDate?: Date,
   endDate?: Date,
 ): Promise<KpiResult> {
+  // Check cache first
+  const ck = cacheKey(tenantId, "kpi", {
+    start: startDate?.toISOString(),
+    end: endDate?.toISOString(),
+  });
+  const cached = await cache.get<KpiResult>(ck);
+  if (cached) return cached;
+
   const dateFilter = startDate && endDate
     ? { createdAt: { gte: startDate, lte: endDate } }
     : {};
 
-  // ── DSAR Metrics ────────────────────────────────────────────────
-  const allCases = await prisma.dSARCase.findMany({
-    where: { tenantId, ...dateFilter },
-    select: {
-      id: true, status: true, type: true, createdAt: true,
-      dsarIncidents: { select: { id: true } },
-    },
-  });
+  // ── Batch 1: Core counts (all parallel) ────────────────────────
+  const [
+    // DSAR type distribution via groupBy (avoids loading all rows)
+    casesByType,
+    // Total + open counts
+    totalDsars,
+    openDsars,
+    // Closed cases for avg time calculation
+    closedCases,
+    // Incident-linked DSARs count
+    dsarsWithIncidentCount,
+    // Extension count
+    extensions,
+    // Overdue deadlines
+    overdueDeadlines,
+    // Risk distribution via groupBy
+    riskGroups,
+    // Vendor overdue
+    vendorOverdueCount,
+  ] = await Promise.all([
+    prisma.dSARCase.groupBy({
+      by: ["type"],
+      where: { tenantId, ...dateFilter },
+      _count: { _all: true },
+    }),
+    prisma.dSARCase.count({ where: { tenantId, ...dateFilter } }),
+    prisma.dSARCase.count({
+      where: {
+        tenantId,
+        status: { notIn: ["CLOSED", "REJECTED"] },
+        ...dateFilter,
+      },
+    }),
+    prisma.dSARCase.findMany({
+      where: {
+        tenantId, status: { in: ["CLOSED", "REJECTED"] },
+        ...(startDate && endDate ? { createdAt: { gte: startDate, lte: endDate } } : {}),
+      },
+      select: { createdAt: true, updatedAt: true },
+    }),
+    prisma.dsarIncident.count({
+      where: {
+        tenantId,
+        case: { tenantId, ...dateFilter },
+      },
+    }),
+    prisma.deadlineEvent.count({
+      where: { tenantId, eventType: "EXTENDED", ...dateFilter },
+    }),
+    prisma.caseDeadline.count({
+      where: {
+        tenantId,
+        effectiveDueAt: { lt: new Date() },
+        case: { status: { notIn: ["CLOSED", "REJECTED"] } },
+      },
+    }),
+    prisma.caseDeadline.groupBy({
+      by: ["currentRisk"],
+      where: { tenantId, case: { status: { notIn: ["CLOSED", "REJECTED"] } } },
+      _count: { _all: true },
+    }),
+    prisma.vendorRequest.count({
+      where: { tenantId, status: { in: ["OVERDUE", "ESCALATED"] } },
+    }),
+  ]);
 
-  const closedCases = await prisma.dSARCase.findMany({
-    where: {
-      tenantId, status: { in: ["CLOSED", "REJECTED"] },
-      ...(startDate && endDate ? { createdAt: { gte: startDate, lte: endDate } } : {}),
-    },
-    select: { createdAt: true, updatedAt: true },
-  });
-
+  const closedDsars = totalDsars - openDsars;
   const closeTimes = closedCases.map((c) =>
     (c.updatedAt.getTime() - c.createdAt.getTime()) / (1000 * 60 * 60 * 24),
   );
-
   const avgClose = closeTimes.length > 0
     ? Math.round((closeTimes.reduce((a, b) => a + b, 0) / closeTimes.length) * 10) / 10
     : null;
 
-  const totalDsars = allCases.length;
-  const openDsars = allCases.filter((c) => !["CLOSED", "REJECTED"].includes(c.status)).length;
-  const closedDsars = totalDsars - openDsars;
-
   const dsarsByType: Record<string, number> = {};
-  for (const c of allCases) {
-    dsarsByType[c.type] = (dsarsByType[c.type] || 0) + 1;
+  for (const g of casesByType) {
+    dsarsByType[g.type] = g._count._all;
   }
 
-  const dsarsWithIncident = allCases.filter((c) => c.dsarIncidents.length > 0).length;
-
-  // Extension rate
-  const extensions = await prisma.deadlineEvent.count({
-    where: { tenantId, eventType: "EXTENDED", ...dateFilter },
-  });
-
-  // Overdue rate
-  const overdueDeadlines = await prisma.caseDeadline.count({
-    where: {
-      tenantId,
-      effectiveDueAt: { lt: new Date() },
-      case: { status: { notIn: ["CLOSED", "REJECTED"] } },
-    },
-  });
-
-  // ── Risk Metrics ────────────────────────────────────────────────
-  const deadlines = await prisma.caseDeadline.findMany({
-    where: { tenantId, case: { status: { notIn: ["CLOSED", "REJECTED"] } } },
-    select: { currentRisk: true, caseId: true },
-  });
-
+  // Build risk distribution from groupBy
   const riskDistribution = { green: 0, yellow: 0, red: 0 };
-  for (const d of deadlines) {
-    if (d.currentRisk === "RED") riskDistribution.red++;
-    else if (d.currentRisk === "YELLOW") riskDistribution.yellow++;
-    else riskDistribution.green++;
+  for (const g of riskGroups) {
+    if (g.currentRisk === "RED") riskDistribution.red = g._count._all;
+    else if (g.currentRisk === "YELLOW") riskDistribution.yellow = g._count._all;
+    else riskDistribution.green = g._count._all;
   }
 
-  const highRiskCases = deadlines.filter(
-    (d) => d.currentRisk === "RED",
-  );
+  // Get high risk case IDs for incident linkage
+  const highRiskCaseIds = riskDistribution.red > 0
+    ? await prisma.caseDeadline.findMany({
+        where: { tenantId, currentRisk: "RED", case: { status: { notIn: ["CLOSED", "REJECTED"] } } },
+        select: { caseId: true },
+      })
+    : [];
 
-  const incidentLinkedHighRisk = await prisma.dsarIncident.count({
-    where: {
-      tenantId,
-      caseId: { in: highRiskCases.map((d) => d.caseId) },
-    },
-  });
-
-  const vendorOverdueCount = await prisma.vendorRequest.count({
-    where: {
-      tenantId,
-      status: { in: ["OVERDUE", "ESCALATED"] },
-    },
-  });
-
-  // ── Automation Metrics ──────────────────────────────────────────
-  const caseSystemLinks = await prisma.caseSystemLink.count({ where: { tenantId } });
-  const autoSuggestedLinks = await prisma.caseSystemLink.count({
-    where: { tenantId, suggestedByDiscovery: true },
-  });
-
-  const vendorRequestsTotal = await prisma.vendorRequest.count({ where: { tenantId } });
-
-  const responseDocsTotal = await prisma.responseDocument.count({ where: { tenantId } });
-  const responseDocsFromTemplate = await prisma.responseDocument.count({
-    where: { tenantId, templateId: { not: null } },
-  });
-
-  const idvRequestsTotal = await prisma.idvRequest.count({ where: { tenantId } });
-
-  const systemsTotal = await prisma.system.count({ where: { tenantId } });
-  const systemsApiReady = await prisma.system.count({
-    where: { tenantId, automationReadiness: "API_AVAILABLE" },
-  });
-
-  // ── Governance Metrics ──────────────────────────────────────────
-  const vendorsTotal = await prisma.vendor.count({ where: { tenantId } });
-  const vendorsWithDpa = await prisma.vendor.count({
-    where: { tenantId, dpaOnFile: true },
-  });
-
-  const systemsWithCategories = await prisma.system.count({
-    where: {
-      tenantId,
-      description: { not: null },
-      dataCategories: { some: {} },
-    },
-  });
-
-  const systemsWithRetention = await prisma.systemDataCategory.count({
-    where: {
-      tenantId,
-      retentionPeriod: { not: null },
-    },
-  });
-  const totalCategories = await prisma.systemDataCategory.count({ where: { tenantId } });
-
-  const thirdCountrySystems = await prisma.system.count({
-    where: { tenantId, thirdCountryTransfers: true },
-  });
+  // ── Batch 2: Automation + Governance counts (all parallel) ────
+  const [
+    incidentLinkedHighRisk,
+    caseSystemLinks,
+    autoSuggestedLinks,
+    vendorRequestsTotal,
+    responseDocsTotal,
+    responseDocsFromTemplate,
+    idvRequestsTotal,
+    systemsTotal,
+    systemsApiReady,
+    vendorsTotal,
+    vendorsWithDpa,
+    systemsWithCategories,
+    systemsWithRetention,
+    totalCategories,
+    thirdCountrySystems,
+    config,
+  ] = await Promise.all([
+    highRiskCaseIds.length > 0
+      ? prisma.dsarIncident.count({
+          where: { tenantId, caseId: { in: highRiskCaseIds.map((d) => d.caseId) } },
+        })
+      : Promise.resolve(0),
+    prisma.caseSystemLink.count({ where: { tenantId } }),
+    prisma.caseSystemLink.count({ where: { tenantId, suggestedByDiscovery: true } }),
+    prisma.vendorRequest.count({ where: { tenantId } }),
+    prisma.responseDocument.count({ where: { tenantId } }),
+    prisma.responseDocument.count({ where: { tenantId, templateId: { not: null } } }),
+    prisma.idvRequest.count({ where: { tenantId } }),
+    prisma.system.count({ where: { tenantId } }),
+    prisma.system.count({ where: { tenantId, automationReadiness: "API_AVAILABLE" } }),
+    prisma.vendor.count({ where: { tenantId } }),
+    prisma.vendor.count({ where: { tenantId, dpaOnFile: true } }),
+    prisma.system.count({
+      where: { tenantId, description: { not: null }, dataCategories: { some: {} } },
+    }),
+    prisma.systemDataCategory.count({ where: { tenantId, retentionPeriod: { not: null } } }),
+    prisma.systemDataCategory.count({ where: { tenantId } }),
+    prisma.system.count({ where: { tenantId, thirdCountryTransfers: true } }),
+    prisma.privacyKpiConfig.findUnique({ where: { tenantId } }),
+  ]);
 
   // ── Financial Proxy ─────────────────────────────────────────────
-  const config = await prisma.privacyKpiConfig.findUnique({
-    where: { tenantId },
-  });
-
   const costPerDsar = config?.estimatedCostPerDsar ?? 150;
   const minutesManual = config?.estimatedMinutesManual ?? 480;
   const minutesAutomated = config?.estimatedMinutesAutomated ?? 120;
   const timeSavedPerDsar = minutesManual - minutesAutomated;
-  const monthlyClosed = closedDsars; // within date range
+  const monthlyClosed = closedDsars;
   const totalTimeSavedMonthly = monthlyClosed * timeSavedPerDsar;
 
   // ── Maturity Score ──────────────────────────────────────────────
@@ -219,10 +242,15 @@ export async function calculateKPIs(
     vendor_coordination: 0.15,
   };
 
+  // Count unique DSARs linked to incidents
+  const dsarsLinkedPct = totalDsars > 0
+    ? pct(dsarsWithIncidentCount, totalDsars)
+    : null;
+
   const documentationScore = pct(systemsWithCategories, systemsTotal) ?? 0;
   const automationScore = pct(autoSuggestedLinks + (responseDocsFromTemplate || 0), caseSystemLinks + responseDocsTotal || 1) ?? 0;
   const slaComplianceScore = openDsars > 0 ? Math.max(0, 100 - (pct(overdueDeadlines, openDsars) ?? 0)) : 100;
-  const incidentIntScore = totalDsars > 0 ? Math.min(100, (pct(dsarsWithIncident, totalDsars) ?? 0) + 50) : 50;
+  const incidentIntScore = totalDsars > 0 ? Math.min(100, (dsarsLinkedPct ?? 0) + 50) : 50;
   const vendorCoordScore = vendorRequestsTotal > 0
     ? Math.max(0, 100 - (pct(vendorOverdueCount, vendorRequestsTotal) ?? 0) * 2)
     : 50;
@@ -235,7 +263,7 @@ export async function calculateKPIs(
     vendorCoordScore * weights.vendor_coordination) * 10,
   ) / 10;
 
-  return {
+  const result: KpiResult = {
     totalDsars,
     openDsars,
     closedDsars,
@@ -244,13 +272,13 @@ export async function calculateKPIs(
     extensionRatePct: pct(extensions, totalDsars),
     overdueRatePct: pct(overdueDeadlines, openDsars > 0 ? openDsars : totalDsars),
     dsarsByType,
-    dsarsLinkedToIncidentPct: pct(dsarsWithIncident, totalDsars),
+    dsarsLinkedToIncidentPct: dsarsLinkedPct,
     riskDistribution,
-    highRiskCasesCount: highRiskCases.length,
+    highRiskCasesCount: riskDistribution.red,
     incidentLinkedHighRiskCount: incidentLinkedHighRisk,
     vendorOverdueCount,
     autoSuggestedSystemsPct: pct(autoSuggestedLinks, caseSystemLinks),
-    vendorAutoGeneratedPct: null, // computed from automation_metrics
+    vendorAutoGeneratedPct: null,
     templateResponsePct: pct(responseDocsFromTemplate, responseDocsTotal),
     idvAutomationPct: pct(idvRequestsTotal, totalDsars),
     apiReadySystemsPct: pct(systemsApiReady, systemsTotal),
@@ -263,6 +291,11 @@ export async function calculateKPIs(
     totalTimeSavedMonthly: totalTimeSavedMonthly,
     maturityScore,
   };
+
+  // Cache for 120 seconds
+  await cache.set(ck, result, CacheTTL.EXECUTIVE_KPI);
+
+  return result;
 }
 
 /**

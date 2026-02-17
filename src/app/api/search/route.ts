@@ -6,6 +6,9 @@ import { searchQuerySchema } from "@/lib/validation";
 import { prisma } from "@/lib/prisma";
 import { getDeepLink } from "@/lib/search-index-service";
 import { SearchEntityType, Prisma } from "@prisma/client";
+import { PAGE_SIZE_MAX } from "@/lib/pagination";
+import { cache, cacheKey, CacheTTL } from "@/lib/cache-service";
+import { createRequestProfiler, recordEndpointDiagnostics } from "@/lib/query-profiler";
 
 // Scope → entity type mapping
 const SCOPE_MAP: Record<string, SearchEntityType[]> = {
@@ -34,11 +37,13 @@ function buildSnippet(bodyText: string, query: string, maxLen = 200): string {
 }
 
 export async function GET(request: NextRequest) {
+  const profiler = createRequestProfiler();
   try {
     const user = await requireAuth();
     enforce(user.role, "SEARCH_GLOBAL");
 
     const url = request.nextUrl;
+    const rawPageSize = parseInt(url.searchParams.get("pageSize") ?? "20");
     const rawInput = {
       q: url.searchParams.get("q") ?? "",
       scope: url.searchParams.get("scope") ?? "ALL",
@@ -56,7 +61,7 @@ export async function GET(request: NextRequest) {
         system: url.searchParams.get("system") ?? undefined,
       },
       page: parseInt(url.searchParams.get("page") ?? "1"),
-      pageSize: parseInt(url.searchParams.get("pageSize") ?? "20"),
+      pageSize: Math.min(rawPageSize, PAGE_SIZE_MAX),
       sort: url.searchParams.get("sort") ?? "relevance",
     };
 
@@ -243,19 +248,25 @@ export async function GET(request: NextRequest) {
       rank: r.rank ?? null,
     }));
 
-    // Build facets (aggregated counts)
-    const facetQuery = await prisma.searchIndexEntry.groupBy({
-      by: ["entityType"],
-      where: { tenantId: user.tenantId, entityType: { in: entityTypes } },
-      _count: { _all: true },
-    });
+    // Build facets (aggregated counts) — cached per tenant
+    const facetCk = cacheKey(user.tenantId, "search_facets", { scope: input.scope });
+    let facets = await cache.get<Record<string, Record<string, number>>>(facetCk);
+    if (!facets) {
+      const facetQuery = await prisma.searchIndexEntry.groupBy({
+        by: ["entityType"],
+        where: { tenantId: user.tenantId, entityType: { in: entityTypes } },
+        _count: { _all: true },
+      });
+      facets = {
+        entityType: facetQuery.reduce(
+          (acc, f) => ({ ...acc, [f.entityType]: f._count._all }),
+          {} as Record<string, number>
+        ),
+      };
+      await cache.set(facetCk, facets, CacheTTL.SEARCH_FACETS);
+    }
 
-    const facets = {
-      entityType: facetQuery.reduce(
-        (acc, f) => ({ ...acc, [f.entityType]: f._count._all }),
-        {} as Record<string, number>
-      ),
-    };
+    recordEndpointDiagnostics("/api/search", profiler);
 
     return NextResponse.json({
       results: items,
@@ -264,6 +275,8 @@ export async function GET(request: NextRequest) {
       pageSize: input.pageSize,
       totalPages: Math.ceil(total / input.pageSize),
       facets,
+    }, {
+      headers: profiler.getHeaders(),
     });
   } catch (error) {
     return handleApiError(error);
