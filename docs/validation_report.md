@@ -166,12 +166,41 @@ Added 13 new tests:
 | All status translations (EN) | Unit | PASS |
 | German translations complete | Unit | PASS |
 
+### Sprint 9.8: Compliance Evidence Pack
+
+| Test | Type | Status |
+|---|---|---|
+| Compliance engine module exports | Unit | PASS |
+| ControlEvaluation interface shape | Unit | PASS |
+| Compliance export module exports | Unit | PASS |
+| JSON output valid structure | Unit | PASS |
+| JSON output contains no PII | Unit | PASS |
+| HTML report required sections | Unit | PASS |
+| HTML report XSS escaping | Unit | PASS |
+| HTML report contains no PII | Unit | PASS |
+| Score: all compliant = 100% | Unit | PASS |
+| Score: mixed results = 70% | Unit | PASS |
+| Score: all missing = 0% | Unit | PASS |
+| Score: all partial = 50% | Unit | PASS |
+| Score: zero controls = 0 | Unit | PASS |
+| Framework types enum completeness | Unit | PASS |
+| Run status enum completeness | Unit | PASS |
+| Control status enum completeness | Unit | PASS |
+| API route importable (GET + POST) | Unit | PASS |
+| TENANT_ADMIN GOVERNANCE_VIEW | Unit | PASS |
+| TENANT_ADMIN GOVERNANCE_EXPORT_REPORT | Unit | PASS |
+| DPO GOVERNANCE_VIEW | Unit | PASS |
+| DPO GOVERNANCE_EXPORT_REPORT | Unit | PASS |
+| READ_ONLY cannot export | Unit | PASS |
+| CONTRIBUTOR cannot export | Unit | PASS |
+| SUPER_ADMIN full compliance access | Unit | PASS |
+
 ## Test Statistics
 
 | Metric | Value |
 |---|---|
-| Total unit test files | 34 |
-| Total unit tests | 1,872 |
+| Total unit test files | 35 |
+| Total unit tests | 1,896 |
 | Smoke validation tests | 45 |
 | Playwright E2E tests | 13 |
 | Test pass rate | 100% |
@@ -215,6 +244,7 @@ npm run test:e2e
 
 ## Conclusion
 
-The PrivacyPilot system passes all 1,872 unit tests and 45 smoke validation tests.
+The PrivacyPilot system passes all 1,896 unit tests and 45 smoke validation tests.
 All open risks from Sprint 9.6 have been resolved. Zero TODO/FIXME markers remain.
+Sprint 9.8 adds the Compliance Evidence Pack module with 24 new tests.
 The system is validated and ready for production deployment.

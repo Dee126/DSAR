@@ -1,3 +1,115 @@
+# Release Notes — Sprint 9.8
+
+**Date**: 2026-02-17
+**Type**: Feature Sprint — Compliance Evidence Pack
+
+## Summary
+
+Sprint 9.8 implements a complete Compliance Evidence Pack module for PrivacyPilot.
+The module auto-generates compliance evidence packs for ISO 27001, SOC 2, GDPR,
+and Vendor Due Diligence questionnaires by inspecting actual system state. It includes
+18+ automated evidence checkers, HTML/JSON export, RBAC enforcement, and full audit logging.
+
+## Changes
+
+### New Features
+
+- **Compliance Evidence Pack Module** (Module 9.8)
+  - 4 new Prisma models: `ComplianceFramework`, `ComplianceControl`, `ComplianceEvidenceRun`, `ComplianceFinding`
+  - 3 new enums: `ComplianceFrameworkType`, `ComplianceRunStatus`, `ComplianceControlStatus`
+  - ComplianceEngine with 18+ automated evidence checkers (`src/lib/compliance-engine.ts`)
+  - ComplianceExportService for JSON + HTML report generation (`src/lib/compliance-export.ts`)
+  - API routes at `/api/governance/compliance` with GET (frameworks/runs/findings) and POST (assess/export)
+  - Governance UI page at `/governance/compliance`
+  - Sidebar navigation entry under "Compliance"
+
+- **Compliance Frameworks Seed Data** (`prisma/seed.ts`)
+  - ISO/IEC 27001:2022 — 5 controls (A.5.1, A.5.15, A.5.30, A.8.12, A.8.16)
+  - SOC 2 Type II — 3 controls (CC6.1, CC7.2, CC8.1)
+  - GDPR 2016/679 — 5 controls (Art. 5(2), Art. 24, Art. 30, Art. 32, Art. 33)
+  - Vendor Due Diligence v1.0 — 5 controls (VDD-01 through VDD-05)
+  - Each control mapped to relevant evidence source checkers
+
+### Evidence Checkers
+
+| Checker | System Feature |
+|---|---|
+| `audit_log` | AuditLog entries |
+| `assurance_audit_log` | Tamper-evident hash chain |
+| `access_logs` | Resource access logging |
+| `sod_policy` | Separation of duties |
+| `retention_policy` | Data retention policies |
+| `deletion_jobs` | Automated deletion |
+| `deletion_events` | Deletion records |
+| `feature_flags` | Feature flag governance |
+| `rbac` | Role-based access control |
+| `incident_management` | Incident records |
+| `incident_export` | Authority notification exports |
+| `vendor_management` | Vendor/processor registry |
+| `vendor_requests` | Vendor data requests |
+| `dsar_cases` | DSAR case management |
+| `data_inventory` | System/processing registry |
+| `encryption` | TLS/encryption configuration |
+| `idv_system` | Identity verification |
+| `response_templates` | Standardized response templates |
+| `connectors` | Automated data collection |
+| `monitoring` | Health/readiness probes |
+
+### Documentation
+
+- **`docs/compliance_mapping.md`** — Control-to-evidence-source mapping
+- **`docs/evidence_pack_usage.md`** — Usage guide for auditors and developers
+- **`docs/validation_report.md`** — Updated with Sprint 9.8 test results
+- **`docs/release_notes.md`** — This file
+
+## Breaking Changes
+
+None.
+
+## Migration Notes
+
+- Run `npx prisma generate` to regenerate the Prisma client with new models
+- Run `npx prisma db push` or create a migration for the 4 new tables
+- Run `npm run db:seed` to seed the compliance frameworks and controls
+- No env var changes required
+
+## RBAC Permissions
+
+| Action | Permission | Roles |
+|---|---|---|
+| View frameworks & runs | `GOVERNANCE_VIEW` | SUPER_ADMIN, TENANT_ADMIN, DPO |
+| Run assessments | `GOVERNANCE_EXPORT_REPORT` | SUPER_ADMIN, TENANT_ADMIN, DPO |
+| Export HTML/JSON | `GOVERNANCE_EXPORT_REPORT` | SUPER_ADMIN, TENANT_ADMIN, DPO |
+
+## Test Statistics
+
+| Metric | Before (9.7) | After (9.8) | Delta |
+|---|---|---|---|
+| Unit test files | 34 | 35 | +1 |
+| Total unit tests | 1,872 | 1,896 | +24 |
+| Smoke validation tests | 45 | 45 | — |
+| Playwright E2E tests | 13 | 13 | — |
+| TODO/FIXME markers | 0 | 0 | — |
+| Open risks (medium+) | 0 | 0 | — |
+
+## Verification
+
+```bash
+# Full validation (lint + typecheck + all tests)
+npm run validate
+
+# Compliance tests only
+npx vitest run tests/unit/compliance.test.ts
+
+# Seed with compliance frameworks
+npm run db:seed
+
+# E2E (requires running server + DB)
+npm run test:e2e
+```
+
+---
+
 # Release Notes — Sprint 9.7
 
 **Date**: 2026-02-17
@@ -30,7 +142,7 @@ E2E testing, and brings the total test count to 1,872 passing tests.
   - Enables cross-tenant isolation E2E tests
 
 - **Expanded Smoke Test Suite** (`tests/unit/smoke-validation.test.ts`)
-  - 13 new tests (32 → 45 total):
+  - 13 new tests (32 -> 45 total):
     - Storage provider: upload/download roundtrip, method exports
     - RBAC completeness: role hierarchy monotonicity, delivery/assurance/search permissions
     - Rate limiter: exports, IP hash consistency, non-reversibility

@@ -8,6 +8,11 @@ async function main() {
   console.log("Seeding database...");
 
   // Clean existing data (order matters for FK constraints)
+  // Module 9.8: Compliance Evidence Pack
+  await prisma.complianceFinding.deleteMany();
+  await prisma.complianceEvidenceRun.deleteMany();
+  await prisma.complianceControl.deleteMany();
+  await prisma.complianceFramework.deleteMany();
   // Module 8.6: Integration Hardening
   await prisma.connectorRun.deleteMany();
   await prisma.connectorSecret.deleteMany();
@@ -4538,6 +4543,172 @@ async function main() {
   });
 
   console.log("Sprint 9.7: Second tenant seed complete.\n");
+
+  // ─────────────────────────────────────────────────────────
+  // Sprint 9.8: Compliance Frameworks & Controls
+  // ─────────────────────────────────────────────────────────
+
+  const iso27001 = await prisma.complianceFramework.create({
+    data: {
+      name: "ISO27001",
+      version: "2022",
+      description: "ISO/IEC 27001:2022 — Information security management systems",
+      controls: {
+        create: [
+          {
+            controlId: "A.5.1",
+            title: "Policies for information security",
+            description: "Management direction for information security shall be established and communicated.",
+            evidenceSourcesJson: ["sod_policy", "feature_flags", "rbac"],
+          },
+          {
+            controlId: "A.5.15",
+            title: "Access control",
+            description: "Rules to control physical and logical access to information shall be established.",
+            evidenceSourcesJson: ["rbac", "access_logs", "idv_system"],
+          },
+          {
+            controlId: "A.5.30",
+            title: "ICT readiness for business continuity",
+            description: "ICT readiness shall be planned, implemented, maintained and tested.",
+            evidenceSourcesJson: ["monitoring", "connectors"],
+          },
+          {
+            controlId: "A.8.12",
+            title: "Data classification and retention",
+            description: "Data shall be classified and retained according to organization policies.",
+            evidenceSourcesJson: ["retention_policy", "deletion_jobs", "deletion_events"],
+          },
+          {
+            controlId: "A.8.16",
+            title: "Monitoring activities",
+            description: "Networks, systems and applications shall be monitored for anomalous behaviour.",
+            evidenceSourcesJson: ["audit_log", "assurance_audit_log", "access_logs", "monitoring"],
+          },
+        ],
+      },
+    },
+  });
+  console.log(`Created compliance framework: ISO 27001 (${iso27001.id})`);
+
+  const soc2 = await prisma.complianceFramework.create({
+    data: {
+      name: "SOC2",
+      version: "2017",
+      description: "AICPA SOC 2 Type II — Trust Services Criteria",
+      controls: {
+        create: [
+          {
+            controlId: "CC6.1",
+            title: "Logical and physical access controls",
+            description: "The entity implements logical access security software, infrastructure, and architectures over protected information assets.",
+            evidenceSourcesJson: ["rbac", "access_logs", "idv_system", "sod_policy"],
+          },
+          {
+            controlId: "CC7.2",
+            title: "Monitoring of system components",
+            description: "The entity monitors system components and the operation of those components for anomalies.",
+            evidenceSourcesJson: ["audit_log", "assurance_audit_log", "monitoring", "incident_management"],
+          },
+          {
+            controlId: "CC8.1",
+            title: "Change management",
+            description: "The entity authorizes, designs, develops or acquires, configures, documents, tests, approves, and implements changes.",
+            evidenceSourcesJson: ["feature_flags", "audit_log", "sod_policy"],
+          },
+        ],
+      },
+    },
+  });
+  console.log(`Created compliance framework: SOC 2 (${soc2.id})`);
+
+  const gdpr = await prisma.complianceFramework.create({
+    data: {
+      name: "GDPR",
+      version: "2016/679",
+      description: "EU General Data Protection Regulation (GDPR)",
+      controls: {
+        create: [
+          {
+            controlId: "Art. 5(2)",
+            title: "Accountability principle",
+            description: "The controller shall be responsible for, and be able to demonstrate compliance with, the data protection principles.",
+            evidenceSourcesJson: ["audit_log", "assurance_audit_log", "dsar_cases"],
+          },
+          {
+            controlId: "Art. 24",
+            title: "Responsibility of the controller",
+            description: "The controller shall implement appropriate technical and organisational measures to ensure processing is in accordance with the GDPR.",
+            evidenceSourcesJson: ["rbac", "sod_policy", "feature_flags", "data_inventory"],
+          },
+          {
+            controlId: "Art. 30",
+            title: "Records of processing activities",
+            description: "Each controller shall maintain a record of processing activities under its responsibility.",
+            evidenceSourcesJson: ["data_inventory", "vendor_management", "dsar_cases"],
+          },
+          {
+            controlId: "Art. 32",
+            title: "Security of processing",
+            description: "The controller and processor shall implement appropriate technical and organisational measures to ensure appropriate security.",
+            evidenceSourcesJson: ["encryption", "rbac", "access_logs", "audit_log"],
+          },
+          {
+            controlId: "Art. 33",
+            title: "Notification of personal data breach",
+            description: "The controller shall notify the supervisory authority within 72 hours of becoming aware of a personal data breach.",
+            evidenceSourcesJson: ["incident_management", "incident_export"],
+          },
+        ],
+      },
+    },
+  });
+  console.log(`Created compliance framework: GDPR (${gdpr.id})`);
+
+  const vendorDD = await prisma.complianceFramework.create({
+    data: {
+      name: "VENDOR_DUE_DILIGENCE",
+      version: "1.0",
+      description: "Vendor Due Diligence Questionnaire — Data processor assessment",
+      controls: {
+        create: [
+          {
+            controlId: "VDD-01",
+            title: "Data segregation",
+            description: "Vendor must demonstrate logical or physical separation of customer data.",
+            evidenceSourcesJson: ["data_inventory", "rbac"],
+          },
+          {
+            controlId: "VDD-02",
+            title: "Encryption at rest and in transit",
+            description: "Vendor must encrypt data at rest and in transit using industry-standard algorithms.",
+            evidenceSourcesJson: ["encryption"],
+          },
+          {
+            controlId: "VDD-03",
+            title: "Access controls and authentication",
+            description: "Vendor must implement role-based access controls and multi-factor authentication.",
+            evidenceSourcesJson: ["rbac", "access_logs", "idv_system", "sod_policy"],
+          },
+          {
+            controlId: "VDD-04",
+            title: "Incident response procedures",
+            description: "Vendor must maintain and test incident response procedures with defined notification timelines.",
+            evidenceSourcesJson: ["incident_management", "incident_export"],
+          },
+          {
+            controlId: "VDD-05",
+            title: "Audit logging and monitoring",
+            description: "Vendor must maintain tamper-evident audit logs and continuous monitoring.",
+            evidenceSourcesJson: ["audit_log", "assurance_audit_log", "access_logs", "monitoring"],
+          },
+        ],
+      },
+    },
+  });
+  console.log(`Created compliance framework: Vendor Due Diligence (${vendorDD.id})`);
+
+  console.log("Sprint 9.8: Compliance frameworks seed complete.\n");
 }
 
 main()
