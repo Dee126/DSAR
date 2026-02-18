@@ -1,5 +1,5 @@
 /**
- * deploy.js — Vercel build-time database setup
+ * deploy.js — Vercel build-time database setup (v2)
  *
  * Runs during `npm run build` on Vercel.
  * 1. Pushes the Prisma schema to the database (creates/updates tables)
