@@ -26,8 +26,10 @@ SELECT
   COALESCE(latest."changedAt", c."createdAt")      AS state_changed_at,
   c."tenantId"                                     AS tenant_id,
   c."dueDate"                                      AS due_at,
-  c."assignedToUserId"                             AS assigned_to
+  c."assignedToUserId"                             AS assigned_to,
+  ds."fullName"                                    AS subject
 FROM public."dsar_cases" c
+LEFT JOIN public."data_subjects" ds ON ds."id" = c."dataSubjectId"
 LEFT JOIN (
   -- ── letzte Transition pro Case via DISTINCT ON ───────────────────────
   SELECT DISTINCT ON ("caseId")

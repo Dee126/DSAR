@@ -72,6 +72,7 @@ export default function DashboardPage() {
     incidentLinkedSupported: boolean;
     recentCases: Array<{
       id: string;
+      caseNumber: string;
       subject?: string | null;
       current_state: string;
       due_at?: string | null;
@@ -568,8 +569,13 @@ export default function DashboardPage() {
                     >
                       {STATUS_LABELS[c.current_state] ?? c.current_state}
                     </span>
+                    {c.caseNumber && (
+                      <span className="shrink-0 text-sm font-medium text-gray-900">
+                        {c.caseNumber}
+                      </span>
+                    )}
                     {c.subject && (
-                      <span className="truncate text-sm text-gray-700">
+                      <span className="truncate text-sm text-gray-500">
                         {c.subject}
                       </span>
                     )}

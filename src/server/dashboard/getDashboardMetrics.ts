@@ -12,6 +12,7 @@ export interface DashboardMetricsParams {
 
 export interface RecentCase {
   id: string;
+  caseNumber: string;
   subject?: string | null;
   current_state: string;
   due_at?: string | null;
@@ -181,8 +182,8 @@ export async function getDashboardMetrics(
     // 7. recentCases (last 10, full rows)
     (() => {
       const fields = useView
-        ? "case_id, current_state, due_at, state_changed_at"
-        : "id, status, dueDate, createdAt, description";
+        ? "case_id, case_number, subject, current_state, due_at, state_changed_at"
+        : "id, caseNumber, status, dueDate, createdAt, description";
 
       let q = supabase
         .from(source)
@@ -227,7 +228,12 @@ export async function getDashboardMetrics(
 
   const recentCases: RecentCase[] = rawRecent.map((row) => ({
     id: String(row[col.id] ?? ""),
-    subject: useView ? null : (row["description"] as string | null) ?? null,
+    caseNumber: String(
+      useView ? row["case_number"] ?? "" : row["caseNumber"] ?? ""
+    ),
+    subject: useView
+      ? (row["subject"] as string | null) ?? null
+      : (row["description"] as string | null) ?? null,
     current_state: String(row[col.state] ?? "UNKNOWN"),
     due_at: row[col.dueDate] ? String(row[col.dueDate]) : null,
     created_at: String(row[col.createdAt] ?? ""),
