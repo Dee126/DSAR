@@ -6,8 +6,16 @@ import { createServerSupabase } from "@/lib/supabase/server";
 
 export interface DashboardMetricsParams {
   tenantId?: string;
-  userIdOrEmail?: string;
+  userId?: string;
   now?: Date;
+}
+
+export interface RecentCase {
+  id: string;
+  subject?: string | null;
+  current_state: string;
+  due_at?: string | null;
+  created_at: string;
 }
 
 export interface DashboardMetrics {
@@ -16,50 +24,35 @@ export interface DashboardMetrics {
   dueSoon: number;
   overdue: number;
   assignedToMe: number;
+  incidentLinkedCases: number;
+  incidentLinkedSupported: boolean;
   recentCases: RecentCase[];
+  _warnings: string[];
 }
 
-export interface RecentCase {
-  id: string;
-  caseNumber: string;
-  status: string;
-  type: string;
-  priority: string;
-  dueDate: string | null;
-  createdAt: string;
-  description: string | null;
-}
+// ─── Constants ──────────────────────────────────────────────────────────────
 
-// Closed/terminal statuses — everything else counts as "open"
 const TERMINAL_STATUSES = ["CLOSED", "REJECTED"] as const;
 
-// Tables to try in order (Prisma @@map name first, then fallback)
-const TABLE_CANDIDATES = ["dsar_cases", "cases"] as const;
+const LOG_PREFIX = "[dashboard/metrics]";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-async function resolveTable(
-  supabase: ReturnType<typeof createServerSupabase>
-): Promise<string> {
-  for (const table of TABLE_CANDIDATES) {
-    const { error } = await supabase
-      .from(table)
-      .select("id", { count: "exact", head: true })
-      .limit(0);
+type SupabaseClient = ReturnType<typeof createServerSupabase>;
 
-    if (!error) return table;
-
-    // Table doesn't exist — try next candidate
-    if (error.code === "PGRST116" || error.code === "42P01") continue;
-
-    // Permission or other error on an existing table — still usable
-    // (RLS might restrict rows, but table exists)
-    if (error.code === "42501") return table;
-  }
-
-  throw new Error(
-    `No usable table found. Tried: ${TABLE_CANDIDATES.join(", ")}`
-  );
+/**
+ * Probe whether a table/view exists by running a cheap head query.
+ * Returns true if the table is queryable, false otherwise.
+ */
+async function tableExists(
+  supabase: SupabaseClient,
+  name: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from(name)
+    .select("*", { count: "exact", head: true })
+    .limit(0);
+  return !error;
 }
 
 function isoDatePlusDays(base: Date, days: number): string {
@@ -73,81 +66,174 @@ function isoDatePlusDays(base: Date, days: number): string {
 export async function getDashboardMetrics(
   params: DashboardMetricsParams = {}
 ): Promise<DashboardMetrics> {
-  const { tenantId, userIdOrEmail, now = new Date() } = params;
+  const { tenantId, userId, now = new Date() } = params;
+  const warnings: string[] = [];
 
   const supabase = createServerSupabase();
-  const table = await resolveTable(supabase);
 
   const nowISO = now.toISOString();
   const dueSoonISO = isoDatePlusDays(now, 7);
 
-  // Helper: build a query with shared base filters (tenant + not soft-deleted)
-  function baseQuery() {
-    let q = supabase.from(table).select("*", { count: "exact", head: true });
-    if (tenantId) q = q.eq("tenantId", tenantId);
-    q = q.is("deletedAt", null);
+  // ── 1. Decide data source: view (preferred) vs. raw table ─────────────
+
+  const hasView = await tableExists(supabase, "v_dsar_cases_current_state");
+  const hasTable = await tableExists(supabase, "dsar_cases");
+
+  if (!hasView && !hasTable) {
+    throw new Error("Neither v_dsar_cases_current_state nor dsar_cases found");
+  }
+
+  // Column name mapping depending on data source
+  const useView = hasView;
+  const source = useView ? "v_dsar_cases_current_state" : "dsar_cases";
+
+  // The view uses snake_case aliases; the raw table uses Prisma camelCase.
+  const col = useView
+    ? {
+        id: "case_id",
+        state: "current_state",
+        dueDate: "due_at",
+        assignedTo: "assigned_to",
+        tenantId: "tenant_id",
+        deletedAt: null as string | null, // view already filters soft-deletes
+        createdAt: "state_changed_at",
+      }
+    : {
+        id: "id",
+        state: "status",
+        dueDate: "dueDate",
+        assignedTo: "assignedToUserId",
+        tenantId: "tenantId",
+        deletedAt: "deletedAt" as string | null,
+        createdAt: "createdAt",
+      };
+
+  if (!hasView) {
+    warnings.push(
+      "v_dsar_cases_current_state not found — falling back to dsar_cases.status"
+    );
+  }
+
+  // ── 2. Build count queries in parallel ────────────────────────────────
+
+  function baseCountQuery() {
+    let q = supabase.from(source).select("*", { count: "exact", head: true });
+    if (tenantId) q = q.eq(col.tenantId, tenantId);
+    if (col.deletedAt) q = q.is(col.deletedAt, null);
     return q;
   }
 
-  // Run all count queries in parallel
-  const [totalRes, openRes, dueSoonRes, overdueRes, assignedRes, recentRes] =
-    await Promise.all([
-      // 1. Total cases
-      baseQuery(),
+  function openFilter(
+    q: ReturnType<typeof baseCountQuery>
+  ): ReturnType<typeof baseCountQuery> {
+    return q.not(
+      col.state,
+      "in",
+      `(${TERMINAL_STATUSES.join(",")})`
+    );
+  }
 
-      // 2. Open cases (not in terminal status)
-      baseQuery().not("status", "in", `(${TERMINAL_STATUSES.join(",")})`),
+  // ── 3. Incident-linked cases probe ────────────────────────────────────
 
-      // 3. Due soon: dueDate <= now+7d AND dueDate >= now AND not terminal
-      baseQuery()
-        .not("status", "in", `(${TERMINAL_STATUSES.join(",")})`)
-        .gte("dueDate", nowISO)
-        .lte("dueDate", dueSoonISO),
+  const hasIncidents = await tableExists(supabase, "dsar_incidents");
 
-      // 4. Overdue: dueDate < now AND not terminal
-      baseQuery()
-        .not("status", "in", `(${TERMINAL_STATUSES.join(",")})`)
-        .lt("dueDate", nowISO),
+  // ── 4. Fire all count queries in parallel ─────────────────────────────
 
-      // 5. Assigned to me (by userId; falls back gracefully)
-      userIdOrEmail
-        ? baseQuery()
-            .not("status", "in", `(${TERMINAL_STATUSES.join(",")})`)
-            .eq("assignedToUserId", userIdOrEmail)
-        : Promise.resolve({ count: 0, error: null }),
+  const [
+    totalRes,
+    openRes,
+    dueSoonRes,
+    overdueRes,
+    assignedRes,
+    incidentRes,
+    recentRes,
+  ] = await Promise.all([
+    // 1. totalCases
+    baseCountQuery(),
 
-      // 6. Recent cases (last 10, full rows for the card list)
-      (() => {
-        let q = supabase
-          .from(table)
-          .select(
-            "id, caseNumber, status, type, priority, dueDate, createdAt, description"
-          )
-          .is("deletedAt", null)
-          .order("createdAt", { ascending: false })
-          .limit(10);
-        if (tenantId) q = q.eq("tenantId", tenantId);
-        return q;
-      })(),
-    ]);
+    // 2. openCases
+    openFilter(baseCountQuery()),
 
-  // Log any errors server-side (never expose keys or internals)
-  const errors: string[] = [];
-  for (const [label, res] of [
-    ["total", totalRes],
-    ["open", openRes],
+    // 3. dueSoon: due within 7 days AND not terminal
+    openFilter(baseCountQuery())
+      .gte(col.dueDate, nowISO)
+      .lte(col.dueDate, dueSoonISO),
+
+    // 4. overdue: due_at < now AND not terminal
+    openFilter(baseCountQuery()).lt(col.dueDate, nowISO),
+
+    // 5. assignedToMe
+    userId
+      ? openFilter(baseCountQuery()).eq(col.assignedTo, userId)
+      : Promise.resolve({ count: 0, error: null }),
+
+    // 6. incidentLinkedCases (distinct caseId count)
+    hasIncidents
+      ? (() => {
+          let q = supabase
+            .from("dsar_incidents")
+            .select("caseId", { count: "exact", head: true });
+          if (tenantId) q = q.eq("tenantId", tenantId);
+          return q;
+        })()
+      : Promise.resolve({ count: 0, error: null }),
+
+    // 7. recentCases (last 10, full rows)
+    (() => {
+      const fields = useView
+        ? "case_id, current_state, due_at, state_changed_at"
+        : "id, status, dueDate, createdAt, description";
+
+      let q = supabase
+        .from(source)
+        .select(fields)
+        .order(col.createdAt, { ascending: false })
+        .limit(10);
+      if (tenantId) q = q.eq(col.tenantId, tenantId);
+      if (col.deletedAt) q = q.is(col.deletedAt, null);
+      return q;
+    })(),
+  ]);
+
+  // ── 5. Collect server-side warnings ───────────────────────────────────
+
+  const queryResults = [
+    ["totalCases", totalRes],
+    ["openCases", openRes],
     ["dueSoon", dueSoonRes],
     ["overdue", overdueRes],
-    ["assigned", assignedRes],
-    ["recent", recentRes],
-  ] as const) {
+    ["assignedToMe", assignedRes],
+    ["incidentLinked", incidentRes],
+    ["recentCases", recentRes],
+  ] as const;
+
+  for (const [label, res] of queryResults) {
     if (res.error) {
-      errors.push(`${label}: ${res.error.message} (${res.error.code})`);
+      const msg = `${label}: ${res.error.message} (${res.error.code})`;
+      console.warn(LOG_PREFIX, msg);
+      warnings.push(msg);
     }
   }
-  if (errors.length > 0) {
-    console.warn("[dashboard/metrics] query warnings:", errors);
+
+  if (!hasIncidents) {
+    warnings.push("dsar_incidents table not found — incidentLinkedCases = 0");
   }
+
+  // ── 6. Map recent cases to uniform shape ──────────────────────────────
+
+  type RawRow = Record<string, unknown>;
+  const rawRecent: RawRow[] =
+    (recentRes as { data: RawRow[] | null }).data ?? [];
+
+  const recentCases: RecentCase[] = rawRecent.map((row) => ({
+    id: String(row[col.id] ?? ""),
+    subject: useView ? null : (row["description"] as string | null) ?? null,
+    current_state: String(row[col.state] ?? "UNKNOWN"),
+    due_at: row[col.dueDate] ? String(row[col.dueDate]) : null,
+    created_at: String(row[col.createdAt] ?? ""),
+  }));
+
+  // ── 7. Assemble response ──────────────────────────────────────────────
 
   return {
     totalCases: totalRes.count ?? 0,
@@ -155,6 +241,9 @@ export async function getDashboardMetrics(
     dueSoon: dueSoonRes.count ?? 0,
     overdue: overdueRes.count ?? 0,
     assignedToMe: ("count" in assignedRes ? assignedRes.count : 0) ?? 0,
-    recentCases: (recentRes as { data: RecentCase[] | null }).data ?? [],
+    incidentLinkedCases: incidentRes.count ?? 0,
+    incidentLinkedSupported: hasIncidents,
+    recentCases,
+    _warnings: warnings,
   };
 }

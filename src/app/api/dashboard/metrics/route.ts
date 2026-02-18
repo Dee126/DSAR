@@ -1,18 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuthSession } from "@/lib/auth";
 import { getDashboardMetrics } from "@/server/dashboard/metrics";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = request.nextUrl;
-    const tenantId = searchParams.get("tenantId") ?? undefined;
-    const userId = searchParams.get("userId") ?? undefined;
+    // Resolve user identity: session → x-user header → anonymous
+    const session = await getAuthSession();
+    const tenantId =
+      session?.user?.tenantId ??
+      request.headers.get("x-tenant-id") ??
+      undefined;
+    const userId =
+      session?.user?.id ?? request.headers.get("x-user") ?? undefined;
 
-    const metrics = await getDashboardMetrics({
-      tenantId,
-      userIdOrEmail: userId,
-    });
+    const metrics = await getDashboardMetrics({ tenantId, userId });
 
     return NextResponse.json(metrics);
   } catch (err) {
