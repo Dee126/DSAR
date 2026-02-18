@@ -1,3 +1,11 @@
+-- ═══════════════════════════════════════════════════════════════
+-- FULL CLEANUP: Drop everything first for a clean slate
+-- ═══════════════════════════════════════════════════════════════
+DROP SCHEMA public CASCADE;
+CREATE SCHEMA public;
+GRANT ALL ON SCHEMA public TO postgres;
+GRANT ALL ON SCHEMA public TO public;
+
 -- CreateEnum
 CREATE TYPE "UserRole" AS ENUM ('SUPER_ADMIN', 'TENANT_ADMIN', 'DPO', 'CASE_MANAGER', 'ANALYST', 'AUDITOR', 'CONTRIBUTOR', 'READ_ONLY');
 
