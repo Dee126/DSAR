@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase/server";
+import { createServerSupabase, isServerSupabaseConfigured } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const supabase = createServerSupabase();
+    if (!isServerSupabaseConfigured()) {
+      return NextResponse.json(
+        { ok: false, error: "Supabase not configured (missing env vars)" },
+        { status: 503 }
+      );
+    }
+
+    const supabase = createServerSupabase()!;
 
     // 1. Check base table
     const { data, error, count } = await supabase

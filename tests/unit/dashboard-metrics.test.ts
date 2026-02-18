@@ -59,6 +59,24 @@ const mockFrom = vi.fn((table: string) => makeChain(table));
 
 vi.mock("@/lib/supabase/server", () => ({
   createServerSupabase: () => ({ from: mockFrom }),
+  isServerSupabaseConfigured: () => true,
+}));
+
+// ── Mock Prisma client (used by the Prisma fallback path) ────────────────
+const mockPrismaCount = vi.fn().mockResolvedValue(0);
+const mockPrismaFindMany = vi.fn().mockResolvedValue([]);
+const mockPrismaGroupBy = vi.fn().mockResolvedValue([]);
+
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    dSARCase: {
+      count: (...args: unknown[]) => mockPrismaCount(...args),
+      findMany: (...args: unknown[]) => mockPrismaFindMany(...args),
+    },
+    dsarIncident: {
+      groupBy: (...args: unknown[]) => mockPrismaGroupBy(...args),
+    },
+  },
 }));
 
 // ── Import after mocks are registered ───────────────────────────────────
@@ -181,7 +199,7 @@ describe("getDashboardMetrics", () => {
     );
   });
 
-  it("throws when neither view nor table exist", async () => {
+  it("falls back to Prisma when neither Supabase view nor table exist", async () => {
     setTableResult("v_dsar_cases_current_state", {
       count: null,
       error: { message: "not found", code: "42P01" },
@@ -191,8 +209,11 @@ describe("getDashboardMetrics", () => {
       error: { message: "not found", code: "42P01" },
     });
 
-    await expect(getDashboardMetrics({ now: NOW })).rejects.toThrow(
-      /neither.*found/i
+    // Supabase path throws, but getDashboardMetrics catches it
+    // and falls back to Prisma
+    const result = await getDashboardMetrics({ now: NOW });
+    expect(result._warnings).toContainEqual(
+      expect.stringContaining("Prisma fallback")
     );
   });
 

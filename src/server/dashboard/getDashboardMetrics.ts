@@ -40,12 +40,8 @@ const LOG_PREFIX = "[dashboard/metrics]";
 
 // ─── Supabase helpers ───────────────────────────────────────────────────────
 
-function isSupabaseConfigured(): boolean {
-  return !!(
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
-}
+// Re-export from the canonical module to avoid duplicating the check
+import { isServerSupabaseConfigured as isSupabaseConfigured } from "@/lib/supabase/server";
 
 function isoDatePlusDays(base: Date, days: number): string {
   const d = new Date(base);
@@ -182,7 +178,14 @@ async function getDashboardMetricsViaSupabase(
   const { tenantId, userId, now = new Date() } = params;
   const warnings: string[] = [];
 
-  const supabase = createServerSupabase();
+  const maybeSupabase = createServerSupabase();
+
+  if (!maybeSupabase) {
+    throw new Error("Supabase client could not be created (missing env vars)");
+  }
+
+  // TypeScript narrows: non-null after the guard above
+  const supabase = maybeSupabase;
 
   type SupabaseClient = typeof supabase;
 
