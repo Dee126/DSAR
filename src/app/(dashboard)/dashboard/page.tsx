@@ -94,6 +94,16 @@ export default function DashboardPage() {
       riskDistribution: { green: number; yellow: number; red: number };
     };
   } | null>(null);
+  const [metrics, setMetrics] = useState<{
+    totalCases: number;
+    openCases: number;
+    dueSoon: number;
+    overdue: number;
+    assignedToMe: number;
+  } | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(true);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
+
   const [copilotStats, setCopilotStats] = useState<{
     totalRuns: number;
     completedRuns: number;
@@ -171,6 +181,36 @@ export default function DashboardPage() {
     fetchSlaReport();
   }, []);
 
+  // ── Supabase metrics for KPI cards ──────────────────────────────────
+  const fetchMetrics = async () => {
+    setMetricsLoading(true);
+    setMetricsError(null);
+    try {
+      const params = new URLSearchParams();
+      const tenantId =
+        process.env.NEXT_PUBLIC_TENANT_ID ?? session?.user?.tenantId;
+      if (tenantId) params.set("tenantId", tenantId);
+      if (session?.user?.id) params.set("userId", session.user.id);
+      const qs = params.toString();
+      const res = await fetch(
+        `/api/dashboard/metrics${qs ? `?${qs}` : ""}`
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setMetrics(data);
+    } catch (err) {
+      setMetricsError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setMetricsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMetrics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id]);
+
   const CLOSED_STATUSES = ["CLOSED", "REJECTED"];
   const openCases = cases.filter((c) => !CLOSED_STATUSES.includes(c.status));
   const dueSoonCases = cases.filter(
@@ -190,12 +230,15 @@ export default function DashboardPage() {
   );
   const recentCases = cases.slice(0, 5);
 
+  const hasSession = !!session?.user?.id;
+
   const stats = [
     {
       label: "Total Cases",
-      value: cases.length,
+      value: metrics?.totalCases ?? cases.length,
       color: "text-gray-900",
       bg: "bg-white",
+      tooltip: undefined as string | undefined,
       icon: (
         <svg className="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
@@ -204,9 +247,10 @@ export default function DashboardPage() {
     },
     {
       label: "Open Cases",
-      value: openCases.length,
+      value: metrics?.openCases ?? openCases.length,
       color: "text-brand-600",
       bg: "bg-white",
+      tooltip: undefined as string | undefined,
       icon: (
         <svg className="h-6 w-6 text-brand-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" />
@@ -215,9 +259,10 @@ export default function DashboardPage() {
     },
     {
       label: "Due Soon",
-      value: dueSoonCases.length,
+      value: metrics?.dueSoon ?? dueSoonCases.length,
       color: "text-yellow-600",
       bg: "bg-white",
+      tooltip: undefined as string | undefined,
       icon: (
         <svg className="h-6 w-6 text-yellow-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
@@ -226,9 +271,10 @@ export default function DashboardPage() {
     },
     {
       label: "Overdue",
-      value: overdueCases.length,
+      value: metrics?.overdue ?? overdueCases.length,
       color: "text-red-600",
       bg: "bg-white",
+      tooltip: undefined as string | undefined,
       icon: (
         <svg className="h-6 w-6 text-red-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
@@ -237,9 +283,10 @@ export default function DashboardPage() {
     },
     {
       label: "Assigned to Me",
-      value: assignedToMe.length,
+      value: hasSession ? (metrics?.assignedToMe ?? assignedToMe.length) : 0,
       color: "text-brand-600",
       bg: "bg-white",
+      tooltip: hasSession ? undefined : "Login required",
       icon: (
         <svg className="h-6 w-6 text-brand-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
@@ -261,7 +308,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats Cards */}
-      {loading ? (
+      {metricsLoading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="card animate-pulse">
@@ -280,11 +327,29 @@ export default function DashboardPage() {
                 </p>
                 {stat.icon}
               </div>
-              <p className={`mt-2 text-3xl font-bold ${stat.color}`}>
+              <p
+                className={`mt-2 text-3xl font-bold ${stat.color}`}
+                title={stat.tooltip}
+              >
                 {stat.value}
               </p>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Metrics Error */}
+      {metricsError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 flex items-center justify-between">
+          <p className="text-sm text-red-700">
+            Failed to load metrics: {metricsError}
+          </p>
+          <button
+            onClick={fetchMetrics}
+            className="ml-4 shrink-0 rounded-md bg-red-100 px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-200 transition-colors"
+          >
+            Retry
+          </button>
         </div>
       )}
 
