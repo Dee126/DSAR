@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth";
-import { getDashboardMetrics } from "@/server/dashboard/metrics";
+import { getDashboardMetrics } from "@/server/dashboard/getDashboardMetrics";
 
 export const dynamic = "force-dynamic";
 
