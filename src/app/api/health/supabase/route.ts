@@ -1,43 +1,29 @@
 import { NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase/server";
+import { createServerSupabase } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-const TABLES_TO_TRY = ["cases", "persons"] as const;
-
 export async function GET() {
   try {
-    const supabase = createServerClient();
+    const supabase = createServerSupabase();
 
-    for (const table of TABLES_TO_TRY) {
-      const { data, error, count } = await supabase
-        .from(table)
-        .select("*", { count: "exact", head: true });
+    const { data, error, count } = await supabase
+      .from("dsar_cases")
+      .select("id", { count: "exact", head: false })
+      .limit(1);
 
-      if (!error) {
-        return NextResponse.json({
-          ok: true,
-          tableChecked: table,
-          rowCount: count ?? 0,
-        });
-      }
-
-      // Table doesn't exist — try next one
-      if (error.code === "PGRST116" || error.code === "42P01") {
-        continue;
-      }
-
-      // Some other Supabase/Postgres error
+    if (error) {
       return NextResponse.json(
-        { ok: false, error: `${table}: ${error.message}` },
+        { ok: false, table: "dsar_cases", error: error.message },
         { status: 500 }
       );
     }
 
-    return NextResponse.json(
-      { ok: false, error: "No known table found (tried: " + TABLES_TO_TRY.join(", ") + ")" },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      ok: true,
+      table: "dsar_cases",
+      rowCount: count ?? data?.length ?? 0,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createServerClient } from "@/lib/supabase/server";
+import { createServerSupabase } from "@/lib/supabase/server";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -39,7 +39,7 @@ const TABLE_CANDIDATES = ["dsar_cases", "cases"] as const;
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 async function resolveTable(
-  supabase: ReturnType<typeof createServerClient>
+  supabase: ReturnType<typeof createServerSupabase>
 ): Promise<string> {
   for (const table of TABLE_CANDIDATES) {
     const { error } = await supabase
@@ -75,7 +75,7 @@ export async function getDashboardMetrics(
 ): Promise<DashboardMetrics> {
   const { tenantId, userIdOrEmail, now = new Date() } = params;
 
-  const supabase = createServerClient();
+  const supabase = createServerSupabase();
   const table = await resolveTable(supabase);
 
   const nowISO = now.toISOString();
