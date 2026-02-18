@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import IncidentDashboardWidget from "@/components/IncidentDashboardWidget";
 import VendorDashboardWidget from "@/components/VendorDashboardWidget";
 import ExecutiveKpiWidget from "@/components/ExecutiveKpiWidget";
 
@@ -33,13 +32,6 @@ const STATUS_COLORS: Record<string, string> = {
   REJECTED: "bg-red-100 text-red-800",
 };
 
-const PRIORITY_COLORS: Record<string, string> = {
-  LOW: "bg-gray-100 text-gray-700",
-  MEDIUM: "bg-blue-100 text-blue-700",
-  HIGH: "bg-orange-100 text-orange-700",
-  CRITICAL: "bg-red-100 text-red-700",
-};
-
 function getSlaIndicator(dueDate: string): "ok" | "due_soon" | "overdue" {
   const diff =
     (new Date(dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
@@ -48,34 +40,10 @@ function getSlaIndicator(dueDate: string): "ok" | "due_soon" | "overdue" {
   return "ok";
 }
 
-/* ── Types ────────────────────────────────────────────────────────────── */
-
-interface CaseUser {
-  id: string;
-  name: string;
-  email: string;
-}
-
-interface DSARCase {
-  id: string;
-  caseNumber: string;
-  type: string;
-  status: string;
-  priority: string;
-  dueDate: string;
-  receivedAt: string;
-  createdAt: string;
-  assignedTo: CaseUser | null;
-  assignedToUserId: string | null;
-  dataSubject: { fullName: string; email?: string };
-}
-
 /* ── Component ────────────────────────────────────────────────────────── */
 
 export default function DashboardPage() {
   const { data: session } = useSession();
-  const [cases, setCases] = useState<DSARCase[]>([]);
-  const [loading, setLoading] = useState(true);
   const [integrationHealth, setIntegrationHealth] = useState<{
     total: number;
     connected: number;
@@ -100,6 +68,15 @@ export default function DashboardPage() {
     dueSoon: number;
     overdue: number;
     assignedToMe: number;
+    incidentLinkedCases: number;
+    incidentLinkedSupported: boolean;
+    recentCases: Array<{
+      id: string;
+      subject?: string | null;
+      current_state: string;
+      due_at?: string | null;
+      created_at: string;
+    }>;
   } | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
   const [metricsError, setMetricsError] = useState<string | null>(null);
@@ -121,23 +98,6 @@ export default function DashboardPage() {
       createdBy: { name: string };
     }>;
   } | null>(null);
-
-  useEffect(() => {
-    async function fetchCases() {
-      try {
-        const res = await fetch("/api/cases?limit=100");
-        if (res.ok) {
-          const json = await res.json();
-          setCases(json.data ?? []);
-        }
-      } catch {
-        /* silently fail */
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchCases();
-  }, []);
 
   useEffect(() => {
     async function fetchIntegrationHealth() {
@@ -211,31 +171,13 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id]);
 
-  const CLOSED_STATUSES = ["CLOSED", "REJECTED"];
-  const openCases = cases.filter((c) => !CLOSED_STATUSES.includes(c.status));
-  const dueSoonCases = cases.filter(
-    (c) =>
-      !CLOSED_STATUSES.includes(c.status) &&
-      getSlaIndicator(c.dueDate) === "due_soon"
-  );
-  const overdueCases = cases.filter(
-    (c) =>
-      !CLOSED_STATUSES.includes(c.status) &&
-      getSlaIndicator(c.dueDate) === "overdue"
-  );
-  const assignedToMe = cases.filter(
-    (c) =>
-      !CLOSED_STATUSES.includes(c.status) &&
-      c.assignedToUserId === session?.user?.id
-  );
-  const recentCases = cases.slice(0, 5);
-
   const hasSession = !!session?.user?.id;
+  const recentCases = (metrics?.recentCases ?? []).slice(0, 5);
 
   const stats = [
     {
       label: "Total Cases",
-      value: metrics?.totalCases ?? cases.length,
+      value: metrics?.totalCases ?? 0,
       color: "text-gray-900",
       bg: "bg-white",
       tooltip: undefined as string | undefined,
@@ -247,7 +189,7 @@ export default function DashboardPage() {
     },
     {
       label: "Open Cases",
-      value: metrics?.openCases ?? openCases.length,
+      value: metrics?.openCases ?? 0,
       color: "text-brand-600",
       bg: "bg-white",
       tooltip: undefined as string | undefined,
@@ -259,7 +201,7 @@ export default function DashboardPage() {
     },
     {
       label: "Due Soon",
-      value: metrics?.dueSoon ?? dueSoonCases.length,
+      value: metrics?.dueSoon ?? 0,
       color: "text-yellow-600",
       bg: "bg-white",
       tooltip: undefined as string | undefined,
@@ -271,7 +213,7 @@ export default function DashboardPage() {
     },
     {
       label: "Overdue",
-      value: metrics?.overdue ?? overdueCases.length,
+      value: metrics?.overdue ?? 0,
       color: "text-red-600",
       bg: "bg-white",
       tooltip: undefined as string | undefined,
@@ -283,7 +225,7 @@ export default function DashboardPage() {
     },
     {
       label: "Assigned to Me",
-      value: hasSession ? (metrics?.assignedToMe ?? assignedToMe.length) : 0,
+      value: hasSession ? (metrics?.assignedToMe ?? 0) : 0,
       color: "text-brand-600",
       bg: "bg-white",
       tooltip: hasSession ? undefined : "Login required",
@@ -532,7 +474,35 @@ export default function DashboardPage() {
       <ResponseWidget />
 
       {/* Incident-Linked DSARs Widget */}
-      <IncidentDashboardWidget />
+      {!metricsLoading && (
+        <div className="card">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100">
+                <svg className="h-5 w-5 text-red-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Incident-Linked DSARs</h3>
+                {metrics?.incidentLinkedSupported === false ? (
+                  <p className="mt-0.5 text-xs text-gray-400">Not configured</p>
+                ) : (
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    <span className="font-medium text-gray-700">{metrics?.incidentLinkedCases ?? 0}</span> case{(metrics?.incidentLinkedCases ?? 0) !== 1 ? "s" : ""} linked to incidents
+                  </p>
+                )}
+              </div>
+            </div>
+            <Link
+              href="/governance/incidents"
+              className="text-sm font-medium text-brand-600 hover:text-brand-700"
+            >
+              View Incidents
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* Vendor / Processor Tracking Widget */}
       <VendorDashboardWidget />
@@ -540,7 +510,7 @@ export default function DashboardPage() {
       {/* Executive Privacy KPI Widget */}
       <ExecutiveKpiWidget />
 
-      {/* Recent Cases Table */}
+      {/* Recent Cases */}
       <div className="card p-0">
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
           <h2 className="text-lg font-semibold text-gray-900">Recent Cases</h2>
@@ -552,7 +522,7 @@ export default function DashboardPage() {
           </Link>
         </div>
 
-        {loading ? (
+        {metricsLoading ? (
           <div className="space-y-4 p-6">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="h-10 animate-pulse rounded bg-gray-100" />
@@ -581,169 +551,68 @@ export default function DashboardPage() {
             </Link>
           </div>
         ) : (
-          <>
-            {/* Desktop Table */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                    <th className="px-6 py-3">Case #</th>
-                    <th className="px-6 py-3">Type</th>
-                    <th className="px-6 py-3">Status</th>
-                    <th className="px-6 py-3">Priority</th>
-                    <th className="px-6 py-3">Due Date</th>
-                    <th className="px-6 py-3">Assignee</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {recentCases.map((c) => {
-                    const sla = getSlaIndicator(c.dueDate);
-                    return (
-                      <tr
-                        key={c.id}
-                        className="cursor-pointer transition-colors hover:bg-gray-50"
-                        onClick={() =>
-                          (window.location.href = `/cases/${c.id}`)
-                        }
-                      >
-                        <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-brand-600">
-                          {c.caseNumber}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
-                          {c.type}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-4">
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                              STATUS_COLORS[c.status] ?? "bg-gray-100 text-gray-800"
-                            }`}
-                          >
-                            {STATUS_LABELS[c.status] ?? c.status}
-                          </span>
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-4">
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                              PRIORITY_COLORS[c.priority] ??
-                              "bg-gray-100 text-gray-700"
-                            }`}
-                          >
-                            {c.priority}
-                          </span>
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-4 text-sm">
-                          <span
-                            className={`flex items-center gap-1.5 ${
-                              sla === "overdue"
-                                ? "text-red-600"
-                                : sla === "due_soon"
-                                ? "text-yellow-600"
-                                : "text-gray-700"
-                            }`}
-                          >
-                            {sla === "overdue" && (
-                              <span className="inline-block h-2 w-2 rounded-full bg-red-500" />
-                            )}
-                            {sla === "due_soon" && (
-                              <span className="inline-block h-2 w-2 rounded-full bg-yellow-500" />
-                            )}
-                            {new Date(c.dueDate).toLocaleDateString()}
-                          </span>
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
-                          {c.assignedTo?.name ?? (
-                            <span className="text-gray-400">Unassigned</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobile Card List */}
-            <div className="divide-y divide-gray-200 md:hidden">
-              {recentCases.map((c) => {
-                const sla = getSlaIndicator(c.dueDate);
-                return (
-                  <div
-                    key={c.id}
-                    className="cursor-pointer px-6 py-4 transition-colors hover:bg-gray-50"
-                    onClick={() => (window.location.href = `/cases/${c.id}`)}
-                  >
-                    {/* Row 1: Case Number + Status Badge */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-brand-600">
-                        {c.caseNumber}
+          <div className="divide-y divide-gray-200">
+            {recentCases.map((c) => {
+              const sla = c.due_at ? getSlaIndicator(c.due_at) : "ok";
+              return (
+                <Link
+                  key={c.id}
+                  href={`/cases/${c.id}`}
+                  className="flex items-center justify-between px-6 py-3 transition-colors hover:bg-gray-50"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span
+                      className={`inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        STATUS_COLORS[c.current_state] ?? "bg-gray-100 text-gray-800"
+                      }`}
+                    >
+                      {STATUS_LABELS[c.current_state] ?? c.current_state}
+                    </span>
+                    {c.subject && (
+                      <span className="truncate text-sm text-gray-700">
+                        {c.subject}
                       </span>
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          STATUS_COLORS[c.status] ?? "bg-gray-100 text-gray-800"
-                        }`}
-                      >
-                        {STATUS_LABELS[c.status] ?? c.status}
-                      </span>
-                    </div>
-
-                    {/* Row 2: Type + Priority */}
-                    <div className="mt-2 flex items-center gap-3 text-sm">
-                      <span className="text-gray-700">{c.type}</span>
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          PRIORITY_COLORS[c.priority] ??
-                          "bg-gray-100 text-gray-700"
-                        }`}
-                      >
-                        {c.priority}
-                      </span>
-                    </div>
-
-                    {/* Row 3: Due Date + Assignee + Chevron */}
-                    <div className="mt-2 flex items-center justify-between">
-                      <div className="flex items-center gap-4 text-xs">
-                        <span
-                          className={`flex items-center gap-1.5 ${
-                            sla === "overdue"
-                              ? "text-red-600"
-                              : sla === "due_soon"
-                              ? "text-yellow-600"
-                              : "text-gray-700"
-                          }`}
-                        >
-                          {sla === "overdue" && (
-                            <span className="inline-block h-2 w-2 rounded-full bg-red-500" />
-                          )}
-                          {sla === "due_soon" && (
-                            <span className="inline-block h-2 w-2 rounded-full bg-yellow-500" />
-                          )}
-                          {new Date(c.dueDate).toLocaleDateString()}
-                        </span>
-                        <span className="text-gray-700">
-                          {c.assignedTo?.name ?? (
-                            <span className="text-gray-400">Unassigned</span>
-                          )}
-                        </span>
-                      </div>
-                      <svg
-                        className="h-5 w-5 text-gray-400"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        strokeWidth={1.5}
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M8.25 4.5l7.5 7.5-7.5 7.5"
-                        />
-                      </svg>
-                    </div>
+                    )}
                   </div>
-                );
-              })}
-            </div>
-          </>
+                  <div className="flex shrink-0 items-center gap-3 text-xs text-gray-500">
+                    {c.due_at && (
+                      <span
+                        className={`flex items-center gap-1.5 ${
+                          sla === "overdue"
+                            ? "text-red-600"
+                            : sla === "due_soon"
+                            ? "text-yellow-600"
+                            : "text-gray-500"
+                        }`}
+                      >
+                        {sla !== "ok" && (
+                          <span
+                            className={`inline-block h-2 w-2 rounded-full ${
+                              sla === "overdue" ? "bg-red-500" : "bg-yellow-500"
+                            }`}
+                          />
+                        )}
+                        {new Date(c.due_at).toLocaleDateString()}
+                      </span>
+                    )}
+                    <svg
+                      className="h-4 w-4 text-gray-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                      />
+                    </svg>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>
