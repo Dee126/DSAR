@@ -5,9 +5,15 @@
 -- Erzeugt 20 realistische DSAR-Cases mit State Transitions und Incidents.
 -- Direkt im Supabase SQL Editor ausfuehrbar.
 --
--- Voraussetzungen:
---   - Prisma-Schema ist migriert (Tabellen existieren)
---   - Keine Duplikate: Script prueft auf existierenden Demo-Tenant
+-- SETUP (Reihenfolge):
+--   1. Supabase SQL Editor oeffnen
+--   2. Zuerst die Prisma-Migration ausfuehren (Tabellen muessen existieren)
+--   3. Dann die View-Migration (20260218_create_v_dsar_cases_current_state.sql)
+--   4. Dann dieses Script ausfuehren
+--
+-- LOGIN nach Seed:
+--   Email:    daniel.schormann@gmail.com
+--   Passwort: admin123
 --
 -- NICHT-DESTRUKTIV: Kein DROP, kein TRUNCATE, kein DELETE.
 -- ============================================================================
@@ -27,10 +33,14 @@ DO $$ BEGIN
 END $$;
 
 -- Users
+-- Passwort-Hashes (bcrypt, 12 rounds):
+--   admin123    → $2a$12$k2Et5qGFcr6S/6cFKmqcauOzQtBnQ7yTdwbrRyacedlgXvQI.66RO
+--   admin123456 → $2a$12$6TV745e6vDa5Ig1kjBBQGevyKglqCrB6t3xXjk5xsOYF2UZNP.2xu
 INSERT INTO "users" ("id", "tenantId", "email", "name", "passwordHash", "role", "createdAt", "updatedAt")
 VALUES
-  ('usr_demo_daniel', 'tenant_demo_1', 'daniel@demo.de',  'Daniel Hartmann', '$2a$12$dummyhashnotreal000000000000000000000000000000000', 'DPO',          NOW(), NOW()),
-  ('usr_demo_sabine', 'tenant_demo_1', 'sabine@demo.de',  'Sabine Richter',  '$2a$12$dummyhashnotreal000000000000000000000000000000000', 'CASE_MANAGER',  NOW(), NOW())
+  ('usr_demo_daniel_s', 'tenant_demo_1', 'daniel.schormann@gmail.com', 'Daniel Schormann', '$2a$12$k2Et5qGFcr6S/6cFKmqcauOzQtBnQ7yTdwbrRyacedlgXvQI.66RO', 'TENANT_ADMIN', NOW(), NOW()),
+  ('usr_demo_daniel',   'tenant_demo_1', 'daniel@demo.de',             'Daniel Hartmann',  '$2a$12$k2Et5qGFcr6S/6cFKmqcauOzQtBnQ7yTdwbrRyacedlgXvQI.66RO', 'DPO',          NOW(), NOW()),
+  ('usr_demo_sabine',   'tenant_demo_1', 'sabine@demo.de',             'Sabine Richter',   '$2a$12$k2Et5qGFcr6S/6cFKmqcauOzQtBnQ7yTdwbrRyacedlgXvQI.66RO', 'CASE_MANAGER',  NOW(), NOW())
 ON CONFLICT ("id") DO NOTHING;
 
 -- Data Subjects (20 Personen)
