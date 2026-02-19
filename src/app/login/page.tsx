@@ -24,9 +24,9 @@ export default function LoginPage() {
       });
 
       if (result?.error) {
-        // NextAuth returns status 401 for wrong credentials, other
-        // status codes indicate server-side issues (DB down, etc.)
-        if (result.status === 401) {
+        // NextAuth with redirect:false returns status 200 for all outcomes.
+        // Use the error string to distinguish credential failures from server errors.
+        if (result.error === "CredentialsSignin") {
           setError("Invalid email or password. Please try again.");
         } else {
           setError(

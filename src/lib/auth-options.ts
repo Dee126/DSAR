@@ -24,19 +24,23 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        const email = credentials.email.trim().toLowerCase();
+
         try {
           const user = await prisma.user.findFirst({
-            where: { email: credentials.email },
+            where: {
+              email: { equals: email, mode: "insensitive" },
+            },
           });
 
           if (!user) {
-            console.warn("[auth] No user found for email:", credentials.email);
+            console.warn("[auth] No user found for email:", email);
             return null;
           }
 
           const valid = await compare(credentials.password, user.passwordHash);
           if (!valid) {
-            console.warn("[auth] Invalid password for:", credentials.email);
+            console.warn("[auth] Invalid password for:", email);
             return null;
           }
 
@@ -45,7 +49,7 @@ export const authOptions: NextAuthOptions = {
             data: { lastLoginAt: new Date() },
           });
 
-          console.log("[auth] Login OK:", credentials.email, "role:", user.role);
+          console.log("[auth] Login OK:", email, "role:", user.role);
 
           return {
             id: user.id,
@@ -61,7 +65,7 @@ export const authOptions: NextAuthOptions = {
           // "Invalid email or password" with no way to diagnose.
           console.error(
             "[auth] Database error during login:",
-            credentials.email,
+            email,
             error instanceof Error ? error.message : error
           );
           throw error;
