@@ -24,7 +24,15 @@ export default function LoginPage() {
       });
 
       if (result?.error) {
-        setError("Invalid email or password. Please try again.");
+        // NextAuth returns status 401 for wrong credentials, other
+        // status codes indicate server-side issues (DB down, etc.)
+        if (result.status === 401) {
+          setError("Invalid email or password. Please try again.");
+        } else {
+          setError(
+            "Login failed due to a server error. Please try again in a moment."
+          );
+        }
       } else {
         router.push("/dashboard");
       }

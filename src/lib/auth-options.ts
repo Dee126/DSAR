@@ -20,30 +20,52 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
+          console.warn("[auth] Missing email or password in credentials");
           return null;
         }
 
-        const user = await prisma.user.findFirst({
-          where: { email: credentials.email },
-        });
+        try {
+          const user = await prisma.user.findFirst({
+            where: { email: credentials.email },
+          });
 
-        if (!user) return null;
+          if (!user) {
+            console.warn("[auth] No user found for email:", credentials.email);
+            return null;
+          }
 
-        const valid = await compare(credentials.password, user.passwordHash);
-        if (!valid) return null;
+          const valid = await compare(credentials.password, user.passwordHash);
+          if (!valid) {
+            console.warn("[auth] Invalid password for:", credentials.email);
+            return null;
+          }
 
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { lastLoginAt: new Date() },
-        });
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { lastLoginAt: new Date() },
+          });
 
-        return {
-          id: user.id,
-          tenantId: user.tenantId,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-        };
+          console.log("[auth] Login OK:", credentials.email, "role:", user.role);
+
+          return {
+            id: user.id,
+            tenantId: user.tenantId,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+          };
+        } catch (error) {
+          // Log the real error so DB/connection issues are visible in
+          // Vercel Function Logs — without this, they get swallowed as
+          // a generic "CredentialsSignin" and the user just sees
+          // "Invalid email or password" with no way to diagnose.
+          console.error(
+            "[auth] Database error during login:",
+            credentials.email,
+            error instanceof Error ? error.message : error
+          );
+          throw error;
+        }
       },
     }),
   ],
