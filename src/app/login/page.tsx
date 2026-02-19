@@ -2,10 +2,8 @@
 
 import { useState, FormEvent } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -18,14 +16,13 @@ export default function LoginPage() {
 
     try {
       const result = await signIn("credentials", {
-        email,
+        email: email.trim(),
         password,
         redirect: false,
+        callbackUrl: "/dashboard",
       });
 
       if (result?.error) {
-        // NextAuth with redirect:false returns status 200 for all outcomes.
-        // Use the error string to distinguish credential failures from server errors.
         if (result.error === "CredentialsSignin") {
           setError("Invalid email or password. Please try again.");
         } else {
@@ -34,7 +31,11 @@ export default function LoginPage() {
           );
         }
       } else {
-        router.push("/dashboard");
+        // Full page navigation so the browser sends the freshly-set
+        // session cookie on the first request. router.push() can do a
+        // client-side transition that skips the cookie, causing the
+        // middleware to redirect back to /login.
+        window.location.href = "/dashboard";
       }
     } catch {
       setError("An unexpected error occurred. Please try again.");
