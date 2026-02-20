@@ -1,10 +1,12 @@
 /**
- * deploy.js — Vercel build-time database setup (v4)
+ * deploy.js — Database setup script (v5)
  *
- * Runs during `npm run build` on Vercel.
- * 1. Pushes the Prisma schema to the database (creates/updates tables)
- * 2. Ensures the default tenant and admin users exist
+ * NOT run during the default Vercel build (which is just `prisma generate && next build`).
+ * Use `npm run build:with-db` or run this script manually when you need to:
+ *   1. Push the Prisma schema to the database (creates/updates tables)
+ *   2. Ensure the default tenant and admin users exist
  *
+ * Requires DIRECT_URL (port 5432) or DATABASE_URL pointing to a non-pooled connection.
  * Retries on connection failures. Skips gracefully if DATABASE_URL is not set.
  */
 const { execSync } = require("child_process");
