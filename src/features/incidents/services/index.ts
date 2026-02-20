@@ -1,3 +1,9 @@
+/**
+ * Incident services — business logic layer.
+ * Currently re-exports from repositories. As business logic grows
+ * (e.g. validation, multi-step orchestration), add service functions here
+ * that call repositories internally.
+ */
 export {
   fetchIncident,
   fetchSystems,
@@ -9,4 +15,4 @@ export {
   createSurgeGroup,
   generateExport,
   getExportDownloadUrl,
-} from "./incident-api";
+} from "../repositories";
