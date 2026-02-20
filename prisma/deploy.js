@@ -1,7 +1,7 @@
 /**
- * deploy.js — Vercel build-time database setup (v4)
+ * deploy.js — Manual database setup (v5)
  *
- * Runs during `npm run build` on Vercel.
+ * Run via `npm run deploy:db` (no longer part of the Vercel build).
  * 1. Pushes the Prisma schema to the database (creates/updates tables)
  * 2. Ensures the default tenant and admin users exist
  *
@@ -19,9 +19,14 @@ async function pushSchemaWithRetry(maxRetries = 3) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`[deploy] Running prisma db push (attempt ${attempt}/${maxRetries})...`);
+      // Force prisma db push to use DATABASE_URL only (avoid DIRECT_URL
+      // which may point to a non-pooled endpoint that is unavailable)
+      const envForPush = { ...process.env };
+      delete envForPush.DIRECT_URL;
       execSync("npx prisma db push --skip-generate --accept-data-loss", {
         stdio: "inherit",
         timeout: 60000,
+        env: envForPush,
       });
       console.log("[deploy] Schema pushed successfully.");
       return true;
@@ -92,7 +97,9 @@ async function main() {
     });
     console.log("[deploy] Tenant ensured:", tenant.id, tenant.name);
 
-    const passwordHash = await bcrypt.hash("admin123", 12);
+    const password = process.env.TEST_USER_PASSWORD || "admin123";
+    const passwordHash = await bcrypt.hash(password, 12);
+    console.log("[deploy] Using password from", process.env.TEST_USER_PASSWORD ? "TEST_USER_PASSWORD env var" : "default fallback");
 
     const admin = await prisma.user.upsert({
       where: { tenantId_email: { tenantId, email: "admin@acme-corp.com" } },
