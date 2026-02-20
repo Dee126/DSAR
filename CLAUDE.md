@@ -156,10 +156,36 @@ File storage via `src/lib/storage.ts`. Uses `STORAGE_TYPE` env var:
 - When modifying API routes, consider adding corresponding tests
 - Seed data (admin@acme-corp.com / admin123456) is used by E2E tests
 
-## Environment Variables
+## Deployment & Migrations
+
+### Vercel Build
+The default `build` script is `prisma generate && next build`. It does **not** touch the database.
+Vercel only needs `DATABASE_URL` (pooled, port 6543) and `NEXTAUTH_SECRET` as env vars.
+
+### Database Migrations
+Run migrations **locally or in CI**, never during the Vercel build:
+```bash
+# Set DIRECT_URL to the non-pooled Supabase connection (port 5432)
+export DIRECT_URL="postgresql://postgres.REF:PASSWORD@db.REF.supabase.co:5432/postgres"
+export DATABASE_URL="$DIRECT_URL"   # prisma migrate needs a non-pooled URL
+
+npx prisma migrate deploy           # apply pending migrations
+# OR
+npx prisma db push                  # push schema without migration files
+```
+
+To seed the default tenant/admin users:
+```bash
+node prisma/deploy.js               # needs DATABASE_URL set
+# OR
+npm run build:with-db                # generate + deploy.js + next build (for CI)
+```
+
+### Environment Variables
 
 See `.env.example` for all variables. Key ones:
-- `DATABASE_URL` — PostgreSQL connection string
+- `DATABASE_URL` — PostgreSQL connection string (pooled, port 6543 for Vercel)
+- `DIRECT_URL` — Non-pooled connection (port 5432) — **local/CI only, not needed on Vercel**
 - `NEXTAUTH_SECRET` — JWT signing secret (required)
 - `NEXTAUTH_URL` — App base URL
 - `STORAGE_TYPE` — `local` or `s3`
@@ -167,4 +193,4 @@ See `.env.example` for all variables. Key ones:
 
 ---
 
-**Last updated**: 2026-02-11
+**Last updated**: 2026-02-20
