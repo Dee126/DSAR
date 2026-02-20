@@ -28,7 +28,19 @@ export const authOptions: NextAuthOptions = {
 
         const email = credentials.email.trim().toLowerCase();
 
+        // Surface env-var diagnostics on every login attempt so
+        // misconfigured deployments are easy to spot in Vercel logs.
+        console.log("[auth] Attempting login for:", email);
+        console.log("[auth] DATABASE_URL set:", !!process.env.DATABASE_URL);
+        console.log("[auth] POSTGRES_PRISMA_URL set:", !!process.env.POSTGRES_PRISMA_URL);
+        console.log("[auth] NEXTAUTH_SECRET set:", !!process.env.NEXTAUTH_SECRET);
+        console.log("[auth] NEXTAUTH_URL:", process.env.NEXTAUTH_URL ?? "(not set)");
+
         try {
+          // Quick connectivity check — fails fast with a clear message
+          // instead of a cryptic Prisma timeout.
+          await prisma.$queryRaw`SELECT 1`;
+
           const user = await prisma.user.findFirst({
             where: {
               email: { equals: email, mode: "insensitive" },
@@ -66,9 +78,10 @@ export const authOptions: NextAuthOptions = {
           // a generic "CredentialsSignin" and the user just sees
           // "Invalid email or password" with no way to diagnose.
           console.error(
-            "[auth] Database error during login:",
+            "[auth] Error during login for",
             email,
-            error instanceof Error ? error.message : error
+            "—",
+            error instanceof Error ? `${error.name}: ${error.message}` : error
           );
           throw error;
         }
