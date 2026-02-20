@@ -16,6 +16,18 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const checks: Record<string, unknown> = {
     timestamp: new Date().toISOString(),
+    env: {
+      DATABASE_URL: !!process.env.DATABASE_URL,
+      DIRECT_URL: !!process.env.DIRECT_URL,
+      POSTGRES_PRISMA_URL: !!process.env.POSTGRES_PRISMA_URL,
+      POSTGRES_URL_NON_POOLING: !!process.env.POSTGRES_URL_NON_POOLING,
+      NEXTAUTH_SECRET: !!process.env.NEXTAUTH_SECRET,
+      NEXTAUTH_URL: process.env.NEXTAUTH_URL ?? "(not set)",
+      VERCEL_URL: process.env.VERCEL_URL ?? "(not set)",
+      NODE_ENV: process.env.NODE_ENV ?? "(not set)",
+      NEXT_PUBLIC_SUPABASE_URL: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    },
     database: false,
     tenant: false,
     users: [] as string[],
