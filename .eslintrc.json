@@ -1,0 +1,40 @@
+{
+  "extends": "next/core-web-vitals",
+  "rules": {
+    "max-lines": ["warn", { "max": 400, "skipBlankLines": true, "skipComments": true }],
+    "max-lines-per-function": ["warn", { "max": 150, "skipBlankLines": true, "skipComments": true }],
+    "complexity": ["warn", 20]
+  },
+  "overrides": [
+    {
+      "files": ["src/features/**/repositories/**/*.ts"],
+      "rules": {}
+    },
+    {
+      "files": ["src/features/**/components/**/*.tsx", "src/features/**/hooks/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": ["error", {
+          "patterns": [
+            {
+              "group": ["@supabase/*", "**/supabase/**"],
+              "message": "Supabase access is only allowed in repositories. Use a service or repository instead."
+            }
+          ]
+        }]
+      }
+    },
+    {
+      "files": ["src/app/**/*.tsx"],
+      "rules": {
+        "no-restricted-imports": ["error", {
+          "patterns": [
+            {
+              "group": ["@supabase/*", "**/supabase/**"],
+              "message": "Supabase access is only allowed in repositories. Import from features instead."
+            }
+          ]
+        }]
+      }
+    }
+  ]
+}
