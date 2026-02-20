@@ -1,4 +1,4 @@
-import { prisma } from "./prisma";
+import { AuditLogRepository } from "@/server/repositories";
 
 interface AuditEntry {
   tenantId?: string | null;
@@ -12,22 +12,16 @@ interface AuditEntry {
 }
 
 export async function logAudit(entry: AuditEntry): Promise<void> {
-  try {
-    await prisma.auditLog.create({
-      data: {
-        tenantId: entry.tenantId ?? null,
-        actorUserId: entry.actorUserId ?? null,
-        action: entry.action,
-        entityType: entry.entityType,
-        entityId: entry.entityId ?? null,
-        ip: entry.ip ?? null,
-        userAgent: entry.userAgent ?? null,
-        details: (entry.details as any) ?? undefined,
-      },
-    });
-  } catch (err) {
-    console.error("Failed to write audit log:", err);
-  }
+  await AuditLogRepository.create({
+    tenantId: entry.tenantId ?? null,
+    actorUserId: entry.actorUserId ?? null,
+    action: entry.action,
+    entityType: entry.entityType,
+    entityId: entry.entityId ?? null,
+    ip: entry.ip ?? null,
+    userAgent: entry.userAgent ?? null,
+    details: entry.details ?? null,
+  });
 }
 
 export function getClientInfo(request: Request) {
