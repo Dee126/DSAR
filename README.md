@@ -188,6 +188,43 @@ The build process (`npm run build`) also ensures this user exists via `prisma/en
 
 For the full auth architecture diagnosis, see [`docs/auth-diagnosis.md`](docs/auth-diagnosis.md).
 
+## Database Setup
+
+Vercel deploys **no longer run database migrations or schema pushes** automatically.
+The `build` script only runs `prisma generate && next build`, so you must push schema
+changes to your database manually before (or after) deploying.
+
+### Steps
+
+1. **Set `DATABASE_URL`** in your local `.env` to the Supabase connection string.
+   Prefer the **direct** connection string if available (bypasses the connection pooler);
+   the **pooled** string works fine for runtime but can cause issues with migrations.
+
+   ```
+   DATABASE_URL="postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres"
+   ```
+
+2. **Push the schema** to Supabase:
+
+   ```bash
+   npm run db:push
+   ```
+
+3. **Seed or reset data** (pick one):
+
+   ```bash
+   npm run reset:test-user   # upsert the admin user only
+   # or
+   npm run db:seed            # full demo data
+   ```
+
+> **Manual deploy helper** — If you need to run the deploy script that was previously
+> part of the build step, use:
+>
+> ```bash
+> npm run deploy:db
+> ```
+
 ## Running Tests
 
 ### Unit Tests
