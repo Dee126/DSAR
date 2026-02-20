@@ -24,8 +24,7 @@ export async function PATCH(
     const body = await request.json();
     const data = updateDiscoveryRuleSchema.parse(body);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updateData: Record<string, any> = {};
+    const updateData: Record<string, unknown> = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.dsarTypes !== undefined) updateData.dsarTypes = data.dsarTypes;
     if (data.dataSubjectTypes !== undefined) updateData.dataSubjectTypes = data.dataSubjectTypes;

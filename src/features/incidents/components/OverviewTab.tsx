@@ -167,7 +167,7 @@ function RegulatorNotificationCard({ incident }: { incident: Incident }) {
   );
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+// eslint-disable-next-line
 function ContactsCard({ incident, ov }: { incident: Incident; ov: any }) {
   return (
     <div className="bg-white rounded-lg shadow p-6">

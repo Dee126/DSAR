@@ -23,7 +23,7 @@ export function LinkedDsarsTab({ incident, incidentId, onRefresh }: Props) {
   );
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+// eslint-disable-next-line
 function LinkedCasesSection({ incident, ld }: { incident: Incident; ld: any }) {
   return (
     <div className="bg-white rounded-lg shadow p-6">

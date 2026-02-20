@@ -22,7 +22,7 @@ export function ImpactTab({ incident, incidentId, onRefresh }: Props) {
   );
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+// eslint-disable-next-line
 function AssessmentSection({ incident, imp }: { incident: Incident; imp: any }) {
   return (
     <div className="bg-white rounded-lg shadow p-6">

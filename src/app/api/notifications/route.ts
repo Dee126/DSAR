@@ -18,8 +18,7 @@ export async function GET(request: NextRequest) {
     const unreadOnly = searchParams.get("unread") === "true";
     const limit = parseInt(searchParams.get("limit") ?? "30", 10);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const where: Record<string, any> = {
+    const where: Record<string, unknown> = {
       tenantId: user.tenantId,
       recipientUserId: user.id,
     };

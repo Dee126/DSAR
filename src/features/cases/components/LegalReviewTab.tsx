@@ -6,7 +6,7 @@ import { LR_STATUS_COLORS, LR_STATUSES } from "../constants";
 interface Props {
   caseData: DSARCaseDetail;
   canManage: boolean;
-  /* eslint-disable @typescript-eslint/no-explicit-any */
+  // eslint-disable-next-line
   lr: any;
 }
 

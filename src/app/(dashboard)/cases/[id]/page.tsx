@@ -115,10 +115,10 @@ export default function CaseDetailPage() {
 
       <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-4">
         <div className="space-y-4 md:space-y-6 lg:col-span-3">
-          {activeTab === "overview" && <OverviewTab caseData={caseData} canManage={canManage} users={users} overview={overview} />}
-          {activeTab === "tasks" && <TasksTab caseData={caseData} canManage={canManage} users={users} tasks={tasks} />}
-          {activeTab === "documents" && <DocumentsTab caseData={caseData} canManage={canManage} docs={documents} />}
-          {activeTab === "communications" && <CommunicationsTab caseData={caseData} canManage={canManage} comm={communications} />}
+          {activeTab === "overview" && <OverviewTab caseData={caseData} canManage={canManage} users={users} ov={overview} />}
+          {activeTab === "tasks" && <TasksTab caseData={caseData} canManage={canManage} users={users} tt={tasks} />}
+          {activeTab === "documents" && <DocumentsTab caseData={caseData} canManage={canManage} {...documents} onUpload={documents.handleUploadDocument} />}
+          {activeTab === "communications" && <CommunicationsTab caseData={caseData} canManage={canManage} cm={communications} />}
           {activeTab === "data-collection" && <DataCollectionTab caseData={caseData} systems={systems} canManage={canManage} dc={dataCollection} />}
           {activeTab === "legal-review" && <LegalReviewTab caseData={caseData} canManage={canManage} lr={legalReview} />}
           {activeTab === "copilot" && <CopilotTab caseData={caseData} canManage={canManage} canCopilot={canCopilot} copilot={copilot} />}

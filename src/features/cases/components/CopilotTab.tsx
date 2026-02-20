@@ -9,7 +9,7 @@ interface Props {
   caseData: DSARCaseDetail;
   canManage: boolean;
   canCopilot: boolean;
-  /* eslint-disable @typescript-eslint/no-explicit-any */
+  // eslint-disable-next-line
   copilot: any;
 }
 

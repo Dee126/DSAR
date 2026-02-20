@@ -19,8 +19,7 @@ export async function GET(request: NextRequest) {
     const acknowledged = searchParams.get("acknowledged");
     const limit = parseInt(searchParams.get("limit") ?? "50", 10);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const where: Record<string, any> = { tenantId: user.tenantId };
+    const where: Record<string, unknown> = { tenantId: user.tenantId };
     if (severity) where.severity = severity;
     if (acknowledged === "true") where.acknowledged = true;
     if (acknowledged === "false") where.acknowledged = false;

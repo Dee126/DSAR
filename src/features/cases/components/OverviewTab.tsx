@@ -7,7 +7,7 @@ interface Props {
   caseData: DSARCaseDetail;
   users: CaseUser[];
   canManage: boolean;
-  /* eslint-disable @typescript-eslint/no-explicit-any */
+  // eslint-disable-next-line
   ov: any;
 }
 

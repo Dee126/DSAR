@@ -5,7 +5,7 @@ import type { DSARCaseDetail } from "../types";
 interface Props {
   caseData: DSARCaseDetail;
   canManage: boolean;
-  /* eslint-disable @typescript-eslint/no-explicit-any */
+  // eslint-disable-next-line
   cm: any;
 }
 
