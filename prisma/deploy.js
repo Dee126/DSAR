@@ -38,14 +38,34 @@ async function pushSchemaWithRetry(maxRetries = 3) {
 }
 
 async function main() {
+  // Supabase-Vercel integration may set POSTGRES_PRISMA_URL / POSTGRES_URL_NON_POOLING
+  // Map them to DATABASE_URL / DIRECT_URL if those aren't already set
+  if (!process.env.DATABASE_URL && process.env.POSTGRES_PRISMA_URL) {
+    process.env.DATABASE_URL = process.env.POSTGRES_PRISMA_URL;
+    console.log("[deploy] Mapped POSTGRES_PRISMA_URL → DATABASE_URL");
+  }
+  if (!process.env.DIRECT_URL && process.env.POSTGRES_URL_NON_POOLING) {
+    process.env.DIRECT_URL = process.env.POSTGRES_URL_NON_POOLING;
+    console.log("[deploy] Mapped POSTGRES_URL_NON_POOLING → DIRECT_URL");
+  }
+
   if (!process.env.DATABASE_URL) {
     console.warn("[deploy] WARNING: DATABASE_URL is not set. Skipping database setup.");
     console.warn("[deploy] Set DATABASE_URL in Vercel Environment Variables to enable DB setup.");
     return;
   }
 
-  console.log("[deploy] DATABASE_URL is set. Starting database setup...");
-  console.log("[deploy] DIRECT_URL set:", !!process.env.DIRECT_URL);
+  // Log connection info (mask password)
+  const dbUrl = process.env.DATABASE_URL;
+  const directUrl = process.env.DIRECT_URL;
+  const maskedDb = dbUrl.replace(/:([^@]+)@/, ':***@');
+  console.log("[deploy] DATABASE_URL:", maskedDb);
+  console.log("[deploy] DIRECT_URL set:", !!directUrl);
+  if (directUrl) {
+    const maskedDirect = directUrl.replace(/:([^@]+)@/, ':***@');
+    console.log("[deploy] DIRECT_URL:", maskedDirect);
+  }
+  console.log("[deploy] Starting database setup...");
 
   // Step 1: Push schema to database with retries
   const schemaOk = await pushSchemaWithRetry(3);
