@@ -142,6 +142,12 @@ enum FindingSeverity {
   CRITICAL
 }
 
+enum FindingStatus {
+  NEW
+  ACCEPTED
+  MITIGATED
+}
+
 enum DataCategory {
   IDENTIFICATION          // Name, DOB, photo, ID numbers
   CONTACT                 // Email, phone, address
@@ -502,6 +508,7 @@ model User {
   executiveReportRunsCreated ExecutiveReportRun[] @relation("ExecReportRunCreatedBy")
   boardExportRunsCreated     BoardExportRun[]     @relation("BoardExportCreatedBy")
   passwordResetTokens        PasswordResetToken[]
+  findingStatusChanges       Finding[]           @relation("FindingStatusChangedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -633,6 +640,7 @@ model Task {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   systemId       String?
+  findingId      String?
 
   assigneeUserId String?
 
@@ -640,6 +648,7 @@ model Task {
   case     DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
   assignee User?    @relation(fields: [assigneeUserId], references: [id])
   system   System?  @relation(fields: [systemId], references: [id])
+  finding  Finding? @relation("FindingMitigationTasks", fields: [findingId], references: [id])
 
   @@index([tenantId])
   @@index([tenantId, caseId])
@@ -754,6 +763,7 @@ model System {
   incidentSystems     IncidentSystem[]
   vendorRequests      VendorRequest[]   @relation("VendorRequestSystem")
   vendorRequestItems  VendorRequestItem[] @relation("VendorRequestItemSystem")
+  findings            Finding[]
 
   @@index([tenantId])
   @@map("systems")
@@ -1133,11 +1143,26 @@ model Finding {
   requiresLegalReview             Boolean         @default(false)
   createdAt                       DateTime        @default(now())
 
-  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  run    CopilotRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  // ─── Heatmap / DPO fields ────────────────────────────────────────────
+  systemId              String?
+  riskScore             Int             @default(0)   // 0–100
+  status                FindingStatus   @default(NEW)
+  statusComment         String?
+  statusChangedByUserId String?
+  statusChangedAt       DateTime?
+  dataAssetLocation     String?                        // e.g. "SharePoint > Finance > payroll.xlsx"
+  sampleRedacted        String?                        // Redacted data sample for DPO review
+  mitigationDueDate     DateTime?
+
+  tenant          Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  run             CopilotRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  system          System?    @relation(fields: [systemId], references: [id])
+  statusChangedBy User?      @relation("FindingStatusChangedBy", fields: [statusChangedByUserId], references: [id])
+  mitigationTasks Task[]     @relation("FindingMitigationTasks")
 
   @@index([tenantId, runId])
   @@index([tenantId, caseId])
+  @@index([tenantId, systemId])
   @@map("findings")
 }
 
