@@ -447,6 +447,8 @@ model Tenant {
   maturityScores       MaturityScore[]
   boardExportRuns      BoardExportRun[]
   forecastModels       ForecastModel[]
+  dsarCaseItems        DsarCaseItem[]
+  dsarAuditEvents      DsarAuditEvent[]
 
   @@map("tenants")
 }
@@ -509,6 +511,8 @@ model User {
   boardExportRunsCreated     BoardExportRun[]     @relation("BoardExportCreatedBy")
   passwordResetTokens        PasswordResetToken[]
   findingStatusChanges       Finding[]           @relation("FindingStatusChangedBy")
+  dsarCaseItemDecisions      DsarCaseItem[]      @relation("CaseItemDecidedBy")
+  dsarAuditEventsActed       DsarAuditEvent[]    @relation("DsarAuditActor")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -602,6 +606,8 @@ model DSARCase {
   dsarIncidents       DsarIncident[]
   surgeGroupMembers   SurgeGroupMember[]
   vendorRequests      VendorRequest[]
+  dsarCaseItems       DsarCaseItem[]
+  dsarAuditEvents     DsarAuditEvent[]
 
   @@unique([tenantId, caseNumber])
   @@index([tenantId])
@@ -764,6 +770,7 @@ model System {
   vendorRequests      VendorRequest[]   @relation("VendorRequestSystem")
   vendorRequestItems  VendorRequestItem[] @relation("VendorRequestItemSystem")
   findings            Finding[]
+  dsarCaseItems       DsarCaseItem[]     @relation("CaseItemSystem")
 
   @@index([tenantId])
   @@map("systems")
@@ -1103,6 +1110,7 @@ model EvidenceItem {
   query       CopilotQuery?    @relation(fields: [queryId], references: [id])
   integration Integration?     @relation("EvidenceIntegration", fields: [integrationId], references: [id])
   detectorResults DetectorResult[]
+  dsarCaseItems   DsarCaseItem[]   @relation("CaseItemEvidence")
 
   @@index([tenantId, runId])
   @@index([tenantId, caseId])
@@ -1158,7 +1166,8 @@ model Finding {
   run             CopilotRun @relation(fields: [runId], references: [id], onDelete: Cascade)
   system          System?    @relation(fields: [systemId], references: [id])
   statusChangedBy User?      @relation("FindingStatusChangedBy", fields: [statusChangedByUserId], references: [id])
-  mitigationTasks Task[]     @relation("FindingMitigationTasks")
+  mitigationTasks Task[]         @relation("FindingMitigationTasks")
+  dsarCaseItems   DsarCaseItem[] @relation("CaseItemFinding")
 
   @@index([tenantId, runId])
   @@index([tenantId, caseId])
@@ -2615,4 +2624,64 @@ model ForecastModel {
   @@unique([tenantId, modelType])
   @@index([tenantId])
   @@map("forecast_models")
+}
+
+// ─── DSAR Workflow: Case Items & Audit Events ────────────────────────────
+
+enum CaseItemDecision {
+  PROPOSED
+  INCLUDED
+  EXCLUDED
+}
+
+model DsarCaseItem {
+  id              String           @id @default(uuid())
+  tenantId        String
+  caseId          String
+  findingId       String?
+  evidenceId      String?
+  systemId        String?
+  assetType       String           // "finding" | "evidence"
+  title           String
+  location        String?
+  dataCategory    String?
+  riskScore       Int?
+  decision        CaseItemDecision @default(PROPOSED)
+  decisionReason  String?
+  decidedByUserId String?
+  decidedAt       DateTime?
+  matchScore      Float?           // Relevance to data subject identifiers
+  matchDetails    Json?            // Which identifiers matched
+  createdAt       DateTime         @default(now())
+
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case      DSARCase      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  finding   Finding?      @relation("CaseItemFinding", fields: [findingId], references: [id])
+  evidence  EvidenceItem? @relation("CaseItemEvidence", fields: [evidenceId], references: [id])
+  system    System?       @relation("CaseItemSystem", fields: [systemId], references: [id])
+  decidedBy User?         @relation("CaseItemDecidedBy", fields: [decidedByUserId], references: [id])
+
+  @@index([tenantId, caseId])
+  @@map("dsar_case_items")
+}
+
+model DsarAuditEvent {
+  id          String   @id @default(uuid())
+  tenantId    String
+  caseId      String
+  actorUserId String?
+  action      String
+  entityType  String?
+  entityId    String?
+  details     Json?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case   DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  actor  User?    @relation("DsarAuditActor", fields: [actorUserId], references: [id])
+
+  @@index([tenantId, caseId])
+  @@map("dsar_audit_events")
 }

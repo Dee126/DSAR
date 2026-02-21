@@ -34,6 +34,8 @@ import IdvPanel from "@/components/IdvPanel";
 import ResponsePanel from "@/components/ResponsePanel";
 import IncidentPanel from "@/components/IncidentPanel";
 import VendorPanel from "@/components/VendorPanel";
+import DataAssetsPanel from "@/components/DataAssetsPanel";
+import DsarAuditTrailPanel from "@/components/DsarAuditTrailPanel";
 
 export default function CaseDetailPage() {
   const params = useParams();
@@ -96,11 +98,13 @@ export default function CaseDetailPage() {
     { key: "data-collection", label: "Data Collection", count: caseData.dataCollectionItems?.length ?? 0 },
     { key: "legal-review", label: "Legal Review", count: caseData.legalReviews?.length ?? 0 },
     { key: "copilot", label: "Copilot", count: copilot.copilotRuns.length },
+    { key: "data-assets", label: "Data Assets" },
     { key: "response", label: "Response" },
     { key: "idv", label: "Identity" },
     { key: "incidents", label: "Incidents" },
     { key: "vendors", label: "Vendors" },
     { key: "deadlines", label: "Deadlines" },
+    { key: "audit-trail", label: "Audit Trail" },
     { key: "timeline", label: "Timeline" },
   ];
 
@@ -122,11 +126,13 @@ export default function CaseDetailPage() {
           {activeTab === "data-collection" && <DataCollectionTab caseData={caseData} systems={systems} canManage={canManage} dc={dataCollection} />}
           {activeTab === "legal-review" && <LegalReviewTab caseData={caseData} canManage={canManage} lr={legalReview} />}
           {activeTab === "copilot" && <CopilotTab caseData={caseData} canManage={canManage} canCopilot={canCopilot} copilot={copilot} />}
+          {activeTab === "data-assets" && <DataAssetsPanel caseId={caseId} />}
           {activeTab === "response" && <ResponsePanel caseId={caseId} userRole={userRole} />}
           {activeTab === "idv" && <IdvPanel caseId={caseId} userRole={userRole} />}
           {activeTab === "incidents" && <IncidentPanel caseId={caseId} />}
           {activeTab === "vendors" && <VendorPanel caseId={caseId} />}
           {activeTab === "deadlines" && <DeadlinePanel caseId={caseId} userRole={userRole} />}
+          {activeTab === "audit-trail" && <DsarAuditTrailPanel caseId={caseId} />}
           {activeTab === "timeline" && <TimelineSection caseData={caseData} />}
         </div>
         <CaseSidebar caseData={caseData} />

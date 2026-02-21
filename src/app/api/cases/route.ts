@@ -182,8 +182,136 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Create DSAR audit event for the new case
+    await prisma.dsarAuditEvent.create({
+      data: {
+        tenantId: user.tenantId,
+        caseId: newCase.id,
+        actorUserId: user.id,
+        action: "case.created",
+        entityType: "DSARCase",
+        entityId: newCase.id,
+        details: {
+          caseNumber: newCase.caseNumber,
+          type: newCase.type,
+          dataSubjectName: dataSubject.fullName,
+          dataSubjectEmail: dataSubject.email,
+        },
+      },
+    });
+
+    // Auto-propose relevant data assets (best-effort, non-blocking)
+    autoProposeCaseItems(user.tenantId, newCase.id, dataSubject, user.id).catch(
+      (err) => console.error("[auto-propose] failed:", err)
+    );
+
     return NextResponse.json(newCase, { status: 201 });
   } catch (error) {
     return handleApiError(error);
   }
+}
+
+/**
+ * Auto-propose data assets for a newly created case by matching data subject
+ * identifiers against findings and evidence items.
+ *
+ * This runs as a best-effort background task after case creation.
+ * TODO: Replace text matching with real connector-based search per system.
+ */
+async function autoProposeCaseItems(
+  tenantId: string,
+  caseId: string,
+  dataSubject: { fullName: string; email: string | null; phone: string | null; identifiers?: unknown },
+  actorUserId: string
+) {
+  const searchTerms: string[] = [];
+  if (dataSubject.fullName) searchTerms.push(dataSubject.fullName.toLowerCase());
+  if (dataSubject.email) searchTerms.push(dataSubject.email.toLowerCase());
+  if (dataSubject.phone) searchTerms.push(dataSubject.phone.replace(/\s/g, ""));
+
+  if (searchTerms.length === 0) return;
+
+  // Match findings
+  const findings = await prisma.finding.findMany({
+    where: { tenantId },
+    select: {
+      id: true, summary: true, dataCategory: true,
+      riskScore: true, systemId: true, dataAssetLocation: true,
+    },
+  });
+
+  const items: Array<{
+    tenantId: string; caseId: string; findingId?: string; evidenceId?: string;
+    systemId?: string | null; assetType: string; title: string; location?: string | null;
+    dataCategory?: string; riskScore?: number; matchScore: number;
+    matchDetails: { matchedTerms: string[] };
+  }> = [];
+
+  for (const f of findings) {
+    const text = [f.summary, f.dataAssetLocation ?? ""].join(" ").toLowerCase();
+    const matched = searchTerms.filter((t) => text.includes(t));
+    if (matched.length > 0) {
+      items.push({
+        tenantId, caseId, findingId: f.id, systemId: f.systemId,
+        assetType: "finding", title: f.summary.slice(0, 200),
+        location: f.dataAssetLocation, dataCategory: f.dataCategory,
+        riskScore: f.riskScore, matchScore: matched.length / searchTerms.length,
+        matchDetails: { matchedTerms: matched },
+      });
+    }
+  }
+
+  // Match evidence items
+  const evidenceItems = await prisma.evidenceItem.findMany({
+    where: { tenantId },
+    select: {
+      id: true, title: true, location: true, sensitivityScore: true, metadata: true,
+    },
+  });
+
+  for (const ev of evidenceItems) {
+    const metaStr = ev.metadata ? JSON.stringify(ev.metadata).toLowerCase() : "";
+    const text = [ev.title, ev.location, metaStr].join(" ").toLowerCase();
+    const matched = searchTerms.filter((t) => text.includes(t));
+    if (matched.length > 0) {
+      items.push({
+        tenantId, caseId, evidenceId: ev.id, assetType: "evidence",
+        title: ev.title.slice(0, 200), location: ev.location,
+        riskScore: ev.sensitivityScore ?? undefined,
+        matchScore: matched.length / searchTerms.length,
+        matchDetails: { matchedTerms: matched },
+      });
+    }
+  }
+
+  // Take top 50 by match score
+  items.sort((a, b) => b.matchScore - a.matchScore);
+  const top = items.slice(0, 50);
+
+  if (top.length > 0) {
+    await prisma.dsarCaseItem.createMany({
+      data: top.map((item) => ({
+        tenantId: item.tenantId, caseId: item.caseId,
+        findingId: item.findingId ?? null, evidenceId: item.evidenceId ?? null,
+        systemId: item.systemId ?? null, assetType: item.assetType,
+        title: item.title, location: item.location ?? null,
+        dataCategory: item.dataCategory ?? null, riskScore: item.riskScore ?? null,
+        matchScore: item.matchScore, matchDetails: item.matchDetails,
+        decision: "PROPOSED" as const,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  await prisma.dsarAuditEvent.create({
+    data: {
+      tenantId, caseId, actorUserId,
+      action: "items.auto_proposed",
+      entityType: "DsarCaseItem",
+      details: {
+        searchTerms, findingsScanned: findings.length,
+        evidenceScanned: evidenceItems.length, proposedCount: top.length,
+      },
+    },
+  });
 }

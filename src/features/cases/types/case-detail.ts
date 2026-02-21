@@ -25,4 +25,4 @@ export interface DSARCaseDetail {
   dataCollectionItems: DataCollectionItem[]; legalReviews: LegalReview[];
 }
 
-export type TabKey = "overview" | "tasks" | "documents" | "communications" | "data-collection" | "legal-review" | "copilot" | "response" | "timeline" | "deadlines" | "idv" | "incidents" | "vendors";
+export type TabKey = "overview" | "tasks" | "documents" | "communications" | "data-collection" | "legal-review" | "copilot" | "response" | "timeline" | "deadlines" | "idv" | "incidents" | "vendors" | "data-assets" | "audit-trail";
