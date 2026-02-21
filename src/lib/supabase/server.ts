@@ -8,6 +8,7 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
  * back to Prisma when Supabase is not configured.
  */
 export function isServerSupabaseConfigured(): boolean {
+  if (process.env.USE_SUPABASE === "false") return false;
   return !!(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
     process.env.SUPABASE_SERVICE_ROLE_KEY

@@ -283,6 +283,90 @@ Prisma is retained for the core DSAR workflow (cases, tasks, documents, auth, au
 - **Anon role**: implicit deny (no policy = 0 rows)
 - **Future**: tenant-scoped policies via `pp_tenant_id()` (prepared with `tenant_id` columns)
 
+## Local VM MVP Setup
+
+Run the full stack locally with Docker Compose (Postgres) + Prisma — **no Supabase dependency**.
+
+### Prerequisites
+
+- Node.js 18+ and npm
+- PostgreSQL 16 (via Docker Compose or native install)
+
+### Step-by-step
+
+```bash
+# 1. Clone and install
+git clone <repo-url> && cd DSAR
+npm install
+
+# 2. Start PostgreSQL
+docker compose up -d
+# Or if using a native Postgres, create the user + database:
+#   CREATE USER privacy_pilot WITH PASSWORD 'privacy_pilot_dev' CREATEDB;
+#   CREATE DATABASE privacy_pilot OWNER privacy_pilot;
+
+# 3. Create .env from template
+cp .env.example .env
+# Defaults work for local dev — key settings:
+#   DATABASE_URL=postgresql://privacy_pilot:privacy_pilot_dev@localhost:5432/privacy_pilot
+#   DIRECT_URL=<same as DATABASE_URL for local dev>
+#   USE_SUPABASE=false
+
+# 4. Push schema to database (creates all tables)
+npx prisma db push
+
+# 5. Seed demo data
+npm run db:seed
+
+# 6. Start the dev server
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) and log in with any of the demo accounts.
+
+### Demo Accounts
+
+| Email | Password | Role |
+|---|---|---|
+| `admin@acme-corp.com` | `admin123456` | TENANT_ADMIN |
+| `dpo@acme-corp.com` | `admin123456` | DPO |
+| `manager@acme-corp.com` | `admin123456` | CASE_MANAGER |
+| `contributor@acme-corp.com` | `admin123456` | CONTRIBUTOR |
+| `viewer@acme-corp.com` | `admin123456` | READ_ONLY |
+
+### Seeded Data Summary
+
+| Entity | Count | Notes |
+|---|---|---|
+| DSAR Cases | 20 | Various statuses (NEW, DATA_COLLECTION, CLOSED, etc.) |
+| Data Subjects | 19 | EU + international names |
+| Data Assets | 51 | Across M365, Fileserver, HR-CRM, CRM |
+| Findings | 203 | ~60% green, ~25% yellow, ~15% red |
+| Case Items | 106+ | Linking cases to findings |
+| Systems | 10 | CRM, HR, M365, Analytics, etc. |
+| Scan Jobs | 5 | 4 completed + 1 running |
+| Audit Events | 47+ | Case lifecycle events |
+
+### Supabase Feature Flag
+
+The MVP runs entirely on Prisma + local Postgres. Supabase is isolated behind `USE_SUPABASE`:
+
+- `USE_SUPABASE=false` (default): All Supabase clients return `null`/throw early. The app uses Prisma only.
+- `USE_SUPABASE=true` + valid credentials: Supabase clients are available for the discovery/heatmap module.
+
+The Supabase code is **not deleted** — it is gated behind `isSupabaseEnabled()`, `isBrowserSupabaseConfigured()`, and `isServerSupabaseConfigured()` checks.
+
+### Useful Commands
+
+```bash
+npm run dev              # Start Next.js dev server
+npm run db:seed          # Re-seed demo data (destructive)
+npx prisma db push       # Push schema changes to DB
+npx prisma studio        # Visual database browser
+npm test                 # Run unit tests
+npm run lint             # ESLint
+```
+
 ## Assumptions
 
 - Single-tenant seed for MVP; multi-tenant infrastructure is fully in place.

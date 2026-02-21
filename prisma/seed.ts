@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole, RiskLevel, EscalationSeverity, DeadlineEventType, MilestoneType, NotificationType, IdvRequestStatus, IdvMethod, IdvArtifactType, IdvDecisionOutcome, ResponseDocStatus, DeliveryMethod, IncidentSeverity, IncidentStatus, IncidentTimelineEventType, RegulatorRecordStatus, IncidentSourceType, DsarIncidentSubjectStatus, VendorStatus, VendorRequestStatus, VendorResponseType, VendorEscalationSeverity, KpiSnapshotPeriod, MaturityDomain } from "@prisma/client";
+import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, FindingStatus, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole, RiskLevel, EscalationSeverity, DeadlineEventType, MilestoneType, NotificationType, IdvRequestStatus, IdvMethod, IdvArtifactType, IdvDecisionOutcome, ResponseDocStatus, DeliveryMethod, IncidentSeverity, IncidentStatus, IncidentTimelineEventType, RegulatorRecordStatus, IncidentSourceType, DsarIncidentSubjectStatus, VendorStatus, VendorRequestStatus, VendorResponseType, VendorEscalationSeverity, KpiSnapshotPeriod, MaturityDomain, ScanJobStatus, CaseItemDecision } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -7,6 +7,11 @@ async function main() {
   console.log("Seeding database...");
 
   // Clean existing data (order matters for FK constraints)
+  // Discovery & Scan models
+  await prisma.scanJob.deleteMany();
+  await prisma.dataAsset.deleteMany();
+  await prisma.dsarAuditEvent.deleteMany();
+  await prisma.dsarCaseItem.deleteMany();
   // Module 7: Executive KPI
   await prisma.forecastModel.deleteMany();
   await prisma.boardExportRun.deleteMany();
@@ -3164,6 +3169,389 @@ async function main() {
 
   console.log("Created 12-month KPI snapshot history with maturity scores, automation metrics, thresholds, and report template.");
   console.log("Executive KPI & Board Reporting (Module 7) seed complete.");
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MVP Discovery & Scan Data
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ── Additional Data Subjects (for 20 total cases) ─────────────────────────
+  const mvpSubjects = await Promise.all([
+    prisma.dataSubject.create({ data: { tenantId: tenant.id, fullName: "Anna Müller", email: "anna.mueller@example.de", phone: "+49-30-1234567", preferredLanguage: "de" } }),
+    prisma.dataSubject.create({ data: { tenantId: tenant.id, fullName: "Marco Rossi", email: "marco.rossi@example.it", preferredLanguage: "it" } }),
+    prisma.dataSubject.create({ data: { tenantId: tenant.id, fullName: "Sophie Dupont", email: "sophie.dupont@example.fr", phone: "+33-1-42-68-53-00", preferredLanguage: "fr" } }),
+    prisma.dataSubject.create({ data: { tenantId: tenant.id, fullName: "Lars Eriksson", email: "lars.eriksson@example.se", preferredLanguage: "en" } }),
+    prisma.dataSubject.create({ data: { tenantId: tenant.id, fullName: "Fatima Al-Hassan", email: "fatima.alhassan@example.com", preferredLanguage: "en" } }),
+    prisma.dataSubject.create({ data: { tenantId: tenant.id, fullName: "Thomas Weber", email: "thomas.weber@example.de", phone: "+49-89-5551234", preferredLanguage: "de" } }),
+    prisma.dataSubject.create({ data: { tenantId: tenant.id, fullName: "Yuki Tanaka", email: "yuki.tanaka@example.jp", preferredLanguage: "en" } }),
+    prisma.dataSubject.create({ data: { tenantId: tenant.id, fullName: "Carlos Silva", email: "carlos.silva@example.pt", preferredLanguage: "en" } }),
+    prisma.dataSubject.create({ data: { tenantId: tenant.id, fullName: "Priya Patel", email: "priya.patel@example.in", phone: "+91-22-2345-6789", preferredLanguage: "en" } }),
+    prisma.dataSubject.create({ data: { tenantId: tenant.id, fullName: "Oliver Brown", email: "oliver.brown@example.co.uk", preferredLanguage: "en" } }),
+    prisma.dataSubject.create({ data: { tenantId: tenant.id, fullName: "Elena Kowalski", email: "elena.kowalski@example.pl", preferredLanguage: "en" } }),
+    prisma.dataSubject.create({ data: { tenantId: tenant.id, fullName: "Henrik Nielsen", email: "henrik.nielsen@example.dk", preferredLanguage: "en" } }),
+    prisma.dataSubject.create({ data: { tenantId: tenant.id, fullName: "Maria Garcia", email: "maria.garcia@example.es", phone: "+34-91-123-4567", preferredLanguage: "es" } }),
+    prisma.dataSubject.create({ data: { tenantId: tenant.id, fullName: "James Wilson", email: "james.wilson@example.com", preferredLanguage: "en" } }),
+    prisma.dataSubject.create({ data: { tenantId: tenant.id, fullName: "Lena Schmidt", email: "lena.schmidt@example.de", preferredLanguage: "de" } }),
+  ]);
+  console.log(`Created ${mvpSubjects.length} additional data subjects`);
+
+  // ── Additional DSAR Cases (15 more → 20 total) ───────────────────────────
+  const mvpCaseConfigs: Array<{
+    num: string; type: DSARType; status: CaseStatus; priority: CasePriority;
+    receivedDaysAgo: number; dueDaysFromNow: number; subjectIdx: number;
+    assignee: string | null; desc: string;
+  }> = [
+    { num: "DSAR-2026-P6Q7R8", type: DSARType.ACCESS, status: CaseStatus.NEW, priority: CasePriority.MEDIUM, receivedDaysAgo: 1, dueDaysFromNow: 29, subjectIdx: 0, assignee: "manager", desc: "Subject requests full data access copy." },
+    { num: "DSAR-2026-S9T0U1", type: DSARType.ERASURE, status: CaseStatus.IDENTITY_VERIFICATION, priority: CasePriority.HIGH, receivedDaysAgo: 5, dueDaysFromNow: 25, subjectIdx: 1, assignee: "manager", desc: "Subject requests deletion of account and all related data." },
+    { num: "DSAR-2026-V2W3X4", type: DSARType.ACCESS, status: CaseStatus.DATA_COLLECTION, priority: CasePriority.HIGH, receivedDaysAgo: 12, dueDaysFromNow: 18, subjectIdx: 2, assignee: "dpo", desc: "Full data access request from French customer." },
+    { num: "DSAR-2026-Y5Z6A7", type: DSARType.RECTIFICATION, status: CaseStatus.INTAKE_TRIAGE, priority: CasePriority.LOW, receivedDaysAgo: 3, dueDaysFromNow: 27, subjectIdx: 3, assignee: "manager", desc: "Address correction request." },
+    { num: "DSAR-2026-B8C9D0", type: DSARType.PORTABILITY, status: CaseStatus.DATA_COLLECTION, priority: CasePriority.MEDIUM, receivedDaysAgo: 10, dueDaysFromNow: 20, subjectIdx: 4, assignee: "contributor", desc: "Data portability request for transfer to another provider." },
+    { num: "DSAR-2026-E1F2G3", type: DSARType.OBJECTION, status: CaseStatus.REVIEW_LEGAL, priority: CasePriority.CRITICAL, receivedDaysAgo: 20, dueDaysFromNow: 10, subjectIdx: 5, assignee: "dpo", desc: "Subject objects to profiling for marketing purposes." },
+    { num: "DSAR-2026-H4I5J6", type: DSARType.ACCESS, status: CaseStatus.RESPONSE_PREPARATION, priority: CasePriority.MEDIUM, receivedDaysAgo: 22, dueDaysFromNow: 8, subjectIdx: 6, assignee: "manager", desc: "Employee data access request." },
+    { num: "DSAR-2026-K7L8M9", type: DSARType.ERASURE, status: CaseStatus.DATA_COLLECTION, priority: CasePriority.HIGH, receivedDaysAgo: 8, dueDaysFromNow: 22, subjectIdx: 7, assignee: "manager", desc: "Customer requests erasure after account closure." },
+    { num: "DSAR-2026-N0P1Q2", type: DSARType.ACCESS, status: CaseStatus.CLOSED, priority: CasePriority.LOW, receivedDaysAgo: 45, dueDaysFromNow: -15, subjectIdx: 8, assignee: "manager", desc: "Data access request — completed and delivered." },
+    { num: "DSAR-2026-R3S4T5", type: DSARType.RESTRICTION, status: CaseStatus.NEW, priority: CasePriority.MEDIUM, receivedDaysAgo: 1, dueDaysFromNow: 29, subjectIdx: 9, assignee: null, desc: "Subject requests restriction of processing pending dispute." },
+    { num: "DSAR-2026-U6V7W8", type: DSARType.ACCESS, status: CaseStatus.IDENTITY_VERIFICATION, priority: CasePriority.MEDIUM, receivedDaysAgo: 4, dueDaysFromNow: 26, subjectIdx: 10, assignee: "contributor", desc: "Access request from former employee." },
+    { num: "DSAR-2026-X9Y0Z1", type: DSARType.ERASURE, status: CaseStatus.REJECTED, priority: CasePriority.LOW, receivedDaysAgo: 30, dueDaysFromNow: 0, subjectIdx: 11, assignee: "dpo", desc: "Erasure request rejected — legal retention obligations apply." },
+    { num: "DSAR-2026-A2B3C4", type: DSARType.ACCESS, status: CaseStatus.RESPONSE_SENT, priority: CasePriority.MEDIUM, receivedDaysAgo: 28, dueDaysFromNow: 2, subjectIdx: 12, assignee: "manager", desc: "Access response package sent to data subject." },
+    { num: "DSAR-2026-D5E6F7", type: DSARType.PORTABILITY, status: CaseStatus.INTAKE_TRIAGE, priority: CasePriority.MEDIUM, receivedDaysAgo: 2, dueDaysFromNow: 28, subjectIdx: 13, assignee: "manager", desc: "Data portability request for CRM data." },
+    { num: "DSAR-2026-G8H9I0", type: DSARType.OBJECTION, status: CaseStatus.DATA_COLLECTION, priority: CasePriority.HIGH, receivedDaysAgo: 14, dueDaysFromNow: 16, subjectIdx: 14, assignee: "dpo", desc: "Subject objects to automated decision-making." },
+  ];
+
+  const userLookup: Record<string, string> = {
+    manager: caseManager.id,
+    dpo: dpo.id,
+    contributor: contributor.id,
+  };
+
+  const mvpCases = [];
+  for (const cfg of mvpCaseConfigs) {
+    const c = await prisma.dSARCase.create({
+      data: {
+        tenantId: tenant.id,
+        caseNumber: cfg.num,
+        type: cfg.type,
+        status: cfg.status,
+        priority: cfg.priority,
+        receivedAt: daysAgo(cfg.receivedDaysAgo),
+        dueDate: cfg.dueDaysFromNow >= 0 ? daysFromNow(cfg.dueDaysFromNow) : daysAgo(-cfg.dueDaysFromNow),
+        channel: "Email",
+        requesterType: "Data Subject",
+        description: cfg.desc,
+        identityVerified: !["NEW", "IDENTITY_VERIFICATION"].includes(cfg.status),
+        dataSubjectId: mvpSubjects[cfg.subjectIdx].id,
+        createdByUserId: admin.id,
+        assignedToUserId: cfg.assignee ? userLookup[cfg.assignee] : null,
+      },
+    });
+    mvpCases.push(c);
+  }
+  const allCases = [case1, case2, case3, case4, case5, ...mvpCases];
+  console.log(`Created ${mvpCases.length} additional DSAR cases (${allCases.length} total)`);
+
+  // ── Data Assets (~50 across 4 key systems) ────────────────────────────────
+  const mvpSystems = [
+    { sys: m365System, label: "M365" },
+    { sys: fileShareSystem, label: "Fileserver" },
+    { sys: hrSystem, label: "HR-CRM" },
+    { sys: crmSystem, label: "Exchange" },
+  ];
+
+  const assetDefs: Array<{ sysLabel: string; name: string; path: string; cat: DataCategory; score: number; personal: boolean; special: boolean }> = [
+    // M365 assets (15)
+    { sysLabel: "M365", name: "Inbox - All Users", path: "Exchange Online / Mailboxes / *", cat: DataCategory.COMMUNICATION, score: 65, personal: true, special: false },
+    { sysLabel: "M365", name: "Sent Items Archive", path: "Exchange Online / Mailboxes / Sent Items", cat: DataCategory.COMMUNICATION, score: 60, personal: true, special: false },
+    { sysLabel: "M365", name: "Calendar Events", path: "Exchange Online / Calendars / *", cat: DataCategory.CONTACT, score: 30, personal: true, special: false },
+    { sysLabel: "M365", name: "SharePoint HR Site", path: "SharePoint / sites / HR-Internal", cat: DataCategory.HR, score: 85, personal: true, special: true },
+    { sysLabel: "M365", name: "SharePoint Finance Site", path: "SharePoint / sites / Finance", cat: DataCategory.PAYMENT, score: 78, personal: true, special: false },
+    { sysLabel: "M365", name: "SharePoint Legal Site", path: "SharePoint / sites / Legal-Compliance", cat: DataCategory.CONTRACT, score: 55, personal: true, special: false },
+    { sysLabel: "M365", name: "OneDrive - Management", path: "OneDrive / management-team / *", cat: DataCategory.HR, score: 70, personal: true, special: false },
+    { sysLabel: "M365", name: "OneDrive - Sales", path: "OneDrive / sales-team / *", cat: DataCategory.CONTRACT, score: 45, personal: true, special: false },
+    { sysLabel: "M365", name: "Teams Chat Logs", path: "Teams / chats / *", cat: DataCategory.COMMUNICATION, score: 50, personal: true, special: false },
+    { sysLabel: "M365", name: "Teams Channel Files", path: "Teams / channels / General / files", cat: DataCategory.OTHER, score: 20, personal: false, special: false },
+    { sysLabel: "M365", name: "Entra ID User Directory", path: "Entra ID / users", cat: DataCategory.IDENTIFICATION, score: 75, personal: true, special: false },
+    { sysLabel: "M365", name: "Entra ID Sign-in Logs", path: "Entra ID / signInLogs", cat: DataCategory.ONLINE_TECHNICAL, score: 40, personal: true, special: false },
+    { sysLabel: "M365", name: "SharePoint Customer Portal", path: "SharePoint / sites / CustomerPortal", cat: DataCategory.CONTRACT, score: 60, personal: true, special: false },
+    { sysLabel: "M365", name: "Compliance Center - eDiscovery", path: "Compliance Center / eDiscovery / *", cat: DataCategory.COMMUNICATION, score: 70, personal: true, special: false },
+    { sysLabel: "M365", name: "Planner Tasks", path: "Planner / plans / *", cat: DataCategory.OTHER, score: 15, personal: false, special: false },
+    // Fileserver assets (12)
+    { sysLabel: "Fileserver", name: "HR Contracts", path: "\\\\fs01\\HR\\Contracts\\*", cat: DataCategory.HR, score: 90, personal: true, special: true },
+    { sysLabel: "Fileserver", name: "HR Payroll Reports", path: "\\\\fs01\\HR\\Payroll\\monthly-reports\\*", cat: DataCategory.PAYMENT, score: 92, personal: true, special: false },
+    { sysLabel: "Fileserver", name: "HR Performance Reviews", path: "\\\\fs01\\HR\\Reviews\\2025\\*", cat: DataCategory.HR, score: 88, personal: true, special: false },
+    { sysLabel: "Fileserver", name: "Finance Invoices", path: "\\\\fs01\\Finance\\Invoices\\*", cat: DataCategory.PAYMENT, score: 55, personal: true, special: false },
+    { sysLabel: "Fileserver", name: "Finance Tax Records", path: "\\\\fs01\\Finance\\Tax\\*", cat: DataCategory.CREDITWORTHINESS, score: 72, personal: true, special: false },
+    { sysLabel: "Fileserver", name: "Legal NDAs", path: "\\\\fs01\\Legal\\NDAs\\*", cat: DataCategory.CONTRACT, score: 35, personal: true, special: false },
+    { sysLabel: "Fileserver", name: "Legal Litigation Hold", path: "\\\\fs01\\Legal\\Litigation\\*", cat: DataCategory.OTHER, score: 50, personal: true, special: false },
+    { sysLabel: "Fileserver", name: "Marketing Collateral", path: "\\\\fs01\\Marketing\\Collateral\\*", cat: DataCategory.OTHER, score: 5, personal: false, special: false },
+    { sysLabel: "Fileserver", name: "IT System Backups", path: "\\\\fs01\\IT\\Backups\\*", cat: DataCategory.ONLINE_TECHNICAL, score: 40, personal: true, special: false },
+    { sysLabel: "Fileserver", name: "Shared Departmental", path: "\\\\fs01\\Shared\\Departments\\*", cat: DataCategory.OTHER, score: 25, personal: false, special: false },
+    { sysLabel: "Fileserver", name: "Customer Correspondence", path: "\\\\fs01\\Sales\\Correspondence\\*", cat: DataCategory.COMMUNICATION, score: 68, personal: true, special: false },
+    { sysLabel: "Fileserver", name: "Employee Photos", path: "\\\\fs01\\HR\\Photos\\*", cat: DataCategory.IDENTIFICATION, score: 80, personal: true, special: true },
+    // HR-CRM assets (12)
+    { sysLabel: "HR-CRM", name: "Employee Master Data", path: "Workday / workers / *", cat: DataCategory.IDENTIFICATION, score: 85, personal: true, special: false },
+    { sysLabel: "HR-CRM", name: "Compensation Records", path: "Workday / compensation / *", cat: DataCategory.PAYMENT, score: 90, personal: true, special: false },
+    { sysLabel: "HR-CRM", name: "Benefits Enrollment", path: "Workday / benefits / enrollments / *", cat: DataCategory.HR, score: 82, personal: true, special: true },
+    { sysLabel: "HR-CRM", name: "Time Off Balances", path: "Workday / timeOff / *", cat: DataCategory.HR, score: 40, personal: true, special: false },
+    { sysLabel: "HR-CRM", name: "Recruiting Pipeline", path: "Workday / recruiting / candidates / *", cat: DataCategory.IDENTIFICATION, score: 75, personal: true, special: false },
+    { sysLabel: "HR-CRM", name: "Training Records", path: "Workday / learning / *", cat: DataCategory.HR, score: 30, personal: true, special: false },
+    { sysLabel: "HR-CRM", name: "Emergency Contacts", path: "Workday / workers / emergencyContacts", cat: DataCategory.CONTACT, score: 65, personal: true, special: false },
+    { sysLabel: "HR-CRM", name: "Disability Accommodations", path: "Workday / accommodations / *", cat: DataCategory.HEALTH, score: 95, personal: true, special: true },
+    { sysLabel: "HR-CRM", name: "Union Membership", path: "Workday / workers / unionStatus", cat: DataCategory.UNION, score: 98, personal: true, special: true },
+    { sysLabel: "HR-CRM", name: "Background Checks", path: "Workday / screening / *", cat: DataCategory.OTHER_SPECIAL_CATEGORY, score: 92, personal: true, special: true },
+    { sysLabel: "HR-CRM", name: "Org Chart", path: "Workday / orgChart / *", cat: DataCategory.HR, score: 20, personal: true, special: false },
+    { sysLabel: "HR-CRM", name: "Expense Reports", path: "Workday / expenses / *", cat: DataCategory.PAYMENT, score: 45, personal: true, special: false },
+    // Exchange/CRM assets (12)
+    { sysLabel: "Exchange", name: "Customer Profiles", path: "Salesforce / accounts / *", cat: DataCategory.IDENTIFICATION, score: 70, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Contact Records", path: "Salesforce / contacts / *", cat: DataCategory.CONTACT, score: 65, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Opportunity History", path: "Salesforce / opportunities / *", cat: DataCategory.CONTRACT, score: 35, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Support Cases", path: "Salesforce / cases / *", cat: DataCategory.COMMUNICATION, score: 55, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Marketing Campaigns", path: "Salesforce / campaigns / *", cat: DataCategory.CONTACT, score: 50, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Lead Database", path: "Salesforce / leads / *", cat: DataCategory.IDENTIFICATION, score: 60, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Email Templates", path: "Salesforce / emailTemplates / *", cat: DataCategory.OTHER, score: 10, personal: false, special: false },
+    { sysLabel: "Exchange", name: "Customer Notes", path: "Salesforce / notes / *", cat: DataCategory.COMMUNICATION, score: 45, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Contract Documents", path: "Salesforce / contentDocument / *", cat: DataCategory.CONTRACT, score: 58, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Activity Logs", path: "Salesforce / activities / *", cat: DataCategory.ONLINE_TECHNICAL, score: 35, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Quote History", path: "Salesforce / quotes / *", cat: DataCategory.PAYMENT, score: 42, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Product Interest Tags", path: "Salesforce / personAccounts / interests", cat: DataCategory.OTHER, score: 25, personal: true, special: false },
+  ];
+
+  const sysLookup: Record<string, string> = {};
+  for (const s of mvpSystems) sysLookup[s.label] = s.sys.id;
+
+  const createdAssets = [];
+  for (const a of assetDefs) {
+    const asset = await prisma.dataAsset.create({
+      data: {
+        tenantId: tenant.id,
+        systemId: sysLookup[a.sysLabel],
+        name: a.name,
+        path: a.path,
+        dataCategory: a.cat,
+        sensitivityScore: a.score,
+        personalData: a.personal,
+        specialCategory: a.special,
+        lastScannedAt: daysAgo(Math.floor(Math.random() * 14) + 1),
+      },
+    });
+    createdAssets.push(asset);
+  }
+  console.log(`Created ${createdAssets.length} data assets across ${mvpSystems.length} systems`);
+
+  // ── Scan Jobs (1 completed per system + 1 running) ────────────────────────
+  for (const { sys } of mvpSystems) {
+    await prisma.scanJob.create({
+      data: {
+        tenantId: tenant.id,
+        systemId: sys.id,
+        status: ScanJobStatus.COMPLETED,
+        assetsScanned: assetDefs.filter(a => a.sysLabel === mvpSystems.find(s => s.sys.id === sys.id)!.label).length,
+        findingsCount: Math.floor(Math.random() * 40) + 10,
+        startedAt: daysAgo(3),
+        completedAt: daysAgo(3),
+      },
+    });
+  }
+  // One running scan
+  await prisma.scanJob.create({
+    data: {
+      tenantId: tenant.id,
+      systemId: m365System.id,
+      status: ScanJobStatus.RUNNING,
+      assetsScanned: 5,
+      findingsCount: 12,
+      startedAt: new Date(),
+    },
+  });
+  console.log("Created scan jobs");
+
+  // ── Additional Findings (~200 total) ──────────────────────────────────────
+  // Distribution: ~60% green (0-39), ~25% yellow (40-69), ~15% red (70-100)
+  const findingCategories: DataCategory[] = [
+    DataCategory.IDENTIFICATION, DataCategory.CONTACT, DataCategory.CONTRACT,
+    DataCategory.PAYMENT, DataCategory.COMMUNICATION, DataCategory.HR,
+    DataCategory.ONLINE_TECHNICAL, DataCategory.HEALTH, DataCategory.CREDITWORTHINESS,
+  ];
+
+  const findingSummaries: Record<string, string[]> = {
+    IDENTIFICATION: [
+      "Full name and date of birth found in document metadata",
+      "National ID number detected in scanned PDF",
+      "Employee photo with EXIF data containing GPS coordinates",
+      "Passport scan stored unencrypted in shared folder",
+    ],
+    CONTACT: [
+      "Personal email addresses in marketing distribution list",
+      "Home address and phone number in CRM contact card",
+      "Mobile phone numbers in unprotected CSV export",
+      "Personal email in automated notification templates",
+    ],
+    CONTRACT: [
+      "Customer contract with embedded personal identifiers",
+      "Service agreement containing home address",
+      "Vendor NDA with personal guarantor details",
+    ],
+    PAYMENT: [
+      "IBAN and bank details in payroll spreadsheet",
+      "Credit card last-4 digits in support ticket",
+      "Invoice with personal billing address",
+      "Salary information in shared team folder",
+    ],
+    COMMUNICATION: [
+      "Personal correspondence in shared mailbox",
+      "Sensitive HR discussion in email thread",
+      "Customer complaint containing health information",
+      "Internal chat messages with personal opinions",
+    ],
+    HR: [
+      "Performance review with subjective assessments",
+      "Disciplinary record in manager's OneDrive",
+      "Sick leave records in HR shared folder",
+      "Job application with personal references",
+    ],
+    ONLINE_TECHNICAL: [
+      "IP addresses in application access logs",
+      "Browser fingerprint data in analytics",
+      "Device identifiers in mobile app telemetry",
+      "Session cookies with user tracking data",
+    ],
+    HEALTH: [
+      "Medical certificate uploaded to HR portal",
+      "Disability accommodation request in HR system",
+      "Health insurance enrollment details",
+    ],
+    CREDITWORTHINESS: [
+      "Credit check results in vendor onboarding folder",
+      "Financial assessment in customer file",
+      "Bank statement copies in loan application folder",
+    ],
+  };
+
+  // Create a copilot run for MVP findings (needed as FK)
+  const mvpCopilotRun = await prisma.copilotRun.create({
+    data: {
+      tenantId: tenant.id,
+      caseId: case1.id,
+      createdByUserId: admin.id,
+      status: CopilotRunStatus.COMPLETED,
+      justification: "MVP discovery scan — bulk data inventory analysis",
+      scopeSummary: "All systems — M365, Fileserver, HR-CRM, Exchange/CRM",
+      totalFindings: 200,
+      totalEvidenceItems: 0,
+      startedAt: daysAgo(3),
+      completedAt: daysAgo(3),
+    },
+  });
+
+  const mvpFindings = [];
+  const targetCount = 200;
+  for (let i = 0; i < targetCount; i++) {
+    // Distribution: 60% green, 25% yellow, 15% red
+    let riskScore: number;
+    let severity: FindingSeverity;
+    const roll = Math.random();
+    if (roll < 0.60) {
+      riskScore = Math.floor(Math.random() * 40);       // 0-39: green
+      severity = FindingSeverity.INFO;
+    } else if (roll < 0.85) {
+      riskScore = 40 + Math.floor(Math.random() * 30);  // 40-69: yellow
+      severity = FindingSeverity.WARNING;
+    } else {
+      riskScore = 70 + Math.floor(Math.random() * 31);  // 70-100: red
+      severity = FindingSeverity.CRITICAL;
+    }
+
+    const cat = findingCategories[i % findingCategories.length];
+    const catKey = cat as string;
+    const summaries = findingSummaries[catKey] || [`${catKey} data detected in system asset`];
+    const summary = summaries[i % summaries.length];
+
+    const sys = mvpSystems[i % mvpSystems.length];
+    const specialCategories: DataCategory[] = [DataCategory.HEALTH, DataCategory.UNION, DataCategory.RELIGION, DataCategory.POLITICAL_OPINION, DataCategory.OTHER_SPECIAL_CATEGORY];
+    const isSpecial = specialCategories.includes(cat);
+    const status: FindingStatus = roll < 0.4 ? FindingStatus.NEW : roll < 0.7 ? FindingStatus.ACCEPTED : FindingStatus.MITIGATED;
+
+    const f = await prisma.finding.create({
+      data: {
+        tenantId: tenant.id,
+        caseId: allCases[i % allCases.length].id,
+        runId: mvpCopilotRun.id,
+        dataCategory: cat,
+        severity,
+        confidence: 0.5 + Math.random() * 0.5,
+        summary,
+        evidenceItemIds: [],
+        containsSpecialCategory: isSpecial,
+        containsThirdPartyDataSuspected: Math.random() < 0.1,
+        requiresLegalReview: riskScore >= 70,
+        systemId: sys.sys.id,
+        riskScore,
+        status,
+        dataAssetLocation: assetDefs[i % assetDefs.length].path,
+        sampleRedacted: riskScore >= 40 ? `[REDACTED ${cat} data sample]` : null,
+      },
+    });
+    mvpFindings.push(f);
+  }
+  console.log(`Created ${mvpFindings.length} findings (distribution: ~60% green, ~25% yellow, ~15% red)`);
+
+  // ── DSAR Case Items (link cases to findings) ─────────────────────────────
+  let caseItemCount = 0;
+  for (let caseIdx = 0; caseIdx < allCases.length; caseIdx++) {
+    const c = allCases[caseIdx];
+    // Each case gets 3-8 case items from its related findings
+    const relatedFindings = mvpFindings.filter(f => f.caseId === c.id);
+    const itemCount = Math.min(relatedFindings.length, 3 + Math.floor(Math.random() * 6));
+
+    for (let j = 0; j < itemCount; j++) {
+      const f = relatedFindings[j];
+      const decision = j < 2 ? CaseItemDecision.INCLUDED : (Math.random() < 0.3 ? CaseItemDecision.EXCLUDED : CaseItemDecision.PROPOSED);
+
+      await prisma.dsarCaseItem.create({
+        data: {
+          tenantId: tenant.id,
+          caseId: c.id,
+          findingId: f.id,
+          systemId: f.systemId,
+          assetType: "finding",
+          title: f.summary,
+          location: f.dataAssetLocation,
+          dataCategory: f.dataCategory,
+          riskScore: f.riskScore,
+          decision,
+          decisionReason: decision === CaseItemDecision.EXCLUDED ? "Not relevant to data subject" : null,
+          decidedByUserId: decision !== CaseItemDecision.PROPOSED ? dpo.id : null,
+          decidedAt: decision !== CaseItemDecision.PROPOSED ? daysAgo(Math.floor(Math.random() * 5)) : null,
+          matchScore: 0.5 + Math.random() * 0.5,
+        },
+      });
+      caseItemCount++;
+    }
+  }
+  console.log(`Created ${caseItemCount} DSAR case items`);
+
+  // ── DSAR Audit Events ─────────────────────────────────────────────────────
+  const auditActions = ["case.created", "case.viewed", "case.status_changed", "case.assigned", "finding.reviewed", "case_item.decided", "export.requested"];
+  let auditCount = 0;
+  for (const c of allCases.slice(0, 10)) {
+    const numEvents = 3 + Math.floor(Math.random() * 5);
+    for (let k = 0; k < numEvents; k++) {
+      await prisma.dsarAuditEvent.create({
+        data: {
+          tenantId: tenant.id,
+          caseId: c.id,
+          actorUserId: [admin.id, dpo.id, caseManager.id][k % 3],
+          action: auditActions[k % auditActions.length],
+          entityType: "DSARCase",
+          entityId: c.id,
+          details: { timestamp: daysAgo(Math.floor(Math.random() * 20)).toISOString() },
+        },
+      });
+      auditCount++;
+    }
+  }
+  console.log(`Created ${auditCount} DSAR audit events`);
+
+  console.log("\n═══ MVP Discovery & Scan seed complete ═══");
+  console.log(`Summary: ${allCases.length} cases, ${createdAssets.length} data assets, ${mvpFindings.length} findings, ${caseItemCount} case items`);
 }
 
 main()

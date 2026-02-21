@@ -449,6 +449,8 @@ model Tenant {
   forecastModels       ForecastModel[]
   dsarCaseItems        DsarCaseItem[]
   dsarAuditEvents      DsarAuditEvent[]
+  dataAssets           DataAsset[]
+  scanJobs             ScanJob[]
 
   @@map("tenants")
 }
@@ -771,6 +773,8 @@ model System {
   vendorRequestItems  VendorRequestItem[] @relation("VendorRequestItemSystem")
   findings            Finding[]
   dsarCaseItems       DsarCaseItem[]     @relation("CaseItemSystem")
+  dataAssets          DataAsset[]
+  scanJobs            ScanJob[]
 
   @@index([tenantId])
   @@map("systems")
@@ -2684,4 +2688,57 @@ model DsarAuditEvent {
 
   @@index([tenantId, caseId])
   @@map("dsar_audit_events")
+}
+
+// ─── Discovery & Scan Models ────────────────────────────────────────────────
+
+enum ScanJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model DataAsset {
+  id              String   @id @default(uuid())
+  tenantId        String
+  systemId        String
+  name            String
+  path            String           // e.g. "\\\\fs01\\HR\\payroll.xlsx" or "https://acme.sharepoint.com/sites/Finance"
+  dataCategory    DataCategory     @default(OTHER)
+  sensitivityScore Int             @default(0)   // 0–100
+  personalData    Boolean          @default(false)
+  specialCategory Boolean          @default(false)
+  lastScannedAt   DateTime?
+  metadata        Json?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  system System @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, systemId])
+  @@map("data_assets")
+}
+
+model ScanJob {
+  id              String         @id @default(uuid())
+  tenantId        String
+  systemId        String
+  status          ScanJobStatus  @default(PENDING)
+  assetsScanned   Int            @default(0)
+  findingsCount   Int            @default(0)
+  errorMessage    String?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  system System @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, systemId])
+  @@map("scan_jobs")
 }

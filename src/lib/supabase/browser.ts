@@ -7,6 +7,7 @@ let client: SupabaseClient | null = null;
  * are present. Call this before `createBrowserSupabase()` to avoid warnings.
  */
 export function isBrowserSupabaseConfigured(): boolean {
+  if (process.env.USE_SUPABASE === "false") return false;
   return !!(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
