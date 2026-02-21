@@ -228,6 +228,61 @@ npm run test:e2e
 
 CRU = Create, Read, Update
 
+## Discovery & Heatmap (MVP)
+
+The discovery module adds PII scanning and heatmap visualization across connected systems. It uses raw SQL migrations (not Prisma) and is accessed via the Supabase client.
+
+### Data Model
+
+| Table | Purpose |
+|---|---|
+| `data_assets` | Files, records, mailboxes discovered in systems |
+| `discovery_findings` | PII detections within data assets (sensitivity 0-100) |
+| `scan_jobs` | Background scan runs per system |
+| `dsar_case_items` | Links DSAR cases to specific data assets |
+| `v_discovery_heatmap` | Aggregated view for heatmap dashboard |
+
+> **Note**: The table is named `discovery_findings` (not `findings`) to avoid conflict with the existing Copilot `findings` table managed by Prisma.
+
+### Setup
+
+```bash
+# 1. Ensure database is running and Prisma schema is applied
+npm run docker:up
+npx prisma db push
+
+# 2. Run discovery migration + seed (creates tables, RLS, and demo data)
+npm run seed:discovery
+
+# 3. Or run steps separately:
+npm run seed:discovery -- --migrate-only   # tables + RLS only
+npm run seed:discovery -- --seed-only      # demo data only (tables must exist)
+```
+
+### Seed Data
+
+The seed creates:
+- **4 systems**: Microsoft 365, Corporate Fileserver, HR-CRM, Exchange Online
+- **50 data assets** across all systems (SharePoint docs, mailboxes, employee records, etc.)
+- **200 discovery findings** with realistic distribution: 70% green (0-30), 20% yellow (31-60), 10% red (61-100)
+- **8 scan jobs** (completed, running, queued, failed)
+- **38 DSAR case items** linking the 20 demo cases to relevant data assets
+
+### Prisma vs Supabase Client
+
+Prisma is retained for the core DSAR workflow (cases, tasks, documents, auth, audit logging) — it is deeply integrated across all API routes and repositories. The discovery/heatmap module uses the Supabase client directly (`src/lib/supabase/server.ts`) because:
+1. The discovery tables are managed via raw SQL migrations, not Prisma
+2. The Supabase client is already configured and provides RLS-aware access
+3. Clean separation: Prisma for DSAR workflow, Supabase for discovery/heatmap
+
+### RLS Policies
+
+- **RLS enabled** on all discovery tables
+- **MVP**: Authenticated users get full CRUD access (single-tenant demo)
+- **Service role** (used by API routes): bypasses RLS entirely
+- **Anon role**: implicit deny (no policy = 0 rows)
+- **Future**: tenant-scoped policies via `pp_tenant_id()` (prepared with `tenant_id` columns)
+
 ## Assumptions
 
 - Single-tenant seed for MVP; multi-tenant infrastructure is fully in place.

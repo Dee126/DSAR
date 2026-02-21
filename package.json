@@ -18,6 +18,8 @@
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "reset:test-user": "npx tsx scripts/reset-test-user.ts",
+    "seed:discovery": "npx tsx scripts/seed-discovery.ts",
+    "seed:discovery:data": "npx tsx scripts/seed-discovery.ts --seed-only",
     "postinstall": "prisma generate"
   },
   "dependencies": {
