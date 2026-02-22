@@ -143,8 +143,9 @@ enum FindingSeverity {
 }
 
 enum FindingStatus {
-  NEW
+  OPEN
   ACCEPTED
+  MITIGATING
   MITIGATED
 }
 
@@ -451,6 +452,7 @@ model Tenant {
   dsarAuditEvents      DsarAuditEvent[]
   dataAssets           DataAsset[]
   scanJobs             ScanJob[]
+  findingAuditEvents   FindingAuditEvent[]
 
   @@map("tenants")
 }
@@ -515,6 +517,7 @@ model User {
   findingStatusChanges       Finding[]           @relation("FindingStatusChangedBy")
   dsarCaseItemDecisions      DsarCaseItem[]      @relation("CaseItemDecidedBy")
   dsarAuditEventsActed       DsarAuditEvent[]    @relation("DsarAuditActor")
+  findingAuditEventsActed    FindingAuditEvent[] @relation("FindingAuditActor")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -1158,7 +1161,7 @@ model Finding {
   // ─── Heatmap / DPO fields ────────────────────────────────────────────
   systemId              String?
   riskScore             Int             @default(0)   // 0–100
-  status                FindingStatus   @default(NEW)
+  status                FindingStatus   @default(OPEN)
   statusComment         String?
   statusChangedByUserId String?
   statusChangedAt       DateTime?
@@ -1170,13 +1173,35 @@ model Finding {
   run             CopilotRun @relation(fields: [runId], references: [id], onDelete: Cascade)
   system          System?    @relation(fields: [systemId], references: [id])
   statusChangedBy User?      @relation("FindingStatusChangedBy", fields: [statusChangedByUserId], references: [id])
-  mitigationTasks Task[]         @relation("FindingMitigationTasks")
-  dsarCaseItems   DsarCaseItem[] @relation("CaseItemFinding")
+  mitigationTasks    Task[]              @relation("FindingMitigationTasks")
+  dsarCaseItems      DsarCaseItem[]      @relation("CaseItemFinding")
+  findingAuditEvents FindingAuditEvent[] @relation("FindingAuditEvents")
 
   @@index([tenantId, runId])
   @@index([tenantId, caseId])
   @@index([tenantId, systemId])
   @@map("findings")
+}
+
+model FindingAuditEvent {
+  id          String   @id @default(uuid())
+  tenantId    String
+  findingId   String
+  actorUserId String
+  action      String   // FINDING_ACCEPT_RISK, FINDING_CREATE_MITIGATION, FINDING_MARK_MITIGATED
+  beforeJson  Json?    // snapshot of finding before action
+  afterJson   Json?    // snapshot of finding after action
+  comment     String?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  finding Finding @relation("FindingAuditEvents", fields: [findingId], references: [id], onDelete: Cascade)
+  actor   User    @relation("FindingAuditActor", fields: [actorUserId], references: [id])
+
+  @@index([tenantId, findingId])
+  @@map("finding_audit_events")
 }
 
 model CopilotSummary {

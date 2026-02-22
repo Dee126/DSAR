@@ -18,19 +18,27 @@ const CreateMitigationSchema = z.object({
   comment: z.string().min(1, "Comment is required"),
   dueDate: z.string().refine((s) => !isNaN(Date.parse(s)), "Invalid date"),
   taskTitle: z.string().optional(),
+  assigneeUserId: z.string().uuid().optional(),
+});
+
+const MarkMitigatedSchema = z.object({
+  action: z.literal("mark_mitigated"),
+  comment: z.string().min(1, "Comment is required when marking as mitigated"),
 });
 
 const ActionSchema = z.discriminatedUnion("action", [
   AcceptRiskSchema,
   CreateMitigationSchema,
+  MarkMitigatedSchema,
 ]);
 
 /**
  * POST /api/findings/[id]/actions
  *
  * Perform an action on a finding:
- *   - accept_risk: sets status=ACCEPTED, stores comment
- *   - create_mitigation: sets status=MITIGATED, creates a linked Task
+ *   - accept_risk: OPEN → ACCEPTED (requires comment)
+ *   - create_mitigation: OPEN → MITIGATING (creates linked Task)
+ *   - mark_mitigated: MITIGATING → MITIGATED (requires comment)
  */
 export async function POST(
   request: NextRequest,
@@ -38,7 +46,7 @@ export async function POST(
 ) {
   try {
     const user = await requireAuth();
-    checkPermission(user.role, "copilot", "update");
+    checkPermission(user.role, "findings", "update");
 
     const body = await request.json();
     const data = ActionSchema.parse(body);
@@ -61,8 +69,19 @@ export async function POST(
     }
 
     const clientInfo = getClientInfo(request);
+    const beforeSnapshot = {
+      status: finding.status,
+      statusComment: finding.statusComment,
+      statusChangedByUserId: finding.statusChangedByUserId,
+      statusChangedAt: finding.statusChangedAt,
+      mitigationDueDate: finding.mitigationDueDate,
+    };
 
     if (data.action === "accept_risk") {
+      if (finding.status !== "OPEN") {
+        throw new ApiError(400, `Cannot accept risk: finding status is ${finding.status}, expected OPEN`);
+      }
+
       const updated = await prisma.finding.update({
         where: { id: finding.id },
         data: {
@@ -73,11 +92,32 @@ export async function POST(
         },
       });
 
+      const afterSnapshot = {
+        status: updated.status,
+        statusComment: updated.statusComment,
+        statusChangedByUserId: updated.statusChangedByUserId,
+        statusChangedAt: updated.statusChangedAt,
+      };
+
+      await prisma.findingAuditEvent.create({
+        data: {
+          tenantId: user.tenantId,
+          findingId: finding.id,
+          actorUserId: user.id,
+          action: "FINDING_ACCEPT_RISK",
+          beforeJson: beforeSnapshot,
+          afterJson: afterSnapshot,
+          comment: data.comment,
+          ip: clientInfo.ip,
+          userAgent: clientInfo.userAgent,
+        },
+      });
+
       await logAudit({
         tenantId: user.tenantId,
         actorUserId: user.id,
         action: "FINDING_ACCEPT_RISK",
-        entityType: "Finding",
+        entityType: "FINDING",
         entityId: finding.id,
         ip: clientInfo.ip,
         userAgent: clientInfo.userAgent,
@@ -85,61 +125,150 @@ export async function POST(
           comment: data.comment,
           systemName: finding.system?.name,
           caseNumber: finding.run.case.caseNumber,
+          before: beforeSnapshot,
+          after: afterSnapshot,
         },
       });
 
       return NextResponse.json(updated);
     }
 
-    // create_mitigation
-    const dueDate = new Date(data.dueDate);
-    const title =
-      data.taskTitle ||
-      `Mitigate finding: ${finding.summary.slice(0, 80)}`;
+    if (data.action === "create_mitigation") {
+      if (finding.status !== "OPEN") {
+        throw new ApiError(400, `Cannot create mitigation: finding status is ${finding.status}, expected OPEN`);
+      }
 
-    const [updated, task] = await prisma.$transaction([
-      prisma.finding.update({
-        where: { id: finding.id },
-        data: {
-          status: "MITIGATED",
-          statusComment: data.comment,
-          statusChangedByUserId: user.id,
-          statusChangedAt: new Date(),
-          mitigationDueDate: dueDate,
-        },
-      }),
-      prisma.task.create({
+      const dueDate = new Date(data.dueDate);
+      const title =
+        data.taskTitle ||
+        `Mitigate finding: ${finding.summary.slice(0, 80)}`;
+
+      const [updated, task] = await prisma.$transaction([
+        prisma.finding.update({
+          where: { id: finding.id },
+          data: {
+            status: "MITIGATING",
+            statusComment: data.comment,
+            statusChangedByUserId: user.id,
+            statusChangedAt: new Date(),
+            mitigationDueDate: dueDate,
+          },
+        }),
+        prisma.task.create({
+          data: {
+            tenantId: user.tenantId,
+            caseId: finding.run.caseId,
+            findingId: finding.id,
+            systemId: finding.systemId,
+            title,
+            description: data.comment,
+            status: "OPEN",
+            dueDate,
+            assigneeUserId: data.assigneeUserId ?? null,
+          },
+        }),
+      ]);
+
+      const afterSnapshot = {
+        status: updated.status,
+        statusComment: updated.statusComment,
+        statusChangedByUserId: updated.statusChangedByUserId,
+        statusChangedAt: updated.statusChangedAt,
+        mitigationDueDate: updated.mitigationDueDate,
+        taskId: task.id,
+      };
+
+      await prisma.findingAuditEvent.create({
         data: {
           tenantId: user.tenantId,
-          caseId: finding.run.caseId,
           findingId: finding.id,
-          systemId: finding.systemId,
-          title,
-          description: data.comment,
-          status: "OPEN",
-          dueDate,
+          actorUserId: user.id,
+          action: "FINDING_CREATE_MITIGATION",
+          beforeJson: beforeSnapshot,
+          afterJson: afterSnapshot,
+          comment: data.comment,
+          ip: clientInfo.ip,
+          userAgent: clientInfo.userAgent,
         },
-      }),
-    ]);
+      });
+
+      await logAudit({
+        tenantId: user.tenantId,
+        actorUserId: user.id,
+        action: "FINDING_CREATE_MITIGATION",
+        entityType: "FINDING",
+        entityId: finding.id,
+        ip: clientInfo.ip,
+        userAgent: clientInfo.userAgent,
+        details: {
+          taskId: task.id,
+          comment: data.comment,
+          dueDate: data.dueDate,
+          assigneeUserId: data.assigneeUserId,
+          systemName: finding.system?.name,
+          caseNumber: finding.run.case.caseNumber,
+          before: beforeSnapshot,
+          after: afterSnapshot,
+        },
+      });
+
+      return NextResponse.json({ finding: updated, task });
+    }
+
+    // mark_mitigated
+    if (finding.status !== "MITIGATING") {
+      throw new ApiError(400, `Cannot resolve: finding status is ${finding.status}, expected MITIGATING`);
+    }
+
+    const updated = await prisma.finding.update({
+      where: { id: finding.id },
+      data: {
+        status: "MITIGATED",
+        statusComment: data.comment,
+        statusChangedByUserId: user.id,
+        statusChangedAt: new Date(),
+      },
+    });
+
+    const afterSnapshot = {
+      status: updated.status,
+      statusComment: updated.statusComment,
+      statusChangedByUserId: updated.statusChangedByUserId,
+      statusChangedAt: updated.statusChangedAt,
+    };
+
+    await prisma.findingAuditEvent.create({
+      data: {
+        tenantId: user.tenantId,
+        findingId: finding.id,
+        actorUserId: user.id,
+        action: "FINDING_MARK_MITIGATED",
+        beforeJson: beforeSnapshot,
+        afterJson: afterSnapshot,
+        comment: data.comment,
+        ip: clientInfo.ip,
+        userAgent: clientInfo.userAgent,
+      },
+    });
 
     await logAudit({
       tenantId: user.tenantId,
       actorUserId: user.id,
-      action: "FINDING_CREATE_MITIGATION",
-      entityType: "Finding",
+      action: "FINDING_MARK_MITIGATED",
+      entityType: "FINDING",
       entityId: finding.id,
       ip: clientInfo.ip,
       userAgent: clientInfo.userAgent,
       details: {
-        taskId: task.id,
         comment: data.comment,
-        dueDate: data.dueDate,
         systemName: finding.system?.name,
         caseNumber: finding.run.case.caseNumber,
+        before: beforeSnapshot,
+        after: afterSnapshot,
       },
     });
 
-    return NextResponse.json({ finding: updated, task });
+    return NextResponse.json(updated);
   } catch (error) {
     return handleApiError(error);
   }

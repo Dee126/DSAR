@@ -12,7 +12,7 @@ import { prisma } from "@/lib/prisma";
  * Returns one tile per in-scope system with:
  *   - green/yellow/red counters (by risk-score band)
  *   - overall risk score (0-100, avg of top-20)
- *   - status counts (NEW / ACCEPTED / MITIGATED)
+ *   - status counts (OPEN / ACCEPTED / MITIGATING / MITIGATED)
  *   - severity counts
  *   - special-category count
  *   - last scan timestamp
@@ -91,8 +91,9 @@ export async function GET() {
           : 0;
 
       const statusCounts = {
-        NEW: findings.filter((f) => f.status === "NEW").length,
+        OPEN: findings.filter((f) => f.status === "OPEN").length,
         ACCEPTED: findings.filter((f) => f.status === "ACCEPTED").length,
+        MITIGATING: findings.filter((f) => f.status === "MITIGATING").length,
         MITIGATED: findings.filter((f) => f.status === "MITIGATED").length,
       };
 
@@ -137,8 +138,9 @@ export async function GET() {
         red: allFindings.filter((f) => f.riskScore >= 70).length,
       },
       statusCounts: {
-        NEW: allFindings.filter((f) => f.status === "NEW").length,
+        OPEN: allFindings.filter((f) => f.status === "OPEN").length,
         ACCEPTED: allFindings.filter((f) => f.status === "ACCEPTED").length,
+        MITIGATING: allFindings.filter((f) => f.status === "MITIGATING").length,
         MITIGATED: allFindings.filter((f) => f.status === "MITIGATED").length,
       },
       categoryCounts: Object.fromEntries(

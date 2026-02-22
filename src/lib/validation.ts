@@ -627,3 +627,20 @@ export const awsSecretsPayloadSchema = z.object({
   (data) => data.authType !== "assume_role" || !!data.roleArn,
   { message: "Role ARN is required when authType is assume_role", path: ["roleArn"] }
 );
+
+// ─── Finding Action Schemas ──────────────────────────────────────────────────
+
+export const findingAcceptSchema = z.object({
+  comment: z.string().min(1, "Comment is required when accepting risk"),
+});
+
+export const findingMitigateSchema = z.object({
+  comment: z.string().min(1, "Comment is required"),
+  assigneeUserId: z.string().uuid("Valid assignee user ID required").optional(),
+  dueDate: z.string().refine((s) => !isNaN(Date.parse(s)), "Invalid date"),
+  taskTitle: z.string().optional(),
+});
+
+export const findingResolveSchema = z.object({
+  comment: z.string().min(1, "Comment is required when marking as mitigated"),
+});

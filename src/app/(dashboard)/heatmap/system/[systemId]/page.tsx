@@ -84,7 +84,7 @@ function statusBadge(status: string) {
 }
 
 type ColorFilter = "all" | "green" | "yellow" | "red";
-type StatusFilter = "all" | "NEW" | "ACCEPTED" | "MITIGATED";
+type StatusFilter = "all" | "OPEN" | "ACCEPTED" | "MITIGATING" | "MITIGATED";
 type SortField = "score" | "lastSeen";
 type SortDir = "asc" | "desc";
 
@@ -210,7 +210,8 @@ export default function SystemDrilldownPage() {
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
           >
             <option value="all">All</option>
-            <option value="NEW">New</option>
+            <option value="OPEN">Open</option>
+            <option value="MITIGATING">Mitigating</option>
             <option value="ACCEPTED">Accepted</option>
             <option value="MITIGATED">Mitigated</option>
           </select>

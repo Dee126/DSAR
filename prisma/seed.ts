@@ -3665,11 +3665,13 @@ async function main() {
     const isSpecial = specialCategories.includes(cat);
 
     const statusRoll = rng();
-    const status: FindingStatus = statusRoll < 0.4
-      ? FindingStatus.NEW
-      : statusRoll < 0.7
+    const status: FindingStatus = statusRoll < 0.3
+      ? FindingStatus.OPEN
+      : statusRoll < 0.5
         ? FindingStatus.ACCEPTED
-        : FindingStatus.MITIGATED;
+        : statusRoll < 0.75
+          ? FindingStatus.MITIGATING
+          : FindingStatus.MITIGATED;
 
     const sys = mvpSystems[sysIdx];
     const sysAssets = assetDefs.filter(a => a.sysLabel === sys.label);

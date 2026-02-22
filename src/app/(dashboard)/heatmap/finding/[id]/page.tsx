@@ -63,6 +63,16 @@ interface FindingDetail {
   evidenceItems: Evidence[];
 }
 
+interface AuditEvent {
+  id: string;
+  action: string;
+  comment: string | null;
+  beforeJson: Record<string, unknown> | null;
+  afterJson: Record<string, unknown> | null;
+  createdAt: string;
+  actor: { id: string; name: string; email: string };
+}
+
 /* ── Helpers ────────────────────────────────────────────────────────────── */
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -81,6 +91,25 @@ const CATEGORY_LABELS: Record<string, string> = {
   OTHER_SPECIAL_CATEGORY: "Special Category (Art.9)",
   OTHER: "Other",
 };
+
+const ACTION_LABELS: Record<string, string> = {
+  FINDING_ACCEPT_RISK: "Accepted Risk",
+  FINDING_CREATE_MITIGATION: "Created Mitigation Task",
+  FINDING_MARK_MITIGATED: "Marked as Mitigated",
+};
+
+function statusBadgeClass(status: string) {
+  switch (status) {
+    case "ACCEPTED":
+      return "bg-amber-100 text-amber-700";
+    case "MITIGATING":
+      return "bg-blue-100 text-blue-700";
+    case "MITIGATED":
+      return "bg-emerald-100 text-emerald-700";
+    default:
+      return "bg-indigo-100 text-indigo-700";
+  }
+}
 
 function riskBadge(score: number) {
   if (score >= 70) return "bg-red-100 text-red-700 border-red-300";
@@ -104,9 +133,13 @@ export default function FindingDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Audit trail
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+
   // Action state
   const [actionMode, setActionMode] = useState<
-    null | "accept_risk" | "create_mitigation"
+    null | "accept_risk" | "create_mitigation" | "mark_mitigated"
   >(null);
   const [actionComment, setActionComment] = useState("");
   const [actionDueDate, setActionDueDate] = useState("");
@@ -127,9 +160,24 @@ export default function FindingDetailPage() {
     }
   }, [id]);
 
+  const fetchAuditTrail = useCallback(async () => {
+    setAuditLoading(true);
+    try {
+      const res = await fetch(`/api/findings/${id}/audit`);
+      if (res.ok) {
+        setAuditEvents(await res.json());
+      }
+    } catch {
+      // Audit trail is non-critical
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [id]);
+
   useEffect(() => {
     fetchFinding();
-  }, [fetchFinding]);
+    fetchAuditTrail();
+  }, [fetchFinding, fetchAuditTrail]);
 
   async function submitAction() {
     if (!actionMode) return;
@@ -137,16 +185,22 @@ export default function FindingDetailPage() {
     setActionError(null);
 
     try {
-      const body: Record<string, string> = {
-        action: actionMode,
-        comment: actionComment,
-      };
-      if (actionMode === "create_mitigation") {
-        body.dueDate = actionDueDate;
+      let url: string;
+      let body: Record<string, string>;
+
+      if (actionMode === "accept_risk") {
+        url = `/api/findings/${id}/accept`;
+        body = { comment: actionComment };
+      } else if (actionMode === "create_mitigation") {
+        url = `/api/findings/${id}/mitigate`;
+        body = { comment: actionComment, dueDate: actionDueDate };
         if (actionTaskTitle) body.taskTitle = actionTaskTitle;
+      } else {
+        url = `/api/findings/${id}/resolve`;
+        body = { comment: actionComment };
       }
 
-      const res = await fetch(`/api/findings/${id}/actions`, {
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -162,7 +216,7 @@ export default function FindingDetailPage() {
       setActionComment("");
       setActionDueDate("");
       setActionTaskTitle("");
-      await fetchFinding();
+      await Promise.all([fetchFinding(), fetchAuditTrail()]);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -249,13 +303,7 @@ export default function FindingDetailPage() {
                 {finding.severity}
               </span>
               <span
-                className={`rounded-full px-2.5 py-0.5 font-medium ${
-                  finding.status === "ACCEPTED"
-                    ? "bg-amber-100 text-amber-700"
-                    : finding.status === "MITIGATED"
-                    ? "bg-emerald-100 text-emerald-700"
-                    : "bg-indigo-100 text-indigo-700"
-                }`}
+                className={`rounded-full px-2.5 py-0.5 font-medium ${statusBadgeClass(finding.status)}`}
               >
                 {finding.status}
               </span>
@@ -274,22 +322,32 @@ export default function FindingDetailPage() {
           </div>
 
           {/* Actions */}
-          {finding.status === "NEW" && (
-            <div className="flex shrink-0 gap-2">
+          <div className="flex shrink-0 gap-2">
+            {finding.status === "OPEN" && (
+              <>
+                <button
+                  onClick={() => setActionMode("accept_risk")}
+                  className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
+                >
+                  Accept Risk
+                </button>
+                <button
+                  onClick={() => setActionMode("create_mitigation")}
+                  className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                >
+                  Create Mitigation
+                </button>
+              </>
+            )}
+            {finding.status === "MITIGATING" && (
               <button
-                onClick={() => setActionMode("accept_risk")}
-                className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
-              >
-                Accept Risk
-              </button>
-              <button
-                onClick={() => setActionMode("create_mitigation")}
+                onClick={() => setActionMode("mark_mitigated")}
                 className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
               >
-                Create Mitigation
+                Mark Mitigated
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Status comment */}
@@ -315,7 +373,9 @@ export default function FindingDetailPage() {
           <h3 className="text-sm font-semibold text-gray-900">
             {actionMode === "accept_risk"
               ? "Accept Risk"
-              : "Create Mitigation Task"}
+              : actionMode === "create_mitigation"
+              ? "Create Mitigation Task"
+              : "Mark as Mitigated"}
           </h3>
 
           {actionError && (
@@ -362,7 +422,9 @@ export default function FindingDetailPage() {
                 placeholder={
                   actionMode === "accept_risk"
                     ? "Explain why the risk is accepted..."
-                    : "Describe the mitigation plan..."
+                    : actionMode === "create_mitigation"
+                    ? "Describe the mitigation plan..."
+                    : "Confirm the mitigation is complete..."
                 }
                 value={actionComment}
                 onChange={(e) => setActionComment(e.target.value)}
@@ -383,7 +445,9 @@ export default function FindingDetailPage() {
                   ? "Saving..."
                   : actionMode === "accept_risk"
                   ? "Confirm Accept Risk"
-                  : "Create Mitigation Task"}
+                  : actionMode === "create_mitigation"
+                  ? "Create Mitigation Task"
+                  : "Confirm Mitigated"}
               </button>
               <button
                 onClick={() => {
@@ -526,6 +590,70 @@ export default function FindingDetailPage() {
               </div>
             </div>
           )}
+
+          {/* Audit Trail */}
+          <div className="card">
+            <h3 className="text-sm font-semibold text-gray-700">
+              Audit Trail
+            </h3>
+            {auditLoading ? (
+              <div className="mt-3 space-y-2">
+                <div className="h-12 animate-pulse rounded bg-gray-100" />
+                <div className="h-12 animate-pulse rounded bg-gray-100" />
+              </div>
+            ) : auditEvents.length === 0 ? (
+              <p className="mt-2 text-xs text-gray-400">
+                No actions recorded yet.
+              </p>
+            ) : (
+              <div className="mt-3 space-y-3">
+                {auditEvents.map((event) => (
+                  <div
+                    key={event.id}
+                    className="border-l-2 border-brand-200 pl-3"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-gray-900">
+                        {ACTION_LABELS[event.action] ?? event.action}
+                      </span>
+                      <span className="text-[10px] text-gray-400">
+                        {new Date(event.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-xs text-gray-600">
+                      by {event.actor.name}
+                    </p>
+                    {event.comment && (
+                      <p className="mt-1 text-xs text-gray-500 italic">
+                        &ldquo;{event.comment}&rdquo;
+                      </p>
+                    )}
+                    {event.beforeJson && event.afterJson && (
+                      <details className="mt-1">
+                        <summary className="cursor-pointer text-[10px] text-brand-600 hover:text-brand-700">
+                          View before/after
+                        </summary>
+                        <div className="mt-1 grid grid-cols-2 gap-2">
+                          <div>
+                            <p className="text-[10px] font-medium text-gray-500">Before</p>
+                            <pre className="overflow-x-auto rounded bg-gray-50 p-1.5 text-[10px] text-gray-600 font-mono whitespace-pre-wrap">
+                              {JSON.stringify(event.beforeJson, null, 2)}
+                            </pre>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-medium text-gray-500">After</p>
+                            <pre className="overflow-x-auto rounded bg-gray-50 p-1.5 text-[10px] text-gray-600 font-mono whitespace-pre-wrap">
+                              {JSON.stringify(event.afterJson, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Right Column: Evidence */}

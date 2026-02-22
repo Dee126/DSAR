@@ -121,7 +121,10 @@ export type Permission =
   | "EXEC_REPORT_GENERATE"
   | "EXEC_REPORT_EXPORT"
   | "EXEC_KPI_CONFIG"
-  | "EXEC_FORECAST_VIEW";
+  | "EXEC_FORECAST_VIEW"
+  // R) Findings
+  | "FINDINGS_VIEW"
+  | "FINDINGS_ACTION";
 
 // ─── Role → Permission Matrix ──────────────────────────────────────────────
 
@@ -155,6 +158,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "VENDOR_ESCALATION_VIEW", "VENDOR_ESCALATION_MANAGE",
     "EXEC_DASHBOARD_VIEW", "EXEC_DASHBOARD_FULL", "EXEC_FINANCIAL_VIEW",
     "EXEC_REPORT_GENERATE", "EXEC_REPORT_EXPORT", "EXEC_KPI_CONFIG", "EXEC_FORECAST_VIEW",
+    "FINDINGS_VIEW", "FINDINGS_ACTION",
   ]),
 
   TENANT_ADMIN: new Set<Permission>([
@@ -186,6 +190,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "VENDOR_ESCALATION_VIEW", "VENDOR_ESCALATION_MANAGE",
     "EXEC_DASHBOARD_VIEW", "EXEC_DASHBOARD_FULL", "EXEC_FINANCIAL_VIEW",
     "EXEC_REPORT_GENERATE", "EXEC_REPORT_EXPORT", "EXEC_KPI_CONFIG", "EXEC_FORECAST_VIEW",
+    "FINDINGS_VIEW", "FINDINGS_ACTION",
   ]),
 
   DPO: new Set<Permission>([
@@ -222,6 +227,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "VENDOR_RESPONSE_LOG", "VENDOR_TEMPLATE_VIEW", "VENDOR_TEMPLATE_MANAGE",
     "VENDOR_ESCALATION_VIEW", "VENDOR_ESCALATION_MANAGE",
     "EXEC_DASHBOARD_VIEW", "EXEC_DASHBOARD_FULL", "EXEC_REPORT_GENERATE", "EXEC_FORECAST_VIEW",
+    "FINDINGS_VIEW", "FINDINGS_ACTION",
   ]),
 
   CASE_MANAGER: new Set<Permission>([
@@ -255,6 +261,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "VENDOR_VIEW", "VENDOR_REQUEST_CREATE", "VENDOR_REQUEST_SEND", "VENDOR_REQUEST_VIEW",
     "VENDOR_RESPONSE_LOG", "VENDOR_TEMPLATE_VIEW", "VENDOR_ESCALATION_VIEW",
     "EXEC_DASHBOARD_VIEW",
+    "FINDINGS_VIEW", "FINDINGS_ACTION",
   ]),
 
   ANALYST: new Set<Permission>([
@@ -280,6 +287,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "INCIDENT_VIEW",
     "VENDOR_VIEW", "VENDOR_REQUEST_VIEW", "VENDOR_TEMPLATE_VIEW", "VENDOR_ESCALATION_VIEW",
     "EXEC_DASHBOARD_VIEW",
+    "FINDINGS_VIEW",
   ]),
 
   AUDITOR: new Set<Permission>([
@@ -307,6 +315,7 @@ const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
     "INCIDENT_VIEW",
     "VENDOR_VIEW", "VENDOR_REQUEST_VIEW", "VENDOR_TEMPLATE_VIEW", "VENDOR_ESCALATION_VIEW",
     "EXEC_DASHBOARD_VIEW",
+    "FINDINGS_VIEW",
   ]),
 
   // Legacy roles mapped for backward compatibility
@@ -389,7 +398,8 @@ type Resource =
   | "response" | "response_templates"
   | "incidents" | "incident_linkage" | "incident_surge" | "authority_export"
   | "vendors" | "vendor_requests" | "vendor_templates" | "vendor_escalations"
-  | "exec_dashboard" | "exec_reports" | "exec_kpi_config";
+  | "exec_dashboard" | "exec_reports" | "exec_kpi_config"
+  | "findings";
 
 type Action = "create" | "read" | "update" | "delete" | "manage";
 
@@ -569,6 +579,11 @@ const LEGACY_MAP: Record<string, Record<string, Permission[]>> = {
     read: ["EXEC_DASHBOARD_VIEW"],
     update: ["EXEC_KPI_CONFIG"],
     manage: ["EXEC_KPI_CONFIG"],
+  },
+  findings: {
+    read: ["FINDINGS_VIEW"],
+    update: ["FINDINGS_ACTION"],
+    manage: ["FINDINGS_ACTION"],
   },
 };
 

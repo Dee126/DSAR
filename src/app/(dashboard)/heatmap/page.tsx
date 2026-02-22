@@ -12,8 +12,9 @@ interface RiskBands {
 }
 
 interface StatusCounts {
-  NEW: number;
+  OPEN: number;
   ACCEPTED: number;
+  MITIGATING: number;
   MITIGATED: number;
 }
 
@@ -288,14 +289,19 @@ export default function HeatmapPage() {
             <DonutChart
               segments={[
                 {
-                  value: summary.statusCounts.NEW,
+                  value: summary.statusCounts.OPEN,
                   color: "#6366f1",
-                  label: "New",
+                  label: "Open",
                 },
                 {
                   value: summary.statusCounts.ACCEPTED,
                   color: "#f59e0b",
                   label: "Accepted",
+                },
+                {
+                  value: summary.statusCounts.MITIGATING,
+                  color: "#3b82f6",
+                  label: "Mitigating",
                 },
                 {
                   value: summary.statusCounts.MITIGATED,
@@ -304,14 +310,18 @@ export default function HeatmapPage() {
                 },
               ]}
             />
-            <div className="flex gap-4 text-xs">
+            <div className="flex flex-wrap gap-4 text-xs">
               <span className="flex items-center gap-1">
                 <span className="h-2.5 w-2.5 rounded-full bg-indigo-500" />
-                {summary.statusCounts.NEW} New
+                {summary.statusCounts.OPEN} Open
               </span>
               <span className="flex items-center gap-1">
                 <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
                 {summary.statusCounts.ACCEPTED} Accepted
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
+                {summary.statusCounts.MITIGATING} Mitigating
               </span>
               <span className="flex items-center gap-1">
                 <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
@@ -503,9 +513,14 @@ export default function HeatmapPage() {
 
                   {/* Status row */}
                   <div className="mt-2 flex gap-2 text-[10px] text-gray-500">
-                    {tile.statusCounts.NEW > 0 && (
+                    {tile.statusCounts.OPEN > 0 && (
                       <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-indigo-700">
-                        {tile.statusCounts.NEW} new
+                        {tile.statusCounts.OPEN} open
+                      </span>
+                    )}
+                    {tile.statusCounts.MITIGATING > 0 && (
+                      <span className="rounded bg-blue-100 px-1.5 py-0.5 text-blue-700">
+                        {tile.statusCounts.MITIGATING} mitigating
                       </span>
                     )}
                     {tile.statusCounts.ACCEPTED > 0 && (
