@@ -29,6 +29,7 @@ interface Tile {
   statusCounts: StatusCounts;
   severityCounts: { INFO: number; WARNING: number; CRITICAL: number };
   specialCategoryCount: number;
+  lastScanAt: string | null;
 }
 
 interface Summary {
@@ -181,7 +182,7 @@ export default function HeatmapPage() {
   useEffect(() => {
     async function fetchHeatmap() {
       try {
-        const res = await fetch("/api/heatmap");
+        const res = await fetch("/api/heatmap/overview");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         setTiles(data.tiles);
@@ -518,6 +519,23 @@ export default function HeatmapPage() {
                       </span>
                     )}
                   </div>
+
+                  {/* Last scan timestamp */}
+                  <p className="mt-2 text-[10px] text-gray-400">
+                    Last scan:{" "}
+                    {tile.lastScanAt
+                      ? new Date(tile.lastScanAt).toLocaleDateString(
+                          undefined,
+                          {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          }
+                        )
+                      : "Never"}
+                  </p>
                 </Link>
               ))}
           </div>

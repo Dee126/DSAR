@@ -85,6 +85,8 @@ function statusBadge(status: string) {
 
 type ColorFilter = "all" | "green" | "yellow" | "red";
 type StatusFilter = "all" | "NEW" | "ACCEPTED" | "MITIGATED";
+type SortField = "score" | "lastSeen";
+type SortDir = "asc" | "desc";
 
 /* ── Page ────────────────────────────────────────────────────────────── */
 
@@ -99,20 +101,28 @@ export default function SystemDrilldownPage() {
   const [colorFilter, setColorFilter] = useState<ColorFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+
+  // Sort
+  const [sortField, setSortField] = useState<SortField>("score");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
+      params.set("systemId", systemId);
       if (colorFilter !== "all") params.set("color", colorFilter);
       if (statusFilter !== "all") params.set("status", statusFilter);
-      if (categoryFilter !== "all") params.set("category", categoryFilter);
-      const qs = params.toString();
+      if (categoryFilter !== "all") params.set("piiCategory", categoryFilter);
+      if (dateFrom) params.set("from", dateFrom);
+      if (dateTo) params.set("to", dateTo);
+      params.set("sort", sortField);
+      params.set("dir", sortDir);
 
-      const res = await fetch(
-        `/api/heatmap/${systemId}${qs ? `?${qs}` : ""}`
-      );
+      const res = await fetch(`/api/heatmap/system?${params.toString()}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setSystem(data.system);
@@ -122,7 +132,7 @@ export default function SystemDrilldownPage() {
     } finally {
       setLoading(false);
     }
-  }, [systemId, colorFilter, statusFilter, categoryFilter]);
+  }, [systemId, colorFilter, statusFilter, categoryFilter, dateFrom, dateTo, sortField, sortDir]);
 
   useEffect(() => {
     fetchData();
@@ -219,6 +229,44 @@ export default function SystemDrilldownPage() {
                 {CATEGORY_LABELS[cat] ?? cat}
               </option>
             ))}
+          </select>
+        </label>
+
+        <label className="text-xs font-medium text-gray-600">
+          From:
+          <input
+            type="date"
+            className="ml-1.5 rounded-md border border-gray-300 px-2 py-1 text-xs"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+          />
+        </label>
+
+        <label className="text-xs font-medium text-gray-600">
+          To:
+          <input
+            type="date"
+            className="ml-1.5 rounded-md border border-gray-300 px-2 py-1 text-xs"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+          />
+        </label>
+
+        <label className="text-xs font-medium text-gray-600">
+          Sort:
+          <select
+            className="ml-1.5 rounded-md border border-gray-300 px-2 py-1 text-xs"
+            value={`${sortField}-${sortDir}`}
+            onChange={(e) => {
+              const [field, dir] = e.target.value.split("-") as [SortField, SortDir];
+              setSortField(field);
+              setSortDir(dir);
+            }}
+          >
+            <option value="score-desc">Score (high first)</option>
+            <option value="score-asc">Score (low first)</option>
+            <option value="lastSeen-desc">Newest first</option>
+            <option value="lastSeen-asc">Oldest first</option>
           </select>
         </label>
 
