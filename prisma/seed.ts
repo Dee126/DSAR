@@ -3802,6 +3802,13 @@ async function main() {
   console.log("\n═══ Discovery & Scan seed complete ═══");
   console.log(`Summary: ${allCases.length} cases, ${createdAssets.length} data assets, ${mvpFindings.length} findings, ${caseItemCount} case items`);
   console.log(`Findings distribution: ${greenCount} green (${(greenCount/mvpFindings.length*100).toFixed(0)}%), ${yellowCount} yellow (${(yellowCount/mvpFindings.length*100).toFixed(0)}%), ${redCount} red (${(redCount/mvpFindings.length*100).toFixed(0)}%)`);
+
+  // ── DB-verified counts ──────────────────────────────────────────────────────
+  const assetCount = await prisma.dataAsset.count();
+  const findingCount = await prisma.finding.count();
+  console.log("\n═══ DB-Verified Counts ═══");
+  console.log(`Assets: ${assetCount}`);
+  console.log(`Findings: ${findingCount}`);
 }
 
 main()
