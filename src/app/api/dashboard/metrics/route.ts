@@ -6,14 +6,19 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
-    // Resolve user identity: session → x-user header → anonymous
+    // Resolve user identity: session → query param → header → anonymous
     const session = await getAuthSession();
+    const params = request.nextUrl.searchParams;
     const tenantId =
       session?.user?.tenantId ??
+      params.get("tenantId") ??
       request.headers.get("x-tenant-id") ??
       undefined;
     const userId =
-      session?.user?.id ?? request.headers.get("x-user") ?? undefined;
+      session?.user?.id ??
+      params.get("userId") ??
+      request.headers.get("x-user") ??
+      undefined;
 
     const metrics = await getDashboardMetrics({ tenantId, userId });
 
