@@ -7,7 +7,7 @@ A production-grade MVP for managing GDPR Data Subject Access Requests (DSARs). M
 **Frontend**: Next.js 14 (App Router) + TypeScript + Tailwind CSS
 **Backend**: Next.js API Routes with Zod validation
 **Database**: PostgreSQL via Prisma ORM
-**Auth**: NextAuth.js v4 (credentials provider, JWT sessions)
+**Auth**: Dual-mode — Test auth (HMAC cookies, no DB) or NextAuth.js v4 (Supabase/Prisma)
 **Storage**: Pluggable — local filesystem (dev), S3-compatible (prod)
 **Testing**: Vitest (unit) + Playwright (E2E)
 
@@ -18,7 +18,43 @@ A production-grade MVP for managing GDPR Data Subject Access Requests (DSARs). M
 - **RBAC**: Six roles (SUPER_ADMIN → READ_ONLY) with granular permissions enforced server-side on every API endpoint.
 - **Audit logging**: Every significant action (create, update, transition, upload, download, export, login) is recorded with timestamp, actor, IP, and details.
 
-## Quick Start
+## Quick Start (Test Auth — No Database Required)
+
+The fastest way to run the app locally. No PostgreSQL or Supabase needed.
+
+### Prerequisites
+
+- Node.js 18+
+
+### Steps
+
+```bash
+git clone <repo-url> && cd DSAR
+npm install
+cp .env.example .env
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) and log in with:
+- **Email**: `daniel.schormann@gmail.com`
+- **Password**: `admin123`
+
+These credentials come from `TEST_USER_EMAIL` / `TEST_USER_PASSWORD` in `.env`.
+
+> **Note**: In test auth mode, API routes that query the database (cases, tasks, etc.)
+> will fail unless PostgreSQL is running. But authentication and protected page access
+> work without any database.
+
+### Required Env Vars (Test Mode)
+
+| Variable | Description | Default |
+|---|---|---|
+| `NEXT_PUBLIC_AUTH_MODE` | `"test"` or `"supabase"` | `"test"` |
+| `AUTH_SECRET` | HMAC signing secret for cookies | `"dev-secret-change-me"` |
+| `TEST_USER_EMAIL` | Login email for test mode | (required) |
+| `TEST_USER_PASSWORD` | Login password for test mode | (required) |
+
+## Quick Start (Full Stack with Database)
 
 ### Prerequisites
 
@@ -208,8 +244,12 @@ npm run test:e2e
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `NEXT_PUBLIC_AUTH_MODE` | `"test"` (HMAC cookies) or `"supabase"` (NextAuth) | `"test"` |
+| `AUTH_SECRET` | HMAC signing key (test mode) | (required in test mode) |
+| `TEST_USER_EMAIL` | Test login email | (required in test mode) |
+| `TEST_USER_PASSWORD` | Test login password | (required in test mode) |
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://privacy_pilot:privacy_pilot_dev@localhost:5432/privacy_pilot` |
-| `NEXTAUTH_SECRET` | JWT signing secret | (required) |
+| `NEXTAUTH_SECRET` | JWT signing secret (supabase mode) | (required in supabase mode) |
 | `NEXTAUTH_URL` | App base URL | `http://localhost:3000` |
 | `STORAGE_TYPE` | `local` or `s3` | `local` |
 | `STORAGE_LOCAL_PATH` | Local file storage path | `./uploads` |

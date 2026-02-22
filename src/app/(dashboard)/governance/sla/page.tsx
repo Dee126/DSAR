@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useSession } from "next-auth/react";
+import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
 
 /* ── Types ────────────────────────────────────────────────────────────── */
@@ -81,8 +81,8 @@ const TIMEZONE_OPTIONS = [
 /* ── Page Component ───────────────────────────────────────────────────── */
 
 export default function SlaConfigPage() {
-  const { data: session } = useSession();
-  const userRole = session?.user?.role ?? "";
+  const { user } = useAuth();
+  const userRole = user?.role ?? "";
   const isAdmin = ADMIN_ROLES.includes(userRole);
 
   const [config, setConfig] = useState<SlaConfig>(DEFAULT_CONFIG);

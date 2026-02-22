@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useAuth } from "@/hooks/useAuth";
 import type { DSARCaseDetail, CaseUser, SystemItem, TabKey } from "../types";
 import * as caseRepo from "../repositories";
 import { canManageCase, canExportCase, canUseCopilot } from "../services";
@@ -12,7 +12,7 @@ import { canManageCase, canExportCase, canUseCopilot } from "../services";
  */
 export function useCaseDetail(caseId: string) {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { user } = useAuth();
 
   const [caseData, setCaseData] = useState<DSARCaseDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -20,7 +20,7 @@ export function useCaseDetail(caseId: string) {
   const [systems, setSystems] = useState<SystemItem[]>([]);
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
 
-  const userRole = session?.user?.role ?? "";
+  const userRole = user?.role ?? "";
   const canManage = canManageCase(userRole);
   const canExport = canExportCase(userRole);
   const canCopilot = canUseCopilot(userRole);
@@ -56,6 +56,6 @@ export function useCaseDetail(caseId: string) {
     canExport,
     canCopilot,
     refreshCase: fetchCase,
-    session,
+    user,
   };
 }

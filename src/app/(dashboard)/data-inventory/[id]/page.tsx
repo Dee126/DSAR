@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, FormEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
 
 /* ── Types ────────────────────────────────────────────────────────────── */
@@ -75,8 +75,8 @@ function confidenceColor(s: number) { return s >= 80 ? "text-green-600" : s >= 6
 export default function SystemDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { data: session } = useSession();
-  const canManage = session?.user?.role && MANAGE_ROLES.includes(session.user.role);
+  const { user } = useAuth();
+  const canManage = user?.role && MANAGE_ROLES.includes(user.role);
 
   const [system, setSystem] = useState<SystemDetail | null>(null);
   const [loading, setLoading] = useState(true);

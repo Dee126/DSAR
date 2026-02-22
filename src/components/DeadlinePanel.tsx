@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useSession } from "next-auth/react";
+import { useAuth } from "@/hooks/useAuth";
 
 interface Deadline {
   id: string;
@@ -59,7 +59,7 @@ const MILESTONE_LABELS: Record<string, string> = {
 };
 
 export default function DeadlinePanel({ caseId, userRole }: { caseId: string; userRole?: string }) {
-  const { data: session } = useSession();
+  const { user: _authUser } = useAuth();
   const [deadline, setDeadline] = useState<Deadline | null>(null);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [events, setEvents] = useState<DeadlineEvent[]>([]);

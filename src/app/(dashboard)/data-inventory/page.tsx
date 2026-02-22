@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useSession } from "next-auth/react";
+import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
 
 /* ── Types ────────────────────────────────────────────────────────────── */
@@ -60,8 +60,8 @@ const MANAGE_ROLES = ["SUPER_ADMIN", "TENANT_ADMIN", "DPO", "CASE_MANAGER"];
 /* ── Page ─────────────────────────────────────────────────────────────── */
 
 export default function DataInventoryPage() {
-  const { data: session } = useSession();
-  const userRole = session?.user?.role;
+  const { user } = useAuth();
+  const userRole = user?.role;
   const canManage = userRole && MANAGE_ROLES.includes(userRole);
 
   const [systems, setSystems] = useState<SystemItem[]>([]);

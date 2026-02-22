@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSession, signOut } from "next-auth/react";
+import { useAuth } from "@/hooks/useAuth";
 import type { NavItemDef } from "./Sidebar";
 
 /* ── Mobile Header ────────────────────────────────────────────────────── */
@@ -48,8 +48,8 @@ export function MobileDrawer({
   navItems: NavItemDef[];
 }) {
   const pathname = usePathname();
-  const { data: session } = useSession();
-  const userRole = session?.user?.role;
+  const { user, logout } = useAuth();
+  const userRole = user?.role;
   const touchStartX = useRef(0);
 
   // Lock body scroll when open
@@ -158,11 +158,11 @@ export function MobileDrawer({
         </nav>
 
         {/* User & Sign out */}
-        {session?.user && (
+        {user && (
           <div className="border-t border-gray-200 p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
-                {session.user.name
+                {user.name
                   .split(" ")
                   .map((n: string) => n[0])
                   .join("")
@@ -170,12 +170,12 @@ export function MobileDrawer({
                   .slice(0, 2)}
               </div>
               <div className="flex-1 truncate">
-                <p className="truncate text-sm font-medium text-gray-900">{session.user.name}</p>
-                <p className="truncate text-xs text-gray-500">{session.user.role.replace(/_/g, " ")}</p>
+                <p className="truncate text-sm font-medium text-gray-900">{user.name}</p>
+                <p className="truncate text-xs text-gray-500">{user.role.replace(/_/g, " ")}</p>
               </div>
             </div>
             <button
-              onClick={() => signOut({ callbackUrl: "/login" })}
+              onClick={() => logout()}
               className="mt-3 flex min-h-[44px] w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 transition-colors active:bg-gray-100"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -301,8 +301,8 @@ const MENU_GROUPS: MenuGroup[] = [
 
 export function BottomNav() {
   const pathname = usePathname();
-  const { data: session } = useSession();
-  const userRole = session?.user?.role;
+  const { user: bottomUser } = useAuth();
+  const userRole = bottomUser?.role;
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const openSheet = useCallback(() => setSheetOpen(true), []);
@@ -327,8 +327,8 @@ export function BottomNav() {
         open={sheetOpen}
         onClose={closeSheet}
         userRole={userRole}
-        userName={session?.user?.name}
-        userRoleLabel={session?.user?.role}
+        userName={bottomUser?.name}
+        userRoleLabel={bottomUser?.role}
       />
 
       {/* Fixed bottom bar */}
@@ -432,6 +432,7 @@ function MoreSheet({
   userRoleLabel?: string;
 }) {
   const pathname = usePathname();
+  const { logout: doLogout } = useAuth();
   const touchStartY = useRef(0);
   const sheetRef = useRef<HTMLDivElement>(null);
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
@@ -619,7 +620,7 @@ function MoreSheet({
                   Cancel
                 </button>
                 <button
-                  onClick={() => signOut({ callbackUrl: "/login" })}
+                  onClick={() => doLogout()}
                   className="flex-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white active:bg-red-700"
                 >
                   Sign out

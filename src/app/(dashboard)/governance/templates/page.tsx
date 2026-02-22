@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
+import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
 
 /* ── Types ──────────────────────────────────────────────────────── */
@@ -43,7 +43,7 @@ const LANG_LABELS: Record<string, string> = { en: "English", de: "Deutsch" };
 /* ── Component ──────────────────────────────────────────────────── */
 
 export default function TemplateLibraryPage() {
-  const { data: session } = useSession();
+  const { user } = useAuth();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
@@ -52,7 +52,7 @@ export default function TemplateLibraryPage() {
   const [cloning, setCloning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canManage = ["SUPER_ADMIN", "TENANT_ADMIN", "DPO"].includes(session?.user?.role || "");
+  const canManage = ["SUPER_ADMIN", "TENANT_ADMIN", "DPO"].includes(user?.role || "");
 
   useEffect(() => {
     async function fetchTemplates() {

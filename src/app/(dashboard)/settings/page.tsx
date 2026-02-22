@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, FormEvent } from "react";
-import { useSession } from "next-auth/react";
+import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 
 /* ── Types ────────────────────────────────────────────────────────────── */
@@ -57,9 +57,9 @@ const SETTINGS_ROLES = ["SUPER_ADMIN", "TENANT_ADMIN"];
 /* ── Component ────────────────────────────────────────────────────────── */
 
 export default function SettingsPage() {
-  const { data: session } = useSession();
+  const { user } = useAuth();
   const router = useRouter();
-  const userRole = session?.user?.role ?? "";
+  const userRole = user?.role ?? "";
 
   const [activeTab, setActiveTab] = useState<
     "tenant" | "users" | "systems" | "developer"
@@ -113,10 +113,10 @@ export default function SettingsPage() {
 
   // Guard: only SUPER_ADMIN and TENANT_ADMIN can access
   useEffect(() => {
-    if (session && !SETTINGS_ROLES.includes(userRole)) {
+    if (user && !SETTINGS_ROLES.includes(userRole)) {
       router.push("/dashboard");
     }
-  }, [session, userRole, router]);
+  }, [user, userRole, router]);
 
   // Fetch tenant
   useEffect(() => {

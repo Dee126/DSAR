@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useSession } from "next-auth/react";
+import { useAuth } from "@/hooks/useAuth";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
 import Sidebar, { NAV_ITEMS } from "@/components/Sidebar";
@@ -44,7 +44,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { data: session, status } = useSession();
+  const { user, status } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -86,7 +86,7 @@ export default function DashboardLayout({
     );
   }
 
-  if (!session) {
+  if (!user) {
     return null;
   }
 

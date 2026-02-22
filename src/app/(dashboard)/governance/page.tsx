@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useSession } from "next-auth/react";
+import { useAuth } from "@/hooks/useAuth";
 
 /* ── Types ────────────────────────────────────────────────────────────── */
 
@@ -133,8 +133,8 @@ function getExportStatus(entry: ActivityLogEntry): string {
 /* ── Page Component ───────────────────────────────────────────────────── */
 
 export default function GovernancePage() {
-  const { data: session } = useSession();
-  const userRole = session?.user?.role ?? "";
+  const { user } = useAuth();
+  const userRole = user?.role ?? "";
   const isAdmin = ADMIN_ROLES.includes(userRole);
 
   const [activeTab, setActiveTab] = useState<"activity" | "approvals" | "settings">("activity");

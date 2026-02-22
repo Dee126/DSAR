@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
+import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
 import VendorDashboardWidget from "@/components/VendorDashboardWidget";
 import ExecutiveKpiWidget from "@/components/ExecutiveKpiWidget";
@@ -43,7 +43,7 @@ function getSlaIndicator(dueDate: string): "ok" | "due_soon" | "overdue" {
 /* ── Component ────────────────────────────────────────────────────────── */
 
 export default function DashboardPage() {
-  const { data: session } = useSession();
+  const { user } = useAuth();
   const [integrationHealth, setIntegrationHealth] = useState<{
     total: number;
     connected: number;
@@ -149,9 +149,9 @@ export default function DashboardPage() {
     try {
       const params = new URLSearchParams();
       const tenantId =
-        process.env.NEXT_PUBLIC_TENANT_ID ?? session?.user?.tenantId;
+        process.env.NEXT_PUBLIC_TENANT_ID ?? user?.tenantId;
       if (tenantId) params.set("tenantId", tenantId);
-      if (session?.user?.id) params.set("userId", session.user.id);
+      if (user?.id) params.set("userId", user.id);
       const qs = params.toString();
       const res = await fetch(
         `/api/dashboard/metrics${qs ? `?${qs}` : ""}`
@@ -170,9 +170,9 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchMetrics();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.id]);
+  }, [user?.id]);
 
-  const hasSession = !!session?.user?.id;
+  const hasSession = !!user?.id;
   const recentCases = (metrics?.recentCases ?? []).slice(0, 5);
 
   const stats = [
@@ -243,7 +243,7 @@ export default function DashboardPage() {
       {/* Welcome Header */}
       <div>
         <h1 className="text-xl md:text-2xl font-bold text-gray-900">
-          Welcome back, {session?.user?.name?.split(" ")[0] ?? "User"}
+          Welcome back, {user?.name?.split(" ")[0] ?? "User"}
         </h1>
         <p className="mt-1 text-sm text-gray-500">
           Here is an overview of your DSAR case activity.

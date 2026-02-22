@@ -42,8 +42,8 @@ export default function CaseDetailPage() {
   const caseId = params.id as string;
 
   const detail = useCaseDetail(caseId);
-  const { caseData, loading, users, systems, activeTab, setActiveTab, canManage, canExport, canCopilot, refreshCase, session } = detail;
-  const userRole = session?.user?.role ?? "";
+  const { caseData, loading, users, systems, activeTab, setActiveTab, canManage, canExport, canCopilot, refreshCase, user } = detail;
+  const userRole = user?.role ?? "";
 
   const overview = useOverviewTab(caseId, caseData, refreshCase);
   const tasks = useTasksTab(caseId, refreshCase);

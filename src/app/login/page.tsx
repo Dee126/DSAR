@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, FormEvent } from "react";
-import { signIn } from "next-auth/react";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const { login } = useAuth();
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -15,21 +16,10 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const result = await signIn("credentials", {
-        email: email.trim(),
-        password,
-        redirect: false,
-        callbackUrl: "/dashboard",
-      });
+      const result = await login(email.trim(), password);
 
-      if (result?.error) {
-        if (result.error === "CredentialsSignin") {
-          setError("Invalid email or password. Please try again.");
-        } else {
-          setError(
-            "Login failed due to a server error. Please try again in a moment."
-          );
-        }
+      if (!result.ok) {
+        setError(result.error || "Invalid email or password. Please try again.");
       } else {
         // Full page navigation so the browser sends the freshly-set
         // session cookie on the first request. router.push() can do a
