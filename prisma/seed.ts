@@ -330,7 +330,34 @@ async function main() {
     },
   });
 
-  console.log("Created 10 systems");
+  // ── Additional discovery systems ──────────────────────────────────────
+  const exchangeSystem = await prisma.system.create({
+    data: {
+      tenantId: tenant.id, name: "Exchange Online", description: "Email and calendar - Exchange Online mailboxes",
+      owner: "IT Department", contactEmail: "exchange-admin@acme-corp.com", tags: ["exchange", "email", "mailbox"],
+      ownerUserId: admin.id, criticality: SystemCriticality.HIGH, systemStatus: SystemStatus.ACTIVE,
+      containsSpecialCategories: false, inScopeForDsar: true,
+      automationReadiness: AutomationReadiness.API_AVAILABLE, connectorType: ConnectorType.M365,
+      exportFormats: ["pst", "json", "csv"], estimatedCollectionTimeMinutes: 45,
+      dataResidencyPrimary: "EU", processingRegions: ["EU"],
+      identifierTypes: ["email", "employeeId"],
+    },
+  });
+
+  const sharepointSystem = await prisma.system.create({
+    data: {
+      tenantId: tenant.id, name: "SharePoint Online", description: "Document libraries and team sites - SharePoint Online",
+      owner: "IT Department", contactEmail: "sharepoint-admin@acme-corp.com", tags: ["sharepoint", "documents", "sites"],
+      ownerUserId: admin.id, criticality: SystemCriticality.HIGH, systemStatus: SystemStatus.ACTIVE,
+      containsSpecialCategories: true, inScopeForDsar: true,
+      automationReadiness: AutomationReadiness.API_AVAILABLE, connectorType: ConnectorType.M365,
+      exportFormats: ["json", "csv", "pdf"], estimatedCollectionTimeMinutes: 60,
+      dataResidencyPrimary: "EU", processingRegions: ["EU"],
+      identifierTypes: ["email", "employeeId"],
+    },
+  });
+
+  console.log("Created 12 systems");
 
   // ── System Data Categories ────────────────────────────────────────────
   await prisma.systemDataCategory.createMany({
@@ -3286,29 +3313,15 @@ async function main() {
 
   const mvpSystems = [
     { sys: m365System, label: "M365" },
+    { sys: exchangeSystem, label: "Exchange" },
+    { sys: sharepointSystem, label: "SharePoint" },
     { sys: fileShareSystem, label: "Fileserver" },
-    { sys: hrSystem, label: "HR-CRM" },
-    { sys: crmSystem, label: "Exchange" },
   ];
 
-  // ── Data Assets (100 across 4 systems) ─────────────────────────────────────
+  // ── Data Assets (80 across 4 systems, 20 each) ─────────────────────────────
   // Realistic paths: SharePoint URLs, OneDrive paths, mailbox folders, UNC paths
   const assetDefs: Array<{ sysLabel: string; name: string; path: string; cat: DataCategory; score: number; personal: boolean; special: boolean }> = [
-    // ── M365 assets (30) ──────────────────────────────────────────────────
-    { sysLabel: "M365", name: "Inbox - All Users", path: "Exchange Online / Mailboxes / *", cat: DataCategory.COMMUNICATION, score: 65, personal: true, special: false },
-    { sysLabel: "M365", name: "Sent Items Archive", path: "Exchange Online / Mailboxes / Sent Items", cat: DataCategory.COMMUNICATION, score: 60, personal: true, special: false },
-    { sysLabel: "M365", name: "Calendar Events", path: "Exchange Online / Calendars / *", cat: DataCategory.CONTACT, score: 30, personal: true, special: false },
-    { sysLabel: "M365", name: "Deleted Items Retention", path: "Exchange Online / Mailboxes / RecoverableItems", cat: DataCategory.COMMUNICATION, score: 55, personal: true, special: false },
-    { sysLabel: "M365", name: "Shared Mailbox - HR Enquiries", path: "Exchange Online / SharedMailboxes / hr-enquiries@acme-corp.com", cat: DataCategory.HR, score: 72, personal: true, special: true },
-    { sysLabel: "M365", name: "Shared Mailbox - GDPR Inbox", path: "Exchange Online / SharedMailboxes / gdpr@acme-corp.com", cat: DataCategory.COMMUNICATION, score: 68, personal: true, special: false },
-    { sysLabel: "M365", name: "SharePoint HR Site", path: "https://acme-corp.sharepoint.com/sites/HR-Internal", cat: DataCategory.HR, score: 85, personal: true, special: true },
-    { sysLabel: "M365", name: "SharePoint Finance Site", path: "https://acme-corp.sharepoint.com/sites/Finance", cat: DataCategory.PAYMENT, score: 78, personal: true, special: false },
-    { sysLabel: "M365", name: "SharePoint Legal Site", path: "https://acme-corp.sharepoint.com/sites/Legal-Compliance", cat: DataCategory.CONTRACT, score: 55, personal: true, special: false },
-    { sysLabel: "M365", name: "SharePoint Customer Portal", path: "https://acme-corp.sharepoint.com/sites/CustomerPortal", cat: DataCategory.CONTRACT, score: 60, personal: true, special: false },
-    { sysLabel: "M365", name: "SharePoint Executive Reports", path: "https://acme-corp.sharepoint.com/sites/Executive/Reports", cat: DataCategory.HR, score: 74, personal: true, special: false },
-    { sysLabel: "M365", name: "SharePoint Board Documents", path: "https://acme-corp.sharepoint.com/sites/Board/SharedDocuments", cat: DataCategory.IDENTIFICATION, score: 80, personal: true, special: false },
-    { sysLabel: "M365", name: "SharePoint Recruiting", path: "https://acme-corp.sharepoint.com/sites/Recruiting/Applications", cat: DataCategory.IDENTIFICATION, score: 82, personal: true, special: false },
-    { sysLabel: "M365", name: "SharePoint Vendor Contracts", path: "https://acme-corp.sharepoint.com/sites/Procurement/Contracts", cat: DataCategory.CONTRACT, score: 45, personal: true, special: false },
+    // ── M365 assets (20) — OneDrive, Teams, Entra ID ──────────────────────
     { sysLabel: "M365", name: "OneDrive - Management", path: "OneDrive / management-team / *", cat: DataCategory.HR, score: 70, personal: true, special: false },
     { sysLabel: "M365", name: "OneDrive - Sales", path: "OneDrive / sales-team / *", cat: DataCategory.CONTRACT, score: 45, personal: true, special: false },
     { sysLabel: "M365", name: "OneDrive - DPO Private", path: "OneDrive / david.dpo / DSAR-Working", cat: DataCategory.IDENTIFICATION, score: 88, personal: true, special: true },
@@ -3325,7 +3338,53 @@ async function main() {
     { sysLabel: "M365", name: "Power Automate Flows", path: "PowerAutomate / flows / HR-Onboarding", cat: DataCategory.HR, score: 35, personal: true, special: false },
     { sysLabel: "M365", name: "Forms - Employee Surveys", path: "Forms / responses / Employee-Satisfaction-2025", cat: DataCategory.HR, score: 62, personal: true, special: false },
     { sysLabel: "M365", name: "Lists - Asset Inventory", path: "SharePoint / lists / IT-Assets", cat: DataCategory.ONLINE_TECHNICAL, score: 28, personal: true, special: false },
-    // ── Fileserver assets (25) ────────────────────────────────────────────
+    { sysLabel: "M365", name: "Intune Device Inventory", path: "Intune / managedDevices / *", cat: DataCategory.ONLINE_TECHNICAL, score: 32, personal: true, special: false },
+    { sysLabel: "M365", name: "Security & Compliance Alerts", path: "Security Center / alerts / *", cat: DataCategory.ONLINE_TECHNICAL, score: 38, personal: true, special: false },
+    { sysLabel: "M365", name: "Yammer Community Posts", path: "Yammer / messages / *", cat: DataCategory.COMMUNICATION, score: 42, personal: true, special: false },
+    { sysLabel: "M365", name: "Bookings Customer Data", path: "Bookings / appointments / customerInfo", cat: DataCategory.CONTACT, score: 55, personal: true, special: false },
+    // ── Exchange assets (20) — Mailbox folders, shared mailboxes ─────────
+    { sysLabel: "Exchange", name: "Inbox - All Users", path: "Exchange Online / Mailboxes / Inbox / *", cat: DataCategory.COMMUNICATION, score: 65, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Sent Items Archive", path: "Exchange Online / Mailboxes / SentItems / *", cat: DataCategory.COMMUNICATION, score: 60, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Calendar Events", path: "Exchange Online / Calendars / *", cat: DataCategory.CONTACT, score: 30, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Deleted Items Retention", path: "Exchange Online / Mailboxes / RecoverableItems", cat: DataCategory.COMMUNICATION, score: 55, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Shared Mailbox - HR Enquiries", path: "Exchange Online / SharedMailboxes / hr-enquiries@acme-corp.com", cat: DataCategory.HR, score: 72, personal: true, special: true },
+    { sysLabel: "Exchange", name: "Shared Mailbox - GDPR Inbox", path: "Exchange Online / SharedMailboxes / gdpr@acme-corp.com", cat: DataCategory.COMMUNICATION, score: 68, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Shared Mailbox - Finance AP", path: "Exchange Online / SharedMailboxes / accounts-payable@acme-corp.com", cat: DataCategory.PAYMENT, score: 74, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Shared Mailbox - Recruiting", path: "Exchange Online / SharedMailboxes / recruiting@acme-corp.com", cat: DataCategory.IDENTIFICATION, score: 80, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Journal Mailbox", path: "Exchange Online / Journaling / journal@acme-corp.com", cat: DataCategory.COMMUNICATION, score: 78, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Public Folder - Contacts", path: "Exchange Online / PublicFolders / CompanyContacts", cat: DataCategory.CONTACT, score: 52, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Public Folder - Forms", path: "Exchange Online / PublicFolders / HRForms", cat: DataCategory.HR, score: 48, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Room Mailbox Logs", path: "Exchange Online / RoomMailboxes / BookingHistory / *", cat: DataCategory.ONLINE_TECHNICAL, score: 22, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Distribution List Archive", path: "Exchange Online / DistributionLists / All-Staff / archive", cat: DataCategory.CONTACT, score: 35, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Litigation Hold Mailboxes", path: "Exchange Online / LitigationHold / *", cat: DataCategory.COMMUNICATION, score: 82, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Transport Rules Quarantine", path: "Exchange Online / TransportRules / Quarantine / *", cat: DataCategory.COMMUNICATION, score: 45, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Auto-forwarded Messages", path: "Exchange Online / Mailboxes / AutoForwarded / *", cat: DataCategory.COMMUNICATION, score: 58, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Executive Mailbox - CEO", path: "Exchange Online / Mailboxes / ceo@acme-corp.com", cat: DataCategory.HR, score: 85, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Legal Hold Discovery", path: "Exchange Online / eDiscovery / LegalCases / *", cat: DataCategory.CONTRACT, score: 76, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Message Trace Logs", path: "Exchange Online / MessageTrace / last90days", cat: DataCategory.ONLINE_TECHNICAL, score: 40, personal: true, special: false },
+    { sysLabel: "Exchange", name: "DLP Policy Matches", path: "Exchange Online / DLPReports / PolicyMatches / *", cat: DataCategory.IDENTIFICATION, score: 70, personal: true, special: false },
+    // ── SharePoint assets (20) — Site URLs, document libraries ───────────
+    { sysLabel: "SharePoint", name: "HR Internal Site", path: "https://acme-corp.sharepoint.com/sites/HR-Internal", cat: DataCategory.HR, score: 85, personal: true, special: true },
+    { sysLabel: "SharePoint", name: "Finance Site", path: "https://acme-corp.sharepoint.com/sites/Finance", cat: DataCategory.PAYMENT, score: 78, personal: true, special: false },
+    { sysLabel: "SharePoint", name: "Legal & Compliance Site", path: "https://acme-corp.sharepoint.com/sites/Legal-Compliance", cat: DataCategory.CONTRACT, score: 55, personal: true, special: false },
+    { sysLabel: "SharePoint", name: "Customer Portal Site", path: "https://acme-corp.sharepoint.com/sites/CustomerPortal", cat: DataCategory.CONTRACT, score: 60, personal: true, special: false },
+    { sysLabel: "SharePoint", name: "Executive Reports Library", path: "https://acme-corp.sharepoint.com/sites/Executive/Reports", cat: DataCategory.HR, score: 74, personal: true, special: false },
+    { sysLabel: "SharePoint", name: "Board Documents", path: "https://acme-corp.sharepoint.com/sites/Board/SharedDocuments", cat: DataCategory.IDENTIFICATION, score: 80, personal: true, special: false },
+    { sysLabel: "SharePoint", name: "Recruiting Applications", path: "https://acme-corp.sharepoint.com/sites/Recruiting/Applications", cat: DataCategory.IDENTIFICATION, score: 82, personal: true, special: false },
+    { sysLabel: "SharePoint", name: "Procurement Contracts", path: "https://acme-corp.sharepoint.com/sites/Procurement/Contracts", cat: DataCategory.CONTRACT, score: 45, personal: true, special: false },
+    { sysLabel: "SharePoint", name: "Employee Handbook", path: "https://acme-corp.sharepoint.com/sites/HR-Internal/Policies", cat: DataCategory.HR, score: 25, personal: false, special: false },
+    { sysLabel: "SharePoint", name: "Payroll Shared Library", path: "https://acme-corp.sharepoint.com/sites/Finance/Payroll", cat: DataCategory.PAYMENT, score: 92, personal: true, special: false },
+    { sysLabel: "SharePoint", name: "Customer Onboarding Docs", path: "https://acme-corp.sharepoint.com/sites/Sales/Onboarding", cat: DataCategory.IDENTIFICATION, score: 68, personal: true, special: false },
+    { sysLabel: "SharePoint", name: "Vendor Due Diligence", path: "https://acme-corp.sharepoint.com/sites/Procurement/VendorDD", cat: DataCategory.IDENTIFICATION, score: 52, personal: true, special: false },
+    { sysLabel: "SharePoint", name: "Compliance Audit Trail", path: "https://acme-corp.sharepoint.com/sites/Compliance/AuditReports", cat: DataCategory.OTHER, score: 38, personal: true, special: false },
+    { sysLabel: "SharePoint", name: "Marketing Assets", path: "https://acme-corp.sharepoint.com/sites/Marketing/Campaigns", cat: DataCategory.OTHER, score: 12, personal: false, special: false },
+    { sysLabel: "SharePoint", name: "IT Knowledge Base", path: "https://acme-corp.sharepoint.com/sites/IT/KnowledgeBase", cat: DataCategory.OTHER, score: 10, personal: false, special: false },
+    { sysLabel: "SharePoint", name: "DSAR Response Archive", path: "https://acme-corp.sharepoint.com/sites/Legal/DSAR-Archive", cat: DataCategory.IDENTIFICATION, score: 88, personal: true, special: false },
+    { sysLabel: "SharePoint", name: "Employee Health & Safety", path: "https://acme-corp.sharepoint.com/sites/HR/HealthSafety", cat: DataCategory.HEALTH, score: 90, personal: true, special: true },
+    { sysLabel: "SharePoint", name: "Project Management Hub", path: "https://acme-corp.sharepoint.com/sites/PMO/Projects", cat: DataCategory.OTHER, score: 18, personal: true, special: false },
+    { sysLabel: "SharePoint", name: "Training Certificates", path: "https://acme-corp.sharepoint.com/sites/HR/Training/Certificates", cat: DataCategory.HR, score: 32, personal: true, special: false },
+    { sysLabel: "SharePoint", name: "Whistleblower Reports", path: "https://acme-corp.sharepoint.com/sites/Compliance/Whistleblower", cat: DataCategory.OTHER_SPECIAL_CATEGORY, score: 98, personal: true, special: true },
+    // ── Fileserver assets (20) — UNC paths ───────────────────────────────
     { sysLabel: "Fileserver", name: "HR Contracts", path: "\\\\fs01\\HR\\Contracts\\*", cat: DataCategory.HR, score: 90, personal: true, special: true },
     { sysLabel: "Fileserver", name: "HR Payroll Reports", path: "\\\\fs01\\HR\\Payroll\\monthly-reports\\*", cat: DataCategory.PAYMENT, score: 92, personal: true, special: false },
     { sysLabel: "Fileserver", name: "HR Performance Reviews", path: "\\\\fs01\\HR\\Reviews\\2025\\*", cat: DataCategory.HR, score: 88, personal: true, special: false },
@@ -3337,67 +3396,15 @@ async function main() {
     { sysLabel: "Fileserver", name: "Finance Payslips Archive", path: "\\\\fs01\\Finance\\Payslips\\2024-2025\\*", cat: DataCategory.PAYMENT, score: 94, personal: true, special: false },
     { sysLabel: "Fileserver", name: "Finance Expense Receipts", path: "\\\\fs01\\Finance\\Expenses\\Receipts\\*", cat: DataCategory.PAYMENT, score: 48, personal: true, special: false },
     { sysLabel: "Fileserver", name: "Legal NDAs", path: "\\\\fs01\\Legal\\NDAs\\*", cat: DataCategory.CONTRACT, score: 35, personal: true, special: false },
-    { sysLabel: "Fileserver", name: "Legal Litigation Hold", path: "\\\\fs01\\Legal\\Litigation\\*", cat: DataCategory.OTHER, score: 50, personal: true, special: false },
     { sysLabel: "Fileserver", name: "Legal DSAR Responses", path: "\\\\fs01\\Legal\\DSAR-Responses\\2025\\*", cat: DataCategory.IDENTIFICATION, score: 87, personal: true, special: false },
-    { sysLabel: "Fileserver", name: "Marketing Collateral", path: "\\\\fs01\\Marketing\\Collateral\\*", cat: DataCategory.OTHER, score: 5, personal: false, special: false },
     { sysLabel: "Fileserver", name: "Marketing Customer Lists", path: "\\\\fs01\\Marketing\\CustomerLists\\*", cat: DataCategory.CONTACT, score: 71, personal: true, special: false },
-    { sysLabel: "Fileserver", name: "IT System Backups", path: "\\\\fs01\\IT\\Backups\\*", cat: DataCategory.ONLINE_TECHNICAL, score: 40, personal: true, special: false },
     { sysLabel: "Fileserver", name: "IT Access Logs", path: "\\\\fs01\\IT\\Logs\\AccessAudit\\*", cat: DataCategory.ONLINE_TECHNICAL, score: 38, personal: true, special: false },
     { sysLabel: "Fileserver", name: "Shared Departmental", path: "\\\\fs01\\Shared\\Departments\\*", cat: DataCategory.OTHER, score: 25, personal: false, special: false },
     { sysLabel: "Fileserver", name: "Customer Correspondence", path: "\\\\fs01\\Sales\\Correspondence\\*", cat: DataCategory.COMMUNICATION, score: 68, personal: true, special: false },
     { sysLabel: "Fileserver", name: "Employee Photos", path: "\\\\fs01\\HR\\Photos\\*", cat: DataCategory.IDENTIFICATION, score: 80, personal: true, special: true },
     { sysLabel: "Fileserver", name: "Board Meeting Minutes", path: "\\\\fs01\\Executive\\BoardMinutes\\*", cat: DataCategory.HR, score: 65, personal: true, special: false },
-    { sysLabel: "Fileserver", name: "Whistleblower Reports", path: "\\\\fs01\\Compliance\\Whistleblower\\*", cat: DataCategory.OTHER_SPECIAL_CATEGORY, score: 98, personal: true, special: true },
     { sysLabel: "Fileserver", name: "Vendor Due Diligence", path: "\\\\fs01\\Procurement\\VendorDD\\*", cat: DataCategory.IDENTIFICATION, score: 52, personal: true, special: false },
-    { sysLabel: "Fileserver", name: "Training Certificates", path: "\\\\fs01\\HR\\Training\\Certificates\\*", cat: DataCategory.HR, score: 32, personal: true, special: false },
     { sysLabel: "Fileserver", name: "Customer PO Archive", path: "\\\\fs01\\Sales\\PurchaseOrders\\Archive\\*", cat: DataCategory.CONTRACT, score: 42, personal: true, special: false },
-    // ── HR-CRM / Workday assets (25) ──────────────────────────────────────
-    { sysLabel: "HR-CRM", name: "Employee Master Data", path: "Workday / workers / *", cat: DataCategory.IDENTIFICATION, score: 85, personal: true, special: false },
-    { sysLabel: "HR-CRM", name: "Compensation Records", path: "Workday / compensation / *", cat: DataCategory.PAYMENT, score: 90, personal: true, special: false },
-    { sysLabel: "HR-CRM", name: "Benefits Enrollment", path: "Workday / benefits / enrollments / *", cat: DataCategory.HR, score: 82, personal: true, special: true },
-    { sysLabel: "HR-CRM", name: "Time Off Balances", path: "Workday / timeOff / *", cat: DataCategory.HR, score: 40, personal: true, special: false },
-    { sysLabel: "HR-CRM", name: "Recruiting Pipeline", path: "Workday / recruiting / candidates / *", cat: DataCategory.IDENTIFICATION, score: 75, personal: true, special: false },
-    { sysLabel: "HR-CRM", name: "Training Records", path: "Workday / learning / *", cat: DataCategory.HR, score: 30, personal: true, special: false },
-    { sysLabel: "HR-CRM", name: "Emergency Contacts", path: "Workday / workers / emergencyContacts", cat: DataCategory.CONTACT, score: 65, personal: true, special: false },
-    { sysLabel: "HR-CRM", name: "Disability Accommodations", path: "Workday / accommodations / *", cat: DataCategory.HEALTH, score: 95, personal: true, special: true },
-    { sysLabel: "HR-CRM", name: "Union Membership", path: "Workday / workers / unionStatus", cat: DataCategory.UNION, score: 98, personal: true, special: true },
-    { sysLabel: "HR-CRM", name: "Background Checks", path: "Workday / screening / *", cat: DataCategory.OTHER_SPECIAL_CATEGORY, score: 92, personal: true, special: true },
-    { sysLabel: "HR-CRM", name: "Org Chart", path: "Workday / orgChart / *", cat: DataCategory.HR, score: 20, personal: true, special: false },
-    { sysLabel: "HR-CRM", name: "Expense Reports", path: "Workday / expenses / *", cat: DataCategory.PAYMENT, score: 45, personal: true, special: false },
-    { sysLabel: "HR-CRM", name: "Worker Tax Forms", path: "Workday / tax / W2-1099 / *", cat: DataCategory.PAYMENT, score: 93, personal: true, special: false },
-    { sysLabel: "HR-CRM", name: "Disciplinary Actions", path: "Workday / workers / disciplinary / *", cat: DataCategory.HR, score: 88, personal: true, special: false },
-    { sysLabel: "HR-CRM", name: "Absence History", path: "Workday / timeOff / history / *", cat: DataCategory.HR, score: 52, personal: true, special: false },
-    { sysLabel: "HR-CRM", name: "Talent Reviews", path: "Workday / talentReviews / *", cat: DataCategory.HR, score: 77, personal: true, special: false },
-    { sysLabel: "HR-CRM", name: "Succession Planning", path: "Workday / succession / *", cat: DataCategory.HR, score: 68, personal: true, special: false },
-    { sysLabel: "HR-CRM", name: "Worker Documents", path: "Workday / workers / documents / *", cat: DataCategory.IDENTIFICATION, score: 80, personal: true, special: false },
-    { sysLabel: "HR-CRM", name: "Diversity & Inclusion Data", path: "Workday / workers / diversityProfile", cat: DataCategory.OTHER_SPECIAL_CATEGORY, score: 97, personal: true, special: true },
-    { sysLabel: "HR-CRM", name: "Contractor Records", path: "Workday / contingentWorkers / *", cat: DataCategory.CONTRACT, score: 58, personal: true, special: false },
-    { sysLabel: "HR-CRM", name: "Position Management", path: "Workday / positions / *", cat: DataCategory.HR, score: 22, personal: false, special: false },
-    { sysLabel: "HR-CRM", name: "Payroll Run History", path: "Workday / payroll / runHistory / *", cat: DataCategory.PAYMENT, score: 91, personal: true, special: false },
-    { sysLabel: "HR-CRM", name: "Employee Stock Options", path: "Workday / compensation / stockGrants / *", cat: DataCategory.PAYMENT, score: 84, personal: true, special: false },
-    { sysLabel: "HR-CRM", name: "Grievance Records", path: "Workday / cases / grievances / *", cat: DataCategory.HR, score: 86, personal: true, special: true },
-    { sysLabel: "HR-CRM", name: "I-9 Verification", path: "Workday / workers / i9verification / *", cat: DataCategory.IDENTIFICATION, score: 89, personal: true, special: false },
-    // ── Exchange / Salesforce CRM assets (20) ─────────────────────────────
-    { sysLabel: "Exchange", name: "Customer Profiles", path: "Salesforce / accounts / *", cat: DataCategory.IDENTIFICATION, score: 70, personal: true, special: false },
-    { sysLabel: "Exchange", name: "Contact Records", path: "Salesforce / contacts / *", cat: DataCategory.CONTACT, score: 65, personal: true, special: false },
-    { sysLabel: "Exchange", name: "Opportunity History", path: "Salesforce / opportunities / *", cat: DataCategory.CONTRACT, score: 35, personal: true, special: false },
-    { sysLabel: "Exchange", name: "Support Cases", path: "Salesforce / cases / *", cat: DataCategory.COMMUNICATION, score: 55, personal: true, special: false },
-    { sysLabel: "Exchange", name: "Marketing Campaigns", path: "Salesforce / campaigns / *", cat: DataCategory.CONTACT, score: 50, personal: true, special: false },
-    { sysLabel: "Exchange", name: "Lead Database", path: "Salesforce / leads / *", cat: DataCategory.IDENTIFICATION, score: 60, personal: true, special: false },
-    { sysLabel: "Exchange", name: "Email Templates", path: "Salesforce / emailTemplates / *", cat: DataCategory.OTHER, score: 10, personal: false, special: false },
-    { sysLabel: "Exchange", name: "Customer Notes", path: "Salesforce / notes / *", cat: DataCategory.COMMUNICATION, score: 45, personal: true, special: false },
-    { sysLabel: "Exchange", name: "Contract Documents", path: "Salesforce / contentDocument / *", cat: DataCategory.CONTRACT, score: 58, personal: true, special: false },
-    { sysLabel: "Exchange", name: "Activity Logs", path: "Salesforce / activities / *", cat: DataCategory.ONLINE_TECHNICAL, score: 35, personal: true, special: false },
-    { sysLabel: "Exchange", name: "Quote History", path: "Salesforce / quotes / *", cat: DataCategory.PAYMENT, score: 42, personal: true, special: false },
-    { sysLabel: "Exchange", name: "Product Interest Tags", path: "Salesforce / personAccounts / interests", cat: DataCategory.OTHER, score: 25, personal: true, special: false },
-    { sysLabel: "Exchange", name: "Customer Health Scores", path: "Salesforce / accounts / healthScore / *", cat: DataCategory.CREDITWORTHINESS, score: 38, personal: true, special: false },
-    { sysLabel: "Exchange", name: "Support Attachments", path: "Salesforce / cases / attachments / *", cat: DataCategory.IDENTIFICATION, score: 62, personal: true, special: false },
-    { sysLabel: "Exchange", name: "Chatter Messages", path: "Salesforce / chatter / feeds / *", cat: DataCategory.COMMUNICATION, score: 48, personal: true, special: false },
-    { sysLabel: "Exchange", name: "Knowledge Articles (Internal)", path: "Salesforce / knowledge / internal / *", cat: DataCategory.OTHER, score: 12, personal: false, special: false },
-    { sysLabel: "Exchange", name: "Customer Payment Methods", path: "Salesforce / accounts / paymentMethods / *", cat: DataCategory.PAYMENT, score: 82, personal: true, special: false },
-    { sysLabel: "Exchange", name: "Partner Contact Data", path: "Salesforce / partners / contacts / *", cat: DataCategory.CONTACT, score: 56, personal: true, special: false },
-    { sysLabel: "Exchange", name: "Task Assignments", path: "Salesforce / tasks / *", cat: DataCategory.OTHER, score: 18, personal: true, special: false },
-    { sysLabel: "Exchange", name: "Data Export Requests", path: "Salesforce / dataExports / *", cat: DataCategory.IDENTIFICATION, score: 72, personal: true, special: false },
   ];
   console.log(`Defined ${assetDefs.length} data asset templates`);
 
@@ -3405,7 +3412,7 @@ async function main() {
   for (const s of mvpSystems) sysLookup[s.label] = s.sys.id;
 
   // Use createMany in batches for performance
-  const BATCH_SIZE = 50;
+  const BATCH_SIZE = 200;
   const assetRecords = assetDefs.map((a) => ({
     tenantId: tenant.id,
     systemId: sysLookup[a.sysLabel],
@@ -3462,18 +3469,18 @@ async function main() {
     DataCategory.ONLINE_TECHNICAL, DataCategory.HEALTH, DataCategory.CREDITWORTHINESS,
   ];
 
-  type PiiCategory = "EMAIL" | "PHONE" | "ADDRESS" | "IBAN" | "HEALTH" | "HR" | "ID_DOC" | "SSN" | "DOB" | "CREDIT_CARD" | "IP_ADDRESS" | "COOKIE_ID";
+  type PiiCategory = "EMAIL" | "PHONE" | "ADDRESS" | "IBAN" | "ID_DOC" | "HEALTH" | "HR" | "PAYMENT" | "CUSTOMER_ID";
 
   const piiCategoryMap: Record<string, PiiCategory[]> = {
-    IDENTIFICATION: ["EMAIL", "ID_DOC", "SSN", "DOB"],
+    IDENTIFICATION: ["EMAIL", "ID_DOC", "CUSTOMER_ID"],
     CONTACT: ["EMAIL", "PHONE", "ADDRESS"],
     CONTRACT: ["EMAIL", "ADDRESS", "ID_DOC"],
-    PAYMENT: ["IBAN", "CREDIT_CARD", "ADDRESS"],
+    PAYMENT: ["IBAN", "PAYMENT", "ADDRESS"],
     COMMUNICATION: ["EMAIL", "PHONE"],
-    HR: ["EMAIL", "HR", "DOB", "SSN"],
-    ONLINE_TECHNICAL: ["IP_ADDRESS", "COOKIE_ID", "EMAIL"],
-    HEALTH: ["HEALTH", "EMAIL", "DOB"],
-    CREDITWORTHINESS: ["IBAN", "SSN", "ADDRESS"],
+    HR: ["EMAIL", "HR", "ID_DOC"],
+    ONLINE_TECHNICAL: ["EMAIL", "CUSTOMER_ID"],
+    HEALTH: ["HEALTH", "EMAIL", "ID_DOC"],
+    CREDITWORTHINESS: ["IBAN", "PAYMENT", "ADDRESS"],
   };
 
   const sampleRedactedTexts: Record<PiiCategory, string[]> = {
@@ -3514,27 +3521,15 @@ async function main() {
       "National ID: ****-****-1234",
       "Driver licence: B-*****-****-25",
     ],
-    SSN: [
-      "SSN: ***-**-6789",
-      "Tax ID: **/*********42",
-      "Social ins. no.: 12 ******* ***",
-    ],
-    DOB: [
-      "Date of birth: **/**/198*",
-      "Born: **.**.19** in [REDACTED]",
-    ],
-    CREDIT_CARD: [
+    PAYMENT: [
       "Card ending ****-4532",
       "VISA ****-****-****-8901",
+      "Direct debit ref: DD-****-7890",
     ],
-    IP_ADDRESS: [
-      "Client IP: 192.168.***.*** (internal)",
-      "Source: 10.0.**.**",
-      "Remote: 85.***.***.12",
-    ],
-    COOKIE_ID: [
-      "Tracking ID: _ga=GA1.2.*****.****",
-      "Session: sess_***abc123***",
+    CUSTOMER_ID: [
+      "Customer ID: CUST-*****-42",
+      "Account ref: ACC-****-9012",
+      "Member no.: M-*****-001",
     ],
   };
 
@@ -3611,7 +3606,7 @@ async function main() {
       createdByUserId: admin.id,
       status: CopilotRunStatus.COMPLETED,
       justification: "Enterprise discovery scan — full data inventory analysis",
-      scopeSummary: "All systems — M365, Fileserver, HR-CRM, Exchange/CRM",
+      scopeSummary: "All systems — M365, Exchange, SharePoint, Fileserver",
       totalFindings: 500,
       totalEvidenceItems: 0,
       startedAt: daysAgo(5),
