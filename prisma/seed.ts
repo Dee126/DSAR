@@ -1,6 +1,38 @@
 import { PrismaClient, UserRole, DSARType, CaseStatus, CasePriority, TaskStatus, CopilotRunStatus, CopilotQueryStatus, LegalApprovalStatus, QueryIntent, EvidenceItemType, ContentHandling, PrimaryIdentifierType, CopilotSummaryType, ExportType, ExportLegalGateStatus, FindingSeverity, FindingStatus, DataCategory, SystemCriticality, SystemStatus, AutomationReadiness, ConnectorType, LawfulBasis, ProcessorRole, RiskLevel, EscalationSeverity, DeadlineEventType, MilestoneType, NotificationType, IdvRequestStatus, IdvMethod, IdvArtifactType, IdvDecisionOutcome, ResponseDocStatus, DeliveryMethod, IncidentSeverity, IncidentStatus, IncidentTimelineEventType, RegulatorRecordStatus, IncidentSourceType, DsarIncidentSubjectStatus, VendorStatus, VendorRequestStatus, VendorResponseType, VendorEscalationSeverity, KpiSnapshotPeriod, MaturityDomain, ScanJobStatus, CaseItemDecision } from "@prisma/client";
 import { hash } from "bcryptjs";
 
+// ── Deterministic PRNG (mulberry32) ─────────────────────────────────────────
+// Use SEED env var for reproducible demos: SEED=42 npm run db:seed
+const SEED = parseInt(process.env.SEED || "42", 10);
+
+function mulberry32(seed: number) {
+  let s = seed | 0;
+  return function (): number {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const rng = mulberry32(SEED);
+/** Deterministic random int in [min, max] inclusive */
+function randInt(min: number, max: number): number {
+  return min + Math.floor(rng() * (max - min + 1));
+}
+/** Pick a random element from an array */
+function pick<T>(arr: readonly T[]): T {
+  return arr[Math.floor(rng() * arr.length)];
+}
+/** Shuffle array in place (Fisher-Yates) */
+function shuffle<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 const prisma = new PrismaClient();
 
 async function main() {
@@ -3248,7 +3280,10 @@ async function main() {
   const allCases = [case1, case2, case3, case4, case5, ...mvpCases];
   console.log(`Created ${mvpCases.length} additional DSAR cases (${allCases.length} total)`);
 
-  // ── Data Assets (~50 across 4 key systems) ────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ██  DISCOVERY DATA — Realistic demo findings & data assets
+  // ═══════════════════════════════════════════════════════════════════════════
+
   const mvpSystems = [
     { sys: m365System, label: "M365" },
     { sys: fileShareSystem, label: "Fileserver" },
@@ -3256,37 +3291,67 @@ async function main() {
     { sys: crmSystem, label: "Exchange" },
   ];
 
+  // ── Data Assets (100 across 4 systems) ─────────────────────────────────────
+  // Realistic paths: SharePoint URLs, OneDrive paths, mailbox folders, UNC paths
   const assetDefs: Array<{ sysLabel: string; name: string; path: string; cat: DataCategory; score: number; personal: boolean; special: boolean }> = [
-    // M365 assets (15)
+    // ── M365 assets (30) ──────────────────────────────────────────────────
     { sysLabel: "M365", name: "Inbox - All Users", path: "Exchange Online / Mailboxes / *", cat: DataCategory.COMMUNICATION, score: 65, personal: true, special: false },
     { sysLabel: "M365", name: "Sent Items Archive", path: "Exchange Online / Mailboxes / Sent Items", cat: DataCategory.COMMUNICATION, score: 60, personal: true, special: false },
     { sysLabel: "M365", name: "Calendar Events", path: "Exchange Online / Calendars / *", cat: DataCategory.CONTACT, score: 30, personal: true, special: false },
-    { sysLabel: "M365", name: "SharePoint HR Site", path: "SharePoint / sites / HR-Internal", cat: DataCategory.HR, score: 85, personal: true, special: true },
-    { sysLabel: "M365", name: "SharePoint Finance Site", path: "SharePoint / sites / Finance", cat: DataCategory.PAYMENT, score: 78, personal: true, special: false },
-    { sysLabel: "M365", name: "SharePoint Legal Site", path: "SharePoint / sites / Legal-Compliance", cat: DataCategory.CONTRACT, score: 55, personal: true, special: false },
+    { sysLabel: "M365", name: "Deleted Items Retention", path: "Exchange Online / Mailboxes / RecoverableItems", cat: DataCategory.COMMUNICATION, score: 55, personal: true, special: false },
+    { sysLabel: "M365", name: "Shared Mailbox - HR Enquiries", path: "Exchange Online / SharedMailboxes / hr-enquiries@acme-corp.com", cat: DataCategory.HR, score: 72, personal: true, special: true },
+    { sysLabel: "M365", name: "Shared Mailbox - GDPR Inbox", path: "Exchange Online / SharedMailboxes / gdpr@acme-corp.com", cat: DataCategory.COMMUNICATION, score: 68, personal: true, special: false },
+    { sysLabel: "M365", name: "SharePoint HR Site", path: "https://acme-corp.sharepoint.com/sites/HR-Internal", cat: DataCategory.HR, score: 85, personal: true, special: true },
+    { sysLabel: "M365", name: "SharePoint Finance Site", path: "https://acme-corp.sharepoint.com/sites/Finance", cat: DataCategory.PAYMENT, score: 78, personal: true, special: false },
+    { sysLabel: "M365", name: "SharePoint Legal Site", path: "https://acme-corp.sharepoint.com/sites/Legal-Compliance", cat: DataCategory.CONTRACT, score: 55, personal: true, special: false },
+    { sysLabel: "M365", name: "SharePoint Customer Portal", path: "https://acme-corp.sharepoint.com/sites/CustomerPortal", cat: DataCategory.CONTRACT, score: 60, personal: true, special: false },
+    { sysLabel: "M365", name: "SharePoint Executive Reports", path: "https://acme-corp.sharepoint.com/sites/Executive/Reports", cat: DataCategory.HR, score: 74, personal: true, special: false },
+    { sysLabel: "M365", name: "SharePoint Board Documents", path: "https://acme-corp.sharepoint.com/sites/Board/SharedDocuments", cat: DataCategory.IDENTIFICATION, score: 80, personal: true, special: false },
+    { sysLabel: "M365", name: "SharePoint Recruiting", path: "https://acme-corp.sharepoint.com/sites/Recruiting/Applications", cat: DataCategory.IDENTIFICATION, score: 82, personal: true, special: false },
+    { sysLabel: "M365", name: "SharePoint Vendor Contracts", path: "https://acme-corp.sharepoint.com/sites/Procurement/Contracts", cat: DataCategory.CONTRACT, score: 45, personal: true, special: false },
     { sysLabel: "M365", name: "OneDrive - Management", path: "OneDrive / management-team / *", cat: DataCategory.HR, score: 70, personal: true, special: false },
     { sysLabel: "M365", name: "OneDrive - Sales", path: "OneDrive / sales-team / *", cat: DataCategory.CONTRACT, score: 45, personal: true, special: false },
+    { sysLabel: "M365", name: "OneDrive - DPO Private", path: "OneDrive / david.dpo / DSAR-Working", cat: DataCategory.IDENTIFICATION, score: 88, personal: true, special: true },
+    { sysLabel: "M365", name: "OneDrive - CEO", path: "OneDrive / ceo / PersonalDocs", cat: DataCategory.HR, score: 76, personal: true, special: false },
+    { sysLabel: "M365", name: "OneDrive - HR Director", path: "OneDrive / hr-director / Compensation-Reviews", cat: DataCategory.PAYMENT, score: 90, personal: true, special: false },
     { sysLabel: "M365", name: "Teams Chat Logs", path: "Teams / chats / *", cat: DataCategory.COMMUNICATION, score: 50, personal: true, special: false },
     { sysLabel: "M365", name: "Teams Channel Files", path: "Teams / channels / General / files", cat: DataCategory.OTHER, score: 20, personal: false, special: false },
+    { sysLabel: "M365", name: "Teams - HR Private Channel", path: "Teams / channels / HR-Confidential / files", cat: DataCategory.HR, score: 83, personal: true, special: true },
     { sysLabel: "M365", name: "Entra ID User Directory", path: "Entra ID / users", cat: DataCategory.IDENTIFICATION, score: 75, personal: true, special: false },
     { sysLabel: "M365", name: "Entra ID Sign-in Logs", path: "Entra ID / signInLogs", cat: DataCategory.ONLINE_TECHNICAL, score: 40, personal: true, special: false },
-    { sysLabel: "M365", name: "SharePoint Customer Portal", path: "SharePoint / sites / CustomerPortal", cat: DataCategory.CONTRACT, score: 60, personal: true, special: false },
+    { sysLabel: "M365", name: "Entra ID Guest Users", path: "Entra ID / users?$filter=userType eq 'Guest'", cat: DataCategory.IDENTIFICATION, score: 50, personal: true, special: false },
     { sysLabel: "M365", name: "Compliance Center - eDiscovery", path: "Compliance Center / eDiscovery / *", cat: DataCategory.COMMUNICATION, score: 70, personal: true, special: false },
     { sysLabel: "M365", name: "Planner Tasks", path: "Planner / plans / *", cat: DataCategory.OTHER, score: 15, personal: false, special: false },
-    // Fileserver assets (12)
+    { sysLabel: "M365", name: "Power Automate Flows", path: "PowerAutomate / flows / HR-Onboarding", cat: DataCategory.HR, score: 35, personal: true, special: false },
+    { sysLabel: "M365", name: "Forms - Employee Surveys", path: "Forms / responses / Employee-Satisfaction-2025", cat: DataCategory.HR, score: 62, personal: true, special: false },
+    { sysLabel: "M365", name: "Lists - Asset Inventory", path: "SharePoint / lists / IT-Assets", cat: DataCategory.ONLINE_TECHNICAL, score: 28, personal: true, special: false },
+    // ── Fileserver assets (25) ────────────────────────────────────────────
     { sysLabel: "Fileserver", name: "HR Contracts", path: "\\\\fs01\\HR\\Contracts\\*", cat: DataCategory.HR, score: 90, personal: true, special: true },
     { sysLabel: "Fileserver", name: "HR Payroll Reports", path: "\\\\fs01\\HR\\Payroll\\monthly-reports\\*", cat: DataCategory.PAYMENT, score: 92, personal: true, special: false },
     { sysLabel: "Fileserver", name: "HR Performance Reviews", path: "\\\\fs01\\HR\\Reviews\\2025\\*", cat: DataCategory.HR, score: 88, personal: true, special: false },
+    { sysLabel: "Fileserver", name: "HR Onboarding Docs", path: "\\\\fs01\\HR\\Onboarding\\NewHires-2025\\*", cat: DataCategory.IDENTIFICATION, score: 85, personal: true, special: false },
+    { sysLabel: "Fileserver", name: "HR Medical Certificates", path: "\\\\fs01\\HR\\Medical\\Certificates\\*", cat: DataCategory.HEALTH, score: 96, personal: true, special: true },
+    { sysLabel: "Fileserver", name: "HR Exit Interviews", path: "\\\\fs01\\HR\\Offboarding\\ExitInterviews\\*", cat: DataCategory.HR, score: 78, personal: true, special: false },
     { sysLabel: "Fileserver", name: "Finance Invoices", path: "\\\\fs01\\Finance\\Invoices\\*", cat: DataCategory.PAYMENT, score: 55, personal: true, special: false },
     { sysLabel: "Fileserver", name: "Finance Tax Records", path: "\\\\fs01\\Finance\\Tax\\*", cat: DataCategory.CREDITWORTHINESS, score: 72, personal: true, special: false },
+    { sysLabel: "Fileserver", name: "Finance Payslips Archive", path: "\\\\fs01\\Finance\\Payslips\\2024-2025\\*", cat: DataCategory.PAYMENT, score: 94, personal: true, special: false },
+    { sysLabel: "Fileserver", name: "Finance Expense Receipts", path: "\\\\fs01\\Finance\\Expenses\\Receipts\\*", cat: DataCategory.PAYMENT, score: 48, personal: true, special: false },
     { sysLabel: "Fileserver", name: "Legal NDAs", path: "\\\\fs01\\Legal\\NDAs\\*", cat: DataCategory.CONTRACT, score: 35, personal: true, special: false },
     { sysLabel: "Fileserver", name: "Legal Litigation Hold", path: "\\\\fs01\\Legal\\Litigation\\*", cat: DataCategory.OTHER, score: 50, personal: true, special: false },
+    { sysLabel: "Fileserver", name: "Legal DSAR Responses", path: "\\\\fs01\\Legal\\DSAR-Responses\\2025\\*", cat: DataCategory.IDENTIFICATION, score: 87, personal: true, special: false },
     { sysLabel: "Fileserver", name: "Marketing Collateral", path: "\\\\fs01\\Marketing\\Collateral\\*", cat: DataCategory.OTHER, score: 5, personal: false, special: false },
+    { sysLabel: "Fileserver", name: "Marketing Customer Lists", path: "\\\\fs01\\Marketing\\CustomerLists\\*", cat: DataCategory.CONTACT, score: 71, personal: true, special: false },
     { sysLabel: "Fileserver", name: "IT System Backups", path: "\\\\fs01\\IT\\Backups\\*", cat: DataCategory.ONLINE_TECHNICAL, score: 40, personal: true, special: false },
+    { sysLabel: "Fileserver", name: "IT Access Logs", path: "\\\\fs01\\IT\\Logs\\AccessAudit\\*", cat: DataCategory.ONLINE_TECHNICAL, score: 38, personal: true, special: false },
     { sysLabel: "Fileserver", name: "Shared Departmental", path: "\\\\fs01\\Shared\\Departments\\*", cat: DataCategory.OTHER, score: 25, personal: false, special: false },
     { sysLabel: "Fileserver", name: "Customer Correspondence", path: "\\\\fs01\\Sales\\Correspondence\\*", cat: DataCategory.COMMUNICATION, score: 68, personal: true, special: false },
     { sysLabel: "Fileserver", name: "Employee Photos", path: "\\\\fs01\\HR\\Photos\\*", cat: DataCategory.IDENTIFICATION, score: 80, personal: true, special: true },
-    // HR-CRM assets (12)
+    { sysLabel: "Fileserver", name: "Board Meeting Minutes", path: "\\\\fs01\\Executive\\BoardMinutes\\*", cat: DataCategory.HR, score: 65, personal: true, special: false },
+    { sysLabel: "Fileserver", name: "Whistleblower Reports", path: "\\\\fs01\\Compliance\\Whistleblower\\*", cat: DataCategory.OTHER_SPECIAL_CATEGORY, score: 98, personal: true, special: true },
+    { sysLabel: "Fileserver", name: "Vendor Due Diligence", path: "\\\\fs01\\Procurement\\VendorDD\\*", cat: DataCategory.IDENTIFICATION, score: 52, personal: true, special: false },
+    { sysLabel: "Fileserver", name: "Training Certificates", path: "\\\\fs01\\HR\\Training\\Certificates\\*", cat: DataCategory.HR, score: 32, personal: true, special: false },
+    { sysLabel: "Fileserver", name: "Customer PO Archive", path: "\\\\fs01\\Sales\\PurchaseOrders\\Archive\\*", cat: DataCategory.CONTRACT, score: 42, personal: true, special: false },
+    // ── HR-CRM / Workday assets (25) ──────────────────────────────────────
     { sysLabel: "HR-CRM", name: "Employee Master Data", path: "Workday / workers / *", cat: DataCategory.IDENTIFICATION, score: 85, personal: true, special: false },
     { sysLabel: "HR-CRM", name: "Compensation Records", path: "Workday / compensation / *", cat: DataCategory.PAYMENT, score: 90, personal: true, special: false },
     { sysLabel: "HR-CRM", name: "Benefits Enrollment", path: "Workday / benefits / enrollments / *", cat: DataCategory.HR, score: 82, personal: true, special: true },
@@ -3299,7 +3364,20 @@ async function main() {
     { sysLabel: "HR-CRM", name: "Background Checks", path: "Workday / screening / *", cat: DataCategory.OTHER_SPECIAL_CATEGORY, score: 92, personal: true, special: true },
     { sysLabel: "HR-CRM", name: "Org Chart", path: "Workday / orgChart / *", cat: DataCategory.HR, score: 20, personal: true, special: false },
     { sysLabel: "HR-CRM", name: "Expense Reports", path: "Workday / expenses / *", cat: DataCategory.PAYMENT, score: 45, personal: true, special: false },
-    // Exchange/CRM assets (12)
+    { sysLabel: "HR-CRM", name: "Worker Tax Forms", path: "Workday / tax / W2-1099 / *", cat: DataCategory.PAYMENT, score: 93, personal: true, special: false },
+    { sysLabel: "HR-CRM", name: "Disciplinary Actions", path: "Workday / workers / disciplinary / *", cat: DataCategory.HR, score: 88, personal: true, special: false },
+    { sysLabel: "HR-CRM", name: "Absence History", path: "Workday / timeOff / history / *", cat: DataCategory.HR, score: 52, personal: true, special: false },
+    { sysLabel: "HR-CRM", name: "Talent Reviews", path: "Workday / talentReviews / *", cat: DataCategory.HR, score: 77, personal: true, special: false },
+    { sysLabel: "HR-CRM", name: "Succession Planning", path: "Workday / succession / *", cat: DataCategory.HR, score: 68, personal: true, special: false },
+    { sysLabel: "HR-CRM", name: "Worker Documents", path: "Workday / workers / documents / *", cat: DataCategory.IDENTIFICATION, score: 80, personal: true, special: false },
+    { sysLabel: "HR-CRM", name: "Diversity & Inclusion Data", path: "Workday / workers / diversityProfile", cat: DataCategory.OTHER_SPECIAL_CATEGORY, score: 97, personal: true, special: true },
+    { sysLabel: "HR-CRM", name: "Contractor Records", path: "Workday / contingentWorkers / *", cat: DataCategory.CONTRACT, score: 58, personal: true, special: false },
+    { sysLabel: "HR-CRM", name: "Position Management", path: "Workday / positions / *", cat: DataCategory.HR, score: 22, personal: false, special: false },
+    { sysLabel: "HR-CRM", name: "Payroll Run History", path: "Workday / payroll / runHistory / *", cat: DataCategory.PAYMENT, score: 91, personal: true, special: false },
+    { sysLabel: "HR-CRM", name: "Employee Stock Options", path: "Workday / compensation / stockGrants / *", cat: DataCategory.PAYMENT, score: 84, personal: true, special: false },
+    { sysLabel: "HR-CRM", name: "Grievance Records", path: "Workday / cases / grievances / *", cat: DataCategory.HR, score: 86, personal: true, special: true },
+    { sysLabel: "HR-CRM", name: "I-9 Verification", path: "Workday / workers / i9verification / *", cat: DataCategory.IDENTIFICATION, score: 89, personal: true, special: false },
+    // ── Exchange / Salesforce CRM assets (20) ─────────────────────────────
     { sysLabel: "Exchange", name: "Customer Profiles", path: "Salesforce / accounts / *", cat: DataCategory.IDENTIFICATION, score: 70, personal: true, special: false },
     { sysLabel: "Exchange", name: "Contact Records", path: "Salesforce / contacts / *", cat: DataCategory.CONTACT, score: 65, personal: true, special: false },
     { sysLabel: "Exchange", name: "Opportunity History", path: "Salesforce / opportunities / *", cat: DataCategory.CONTRACT, score: 35, personal: true, special: false },
@@ -3312,44 +3390,55 @@ async function main() {
     { sysLabel: "Exchange", name: "Activity Logs", path: "Salesforce / activities / *", cat: DataCategory.ONLINE_TECHNICAL, score: 35, personal: true, special: false },
     { sysLabel: "Exchange", name: "Quote History", path: "Salesforce / quotes / *", cat: DataCategory.PAYMENT, score: 42, personal: true, special: false },
     { sysLabel: "Exchange", name: "Product Interest Tags", path: "Salesforce / personAccounts / interests", cat: DataCategory.OTHER, score: 25, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Customer Health Scores", path: "Salesforce / accounts / healthScore / *", cat: DataCategory.CREDITWORTHINESS, score: 38, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Support Attachments", path: "Salesforce / cases / attachments / *", cat: DataCategory.IDENTIFICATION, score: 62, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Chatter Messages", path: "Salesforce / chatter / feeds / *", cat: DataCategory.COMMUNICATION, score: 48, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Knowledge Articles (Internal)", path: "Salesforce / knowledge / internal / *", cat: DataCategory.OTHER, score: 12, personal: false, special: false },
+    { sysLabel: "Exchange", name: "Customer Payment Methods", path: "Salesforce / accounts / paymentMethods / *", cat: DataCategory.PAYMENT, score: 82, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Partner Contact Data", path: "Salesforce / partners / contacts / *", cat: DataCategory.CONTACT, score: 56, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Task Assignments", path: "Salesforce / tasks / *", cat: DataCategory.OTHER, score: 18, personal: true, special: false },
+    { sysLabel: "Exchange", name: "Data Export Requests", path: "Salesforce / dataExports / *", cat: DataCategory.IDENTIFICATION, score: 72, personal: true, special: false },
   ];
+  console.log(`Defined ${assetDefs.length} data asset templates`);
 
   const sysLookup: Record<string, string> = {};
   for (const s of mvpSystems) sysLookup[s.label] = s.sys.id;
 
-  const createdAssets = [];
-  for (const a of assetDefs) {
-    const asset = await prisma.dataAsset.create({
-      data: {
-        tenantId: tenant.id,
-        systemId: sysLookup[a.sysLabel],
-        name: a.name,
-        path: a.path,
-        dataCategory: a.cat,
-        sensitivityScore: a.score,
-        personalData: a.personal,
-        specialCategory: a.special,
-        lastScannedAt: daysAgo(Math.floor(Math.random() * 14) + 1),
-      },
-    });
-    createdAssets.push(asset);
+  // Use createMany in batches for performance
+  const BATCH_SIZE = 50;
+  const assetRecords = assetDefs.map((a) => ({
+    tenantId: tenant.id,
+    systemId: sysLookup[a.sysLabel],
+    name: a.name,
+    path: a.path,
+    dataCategory: a.cat,
+    sensitivityScore: a.score,
+    personalData: a.personal,
+    specialCategory: a.special,
+    lastScannedAt: daysAgo(randInt(1, 30)),  // spread over last 30 days
+  }));
+
+  for (let i = 0; i < assetRecords.length; i += BATCH_SIZE) {
+    await prisma.dataAsset.createMany({ data: assetRecords.slice(i, i + BATCH_SIZE) });
   }
+  // Retrieve created assets for FK references
+  const createdAssets = await prisma.dataAsset.findMany({
+    where: { tenantId: tenant.id },
+    orderBy: { createdAt: "asc" },
+  });
   console.log(`Created ${createdAssets.length} data assets across ${mvpSystems.length} systems`);
 
   // ── Scan Jobs (1 completed per system + 1 running) ────────────────────────
-  for (const { sys } of mvpSystems) {
-    await prisma.scanJob.create({
-      data: {
-        tenantId: tenant.id,
-        systemId: sys.id,
-        status: ScanJobStatus.COMPLETED,
-        assetsScanned: assetDefs.filter(a => a.sysLabel === mvpSystems.find(s => s.sys.id === sys.id)!.label).length,
-        findingsCount: Math.floor(Math.random() * 40) + 10,
-        startedAt: daysAgo(3),
-        completedAt: daysAgo(3),
-      },
-    });
-  }
+  const scanJobRecords = mvpSystems.map(({ sys, label }) => ({
+    tenantId: tenant.id,
+    systemId: sys.id,
+    status: ScanJobStatus.COMPLETED as ScanJobStatus,
+    assetsScanned: assetDefs.filter(a => a.sysLabel === label).length,
+    findingsCount: randInt(20, 60),
+    startedAt: daysAgo(3),
+    completedAt: daysAgo(3),
+  }));
+  await prisma.scanJob.createMany({ data: scanJobRecords });
   // One running scan
   await prisma.scanJob.create({
     data: {
@@ -3363,13 +3452,91 @@ async function main() {
   });
   console.log("Created scan jobs");
 
-  // ── Additional Findings (~200 total) ──────────────────────────────────────
-  // Distribution: ~60% green (0-39), ~25% yellow (40-69), ~15% red (70-100)
+  // ── Findings (500 total) ──────────────────────────────────────────────────
+  // Distribution: ~70% green (0-39), ~25% yellow (40-69), ~5% red (70-100)
+  // Each system guaranteed at least a few red findings for heatmap visibility.
+
   const findingCategories: DataCategory[] = [
     DataCategory.IDENTIFICATION, DataCategory.CONTACT, DataCategory.CONTRACT,
     DataCategory.PAYMENT, DataCategory.COMMUNICATION, DataCategory.HR,
     DataCategory.ONLINE_TECHNICAL, DataCategory.HEALTH, DataCategory.CREDITWORTHINESS,
   ];
+
+  type PiiCategory = "EMAIL" | "PHONE" | "ADDRESS" | "IBAN" | "HEALTH" | "HR" | "ID_DOC" | "SSN" | "DOB" | "CREDIT_CARD" | "IP_ADDRESS" | "COOKIE_ID";
+
+  const piiCategoryMap: Record<string, PiiCategory[]> = {
+    IDENTIFICATION: ["EMAIL", "ID_DOC", "SSN", "DOB"],
+    CONTACT: ["EMAIL", "PHONE", "ADDRESS"],
+    CONTRACT: ["EMAIL", "ADDRESS", "ID_DOC"],
+    PAYMENT: ["IBAN", "CREDIT_CARD", "ADDRESS"],
+    COMMUNICATION: ["EMAIL", "PHONE"],
+    HR: ["EMAIL", "HR", "DOB", "SSN"],
+    ONLINE_TECHNICAL: ["IP_ADDRESS", "COOKIE_ID", "EMAIL"],
+    HEALTH: ["HEALTH", "EMAIL", "DOB"],
+    CREDITWORTHINESS: ["IBAN", "SSN", "ADDRESS"],
+  };
+
+  const sampleRedactedTexts: Record<PiiCategory, string[]> = {
+    EMAIL: [
+      "Contact: j***.s****@example.com",
+      "Sent to: m.m*****@acme-corp.com",
+      "CC: h****@partner.org",
+      "From: d****@gmail.com",
+    ],
+    PHONE: [
+      "Mobile: +49-170-***-**42",
+      "Tel: +44-20-****-8891",
+      "Phone: (030) ***-**67",
+      "Fax: +1-555-***-0012",
+    ],
+    ADDRESS: [
+      "Address: M*****str. 12, 8***0 München",
+      "Ship to: 42 O***** Road, London SW** 1AA",
+      "Billing: P.O. Box ***, 1**** Berlin",
+    ],
+    IBAN: [
+      "IBAN: DE89 3704 **** **** **** 00",
+      "Account: GB29 NWBK ****  **** ****  26",
+      "IBAN: FR76 3000 **** **** **** **** R06",
+    ],
+    HEALTH: [
+      "Diagnosis: [REDACTED medical condition]",
+      "Medical cert: inability to work from **/**/2025",
+      "Disability status: [REDACTED]",
+    ],
+    HR: [
+      "Performance rating: [REDACTED] — needs improvement note",
+      "Salary band: €**,000 – €**,000 gross/year",
+      "Disciplinary note: verbal warning issued **/**/2025",
+    ],
+    ID_DOC: [
+      "Passport: X*****789, issued by [REDACTED]",
+      "National ID: ****-****-1234",
+      "Driver licence: B-*****-****-25",
+    ],
+    SSN: [
+      "SSN: ***-**-6789",
+      "Tax ID: **/*********42",
+      "Social ins. no.: 12 ******* ***",
+    ],
+    DOB: [
+      "Date of birth: **/**/198*",
+      "Born: **.**.19** in [REDACTED]",
+    ],
+    CREDIT_CARD: [
+      "Card ending ****-4532",
+      "VISA ****-****-****-8901",
+    ],
+    IP_ADDRESS: [
+      "Client IP: 192.168.***.*** (internal)",
+      "Source: 10.0.**.**",
+      "Remote: 85.***.***.12",
+    ],
+    COOKIE_ID: [
+      "Tracking ID: _ga=GA1.2.*****.****",
+      "Session: sess_***abc123***",
+    ],
+  };
 
   const findingSummaries: Record<string, string[]> = {
     IDENTIFICATION: [
@@ -3377,35 +3544,45 @@ async function main() {
       "National ID number detected in scanned PDF",
       "Employee photo with EXIF data containing GPS coordinates",
       "Passport scan stored unencrypted in shared folder",
+      "Employee ID badge images with full name visible",
+      "Scanned ID documents in recruiting folder without encryption",
     ],
     CONTACT: [
       "Personal email addresses in marketing distribution list",
       "Home address and phone number in CRM contact card",
       "Mobile phone numbers in unprotected CSV export",
       "Personal email in automated notification templates",
+      "Private mobile numbers stored in shared contact list",
+      "Emergency contact details accessible to all team members",
     ],
     CONTRACT: [
       "Customer contract with embedded personal identifiers",
       "Service agreement containing home address",
       "Vendor NDA with personal guarantor details",
+      "Signed contract PDF with embedded personal signature",
     ],
     PAYMENT: [
       "IBAN and bank details in payroll spreadsheet",
       "Credit card last-4 digits in support ticket",
       "Invoice with personal billing address",
       "Salary information in shared team folder",
+      "Bank account details in vendor onboarding form",
+      "Payslip PDF with full IBAN visible in filename",
     ],
     COMMUNICATION: [
       "Personal correspondence in shared mailbox",
       "Sensitive HR discussion in email thread",
       "Customer complaint containing health information",
       "Internal chat messages with personal opinions",
+      "Private Slack DMs exported to shared drive",
     ],
     HR: [
       "Performance review with subjective assessments",
       "Disciplinary record in manager's OneDrive",
       "Sick leave records in HR shared folder",
       "Job application with personal references",
+      "Salary negotiation emails in shared mailbox",
+      "Probation period evaluation with personal comments",
     ],
     ONLINE_TECHNICAL: [
       "IP addresses in application access logs",
@@ -3417,6 +3594,7 @@ async function main() {
       "Medical certificate uploaded to HR portal",
       "Disability accommodation request in HR system",
       "Health insurance enrollment details",
+      "Sick note with diagnosis code in HR folder",
     ],
     CREDITWORTHINESS: [
       "Credit check results in vendor onboarding folder",
@@ -3425,133 +3603,205 @@ async function main() {
     ],
   };
 
-  // Create a copilot run for MVP findings (needed as FK)
+  // Create a copilot run for discovery findings (FK dependency)
   const mvpCopilotRun = await prisma.copilotRun.create({
     data: {
       tenantId: tenant.id,
       caseId: case1.id,
       createdByUserId: admin.id,
       status: CopilotRunStatus.COMPLETED,
-      justification: "MVP discovery scan — bulk data inventory analysis",
+      justification: "Enterprise discovery scan — full data inventory analysis",
       scopeSummary: "All systems — M365, Fileserver, HR-CRM, Exchange/CRM",
-      totalFindings: 200,
+      totalFindings: 500,
       totalEvidenceItems: 0,
-      startedAt: daysAgo(3),
-      completedAt: daysAgo(3),
+      startedAt: daysAgo(5),
+      completedAt: daysAgo(5),
     },
   });
 
-  const mvpFindings = [];
-  const targetCount = 200;
-  for (let i = 0; i < targetCount; i++) {
-    // Distribution: 60% green, 25% yellow, 15% red
+  const specialCategories: DataCategory[] = [
+    DataCategory.HEALTH, DataCategory.UNION, DataCategory.RELIGION,
+    DataCategory.POLITICAL_OPINION, DataCategory.OTHER_SPECIAL_CATEGORY,
+  ];
+
+  // Pre-build finding data, then createMany in batches
+  const TOTAL_FINDINGS = 500;
+  // Guarantee at least 3 red findings per system
+  const guaranteedRedPerSystem = 3;
+  const guaranteedRedTotal = mvpSystems.length * guaranteedRedPerSystem;
+  const remainingCount = TOTAL_FINDINGS - guaranteedRedTotal;
+
+  interface FindingRecord {
+    tenantId: string; caseId: string; runId: string;
+    dataCategory: DataCategory; severity: FindingSeverity;
+    confidence: number; summary: string; evidenceItemIds: string[];
+    containsSpecialCategory: boolean; containsThirdPartyDataSuspected: boolean;
+    requiresLegalReview: boolean; systemId: string; riskScore: number;
+    status: FindingStatus; dataAssetLocation: string | null;
+    sampleRedacted: string | null; createdAt: Date;
+  }
+
+  const findingRecords: FindingRecord[] = [];
+
+  // Helper: build one finding record
+  function buildFinding(sysIdx: number, forceRed: boolean): FindingRecord {
+    const roll = rng();
     let riskScore: number;
     let severity: FindingSeverity;
-    const roll = Math.random();
-    if (roll < 0.60) {
-      riskScore = Math.floor(Math.random() * 40);       // 0-39: green
+
+    if (forceRed) {
+      riskScore = randInt(70, 100);
+      severity = FindingSeverity.CRITICAL;
+    } else if (roll < 0.70) {
+      riskScore = randInt(0, 39);
       severity = FindingSeverity.INFO;
-    } else if (roll < 0.85) {
-      riskScore = 40 + Math.floor(Math.random() * 30);  // 40-69: yellow
+    } else if (roll < 0.95) {
+      riskScore = randInt(40, 69);
       severity = FindingSeverity.WARNING;
     } else {
-      riskScore = 70 + Math.floor(Math.random() * 31);  // 70-100: red
+      riskScore = randInt(70, 100);
       severity = FindingSeverity.CRITICAL;
     }
 
-    const cat = findingCategories[i % findingCategories.length];
+    const cat = pick(findingCategories);
     const catKey = cat as string;
     const summaries = findingSummaries[catKey] || [`${catKey} data detected in system asset`];
-    const summary = summaries[i % summaries.length];
-
-    const sys = mvpSystems[i % mvpSystems.length];
-    const specialCategories: DataCategory[] = [DataCategory.HEALTH, DataCategory.UNION, DataCategory.RELIGION, DataCategory.POLITICAL_OPINION, DataCategory.OTHER_SPECIAL_CATEGORY];
+    const summary = pick(summaries);
     const isSpecial = specialCategories.includes(cat);
-    const status: FindingStatus = roll < 0.4 ? FindingStatus.NEW : roll < 0.7 ? FindingStatus.ACCEPTED : FindingStatus.MITIGATED;
 
-    const f = await prisma.finding.create({
-      data: {
-        tenantId: tenant.id,
-        caseId: allCases[i % allCases.length].id,
-        runId: mvpCopilotRun.id,
-        dataCategory: cat,
-        severity,
-        confidence: 0.5 + Math.random() * 0.5,
-        summary,
-        evidenceItemIds: [],
-        containsSpecialCategory: isSpecial,
-        containsThirdPartyDataSuspected: Math.random() < 0.1,
-        requiresLegalReview: riskScore >= 70,
-        systemId: sys.sys.id,
-        riskScore,
-        status,
-        dataAssetLocation: assetDefs[i % assetDefs.length].path,
-        sampleRedacted: riskScore >= 40 ? `[REDACTED ${cat} data sample]` : null,
-      },
-    });
-    mvpFindings.push(f);
+    const statusRoll = rng();
+    const status: FindingStatus = statusRoll < 0.4
+      ? FindingStatus.NEW
+      : statusRoll < 0.7
+        ? FindingStatus.ACCEPTED
+        : FindingStatus.MITIGATED;
+
+    const sys = mvpSystems[sysIdx];
+    const sysAssets = assetDefs.filter(a => a.sysLabel === sys.label);
+    const assetPath = sysAssets.length > 0 ? pick(sysAssets).path : null;
+
+    // Pick realistic PII sample
+    const piiCats = piiCategoryMap[catKey] || ["EMAIL"];
+    const piiCat = pick(piiCats);
+    const samples = sampleRedactedTexts[piiCat];
+    const sampleRedacted = riskScore >= 30 ? pick(samples) : null;
+
+    // Spread createdAt over last 90 days
+    const createdAt = daysAgo(randInt(0, 90));
+
+    return {
+      tenantId: tenant.id,
+      caseId: allCases[randInt(0, allCases.length - 1)].id,
+      runId: mvpCopilotRun.id,
+      dataCategory: cat,
+      severity,
+      confidence: parseFloat((0.5 + rng() * 0.5).toFixed(3)),
+      summary,
+      evidenceItemIds: [],
+      containsSpecialCategory: isSpecial,
+      containsThirdPartyDataSuspected: rng() < 0.1,
+      requiresLegalReview: riskScore >= 70,
+      systemId: sys.sys.id,
+      riskScore,
+      status,
+      dataAssetLocation: assetPath,
+      sampleRedacted,
+      createdAt,
+    };
   }
-  console.log(`Created ${mvpFindings.length} findings (distribution: ~60% green, ~25% yellow, ~15% red)`);
+
+  // 1) Guaranteed red findings per system
+  for (let sIdx = 0; sIdx < mvpSystems.length; sIdx++) {
+    for (let r = 0; r < guaranteedRedPerSystem; r++) {
+      findingRecords.push(buildFinding(sIdx, true));
+    }
+  }
+
+  // 2) Remaining findings spread across systems
+  for (let i = 0; i < remainingCount; i++) {
+    findingRecords.push(buildFinding(i % mvpSystems.length, false));
+  }
+
+  // Shuffle for natural ordering
+  shuffle(findingRecords);
+
+  // createMany in batches
+  for (let i = 0; i < findingRecords.length; i += BATCH_SIZE) {
+    await prisma.finding.createMany({ data: findingRecords.slice(i, i + BATCH_SIZE) });
+  }
+
+  // Retrieve created findings for FK references
+  const mvpFindings = await prisma.finding.findMany({
+    where: { tenantId: tenant.id, runId: mvpCopilotRun.id },
+    select: { id: true, caseId: true, systemId: true, summary: true, dataAssetLocation: true, dataCategory: true, riskScore: true },
+  });
+
+  // Count distribution for logging
+  const greenCount = mvpFindings.filter(f => f.riskScore < 40).length;
+  const yellowCount = mvpFindings.filter(f => f.riskScore >= 40 && f.riskScore < 70).length;
+  const redCount = mvpFindings.filter(f => f.riskScore >= 70).length;
+  console.log(`Created ${mvpFindings.length} findings (green=${greenCount}, yellow=${yellowCount}, red=${redCount})`);
 
   // ── DSAR Case Items (link cases to findings) ─────────────────────────────
   let caseItemCount = 0;
-  for (let caseIdx = 0; caseIdx < allCases.length; caseIdx++) {
-    const c = allCases[caseIdx];
-    // Each case gets 3-8 case items from its related findings
+  const caseItemRecords = [];
+  for (const c of allCases) {
     const relatedFindings = mvpFindings.filter(f => f.caseId === c.id);
-    const itemCount = Math.min(relatedFindings.length, 3 + Math.floor(Math.random() * 6));
+    const itemCount = Math.min(relatedFindings.length, randInt(3, 8));
 
     for (let j = 0; j < itemCount; j++) {
       const f = relatedFindings[j];
-      const decision = j < 2 ? CaseItemDecision.INCLUDED : (Math.random() < 0.3 ? CaseItemDecision.EXCLUDED : CaseItemDecision.PROPOSED);
+      const decisionRoll = rng();
+      const decision = j < 2 ? CaseItemDecision.INCLUDED : (decisionRoll < 0.3 ? CaseItemDecision.EXCLUDED : CaseItemDecision.PROPOSED);
 
-      await prisma.dsarCaseItem.create({
-        data: {
-          tenantId: tenant.id,
-          caseId: c.id,
-          findingId: f.id,
-          systemId: f.systemId,
-          assetType: "finding",
-          title: f.summary,
-          location: f.dataAssetLocation,
-          dataCategory: f.dataCategory,
-          riskScore: f.riskScore,
-          decision,
-          decisionReason: decision === CaseItemDecision.EXCLUDED ? "Not relevant to data subject" : null,
-          decidedByUserId: decision !== CaseItemDecision.PROPOSED ? dpo.id : null,
-          decidedAt: decision !== CaseItemDecision.PROPOSED ? daysAgo(Math.floor(Math.random() * 5)) : null,
-          matchScore: 0.5 + Math.random() * 0.5,
-        },
+      caseItemRecords.push({
+        tenantId: tenant.id,
+        caseId: c.id,
+        findingId: f.id,
+        systemId: f.systemId,
+        assetType: "finding",
+        title: f.summary,
+        location: f.dataAssetLocation,
+        dataCategory: f.dataCategory,
+        riskScore: f.riskScore,
+        decision,
+        decisionReason: decision === CaseItemDecision.EXCLUDED ? "Not relevant to data subject" : null,
+        decidedByUserId: decision !== CaseItemDecision.PROPOSED ? dpo.id : null,
+        decidedAt: decision !== CaseItemDecision.PROPOSED ? daysAgo(randInt(0, 5)) : null,
+        matchScore: parseFloat((0.5 + rng() * 0.5).toFixed(3)),
       });
       caseItemCount++;
     }
+  }
+
+  for (let i = 0; i < caseItemRecords.length; i += BATCH_SIZE) {
+    await prisma.dsarCaseItem.createMany({ data: caseItemRecords.slice(i, i + BATCH_SIZE) });
   }
   console.log(`Created ${caseItemCount} DSAR case items`);
 
   // ── DSAR Audit Events ─────────────────────────────────────────────────────
   const auditActions = ["case.created", "case.viewed", "case.status_changed", "case.assigned", "finding.reviewed", "case_item.decided", "export.requested"];
-  let auditCount = 0;
+  const auditRecords = [];
   for (const c of allCases.slice(0, 10)) {
-    const numEvents = 3 + Math.floor(Math.random() * 5);
+    const numEvents = randInt(3, 7);
     for (let k = 0; k < numEvents; k++) {
-      await prisma.dsarAuditEvent.create({
-        data: {
-          tenantId: tenant.id,
-          caseId: c.id,
-          actorUserId: [admin.id, dpo.id, caseManager.id][k % 3],
-          action: auditActions[k % auditActions.length],
-          entityType: "DSARCase",
-          entityId: c.id,
-          details: { timestamp: daysAgo(Math.floor(Math.random() * 20)).toISOString() },
-        },
+      auditRecords.push({
+        tenantId: tenant.id,
+        caseId: c.id,
+        actorUserId: [admin.id, dpo.id, caseManager.id][k % 3],
+        action: auditActions[k % auditActions.length],
+        entityType: "DSARCase",
+        entityId: c.id,
+        details: { timestamp: daysAgo(randInt(0, 20)).toISOString() },
       });
-      auditCount++;
     }
   }
-  console.log(`Created ${auditCount} DSAR audit events`);
+  await prisma.dsarAuditEvent.createMany({ data: auditRecords });
+  console.log(`Created ${auditRecords.length} DSAR audit events`);
 
-  console.log("\n═══ MVP Discovery & Scan seed complete ═══");
+  console.log("\n═══ Discovery & Scan seed complete ═══");
   console.log(`Summary: ${allCases.length} cases, ${createdAssets.length} data assets, ${mvpFindings.length} findings, ${caseItemCount} case items`);
+  console.log(`Findings distribution: ${greenCount} green (${(greenCount/mvpFindings.length*100).toFixed(0)}%), ${yellowCount} yellow (${(yellowCount/mvpFindings.length*100).toFixed(0)}%), ${redCount} red (${(redCount/mvpFindings.length*100).toFixed(0)}%)`);
 }
 
 main()
