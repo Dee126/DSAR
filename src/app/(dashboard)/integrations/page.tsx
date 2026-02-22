@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import ConnectorsPanel from "./ConnectorsPanel";
 
 /* -- Types ----------------------------------------------------------------- */
 
@@ -130,6 +131,9 @@ function groupByPhase(list: ProviderInfo[]): Record<number, ProviderInfo[]> {
 
 export default function IntegrationsPage() {
   const router = useRouter();
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<"integrations" | "connectors">("connectors");
 
   // Data
   const [integrations, setIntegrations] = useState<IntegrationItem[]>([]);
@@ -425,26 +429,60 @@ export default function IntegrationsPage() {
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-gray-900">Integrations</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Manage data source connections for automated data collection
+            Manage data source connections and connectors
           </p>
         </div>
-        <button onClick={openAddModal} className="btn-primary">
-          <svg
-            className="mr-2 h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth={2}
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 4.5v15m7.5-7.5h-15"
-            />
-          </svg>
-          Add Integration
-        </button>
+        {activeTab === "integrations" && (
+          <button onClick={openAddModal} className="btn-primary">
+            <svg
+              className="mr-2 h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 4.5v15m7.5-7.5h-15"
+              />
+            </svg>
+            Add Integration
+          </button>
+        )}
       </div>
+
+      {/* Tab navigation */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex gap-6" aria-label="Tabs">
+          <button
+            onClick={() => setActiveTab("connectors")}
+            className={`whitespace-nowrap border-b-2 pb-3 text-sm font-medium transition-colors ${
+              activeTab === "connectors"
+                ? "border-brand-600 text-brand-600"
+                : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
+            }`}
+          >
+            Connectors
+          </button>
+          <button
+            onClick={() => setActiveTab("integrations")}
+            className={`whitespace-nowrap border-b-2 pb-3 text-sm font-medium transition-colors ${
+              activeTab === "integrations"
+                ? "border-brand-600 text-brand-600"
+                : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
+            }`}
+          >
+            Integrations
+          </button>
+        </nav>
+      </div>
+
+      {/* Connectors tab */}
+      {activeTab === "connectors" && <ConnectorsPanel />}
+
+      {/* Integrations tab content */}
+      {activeTab === "integrations" && <>
 
       {/* Error banner */}
       {error && (
@@ -766,6 +804,7 @@ export default function IntegrationsPage() {
       </div>
 
       {/* -- Add Integration Modal ------------------------------------------ */}
+      </>}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           {/* Backdrop */}

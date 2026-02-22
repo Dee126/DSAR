@@ -453,6 +453,8 @@ model Tenant {
   dataAssets           DataAsset[]
   scanJobs             ScanJob[]
   findingAuditEvents   FindingAuditEvent[]
+  connectors           Connector[]
+  connectorRuns        ConnectorRun[]
 
   @@map("tenants")
 }
@@ -2724,6 +2726,23 @@ enum ScanJobStatus {
   FAILED
 }
 
+// ─── Connector Framework Enums ─────────────────────────────────────────────
+
+enum ConnectorCategory {
+  M365
+  EXCHANGE
+  SHAREPOINT
+  FILESERVER
+  CRM
+}
+
+enum ConnectorRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
 model DataAsset {
   id              String   @id @default(uuid())
   tenantId        String
@@ -2766,4 +2785,64 @@ model ScanJob {
   @@index([tenantId])
   @@index([tenantId, systemId])
   @@map("scan_jobs")
+}
+
+// ─── Connector Framework Models ─────────────────────────────────────────────
+
+model Connector {
+  id          String            @id @default(uuid())
+  tenantId    String
+  name        String
+  description String?
+  category    ConnectorCategory
+  enabled     Boolean           @default(true)
+  config      Json?             // non-secret connector config (e.g. server path, domain)
+  lastRunAt   DateTime?
+  lastError   String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  runs        ConnectorRun[]
+  credentials ConnectorCredential[]
+
+  @@index([tenantId])
+  @@map("connectors")
+}
+
+model ConnectorRun {
+  id            String             @id @default(uuid())
+  tenantId      String
+  connectorId   String
+  status        ConnectorRunStatus @default(PENDING)
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  assetsFound   Int                @default(0)
+  findingsCount Int                @default(0)
+  errorMessage  String?
+  stats         Json?              // { filesScanned, emailsScanned, recordsScanned, ... }
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  connector Connector @relation(fields: [connectorId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([connectorId])
+  @@map("connector_runs")
+}
+
+model ConnectorCredential {
+  id            String   @id @default(uuid())
+  connectorId   String
+  label         String   @default("default")
+  encryptedBlob String   // AES-256-GCM encrypted JSON blob (base64)
+  keyVersion    Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  connector Connector @relation(fields: [connectorId], references: [id], onDelete: Cascade)
+
+  @@index([connectorId])
+  @@map("connector_credentials")
 }

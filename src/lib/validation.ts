@@ -628,6 +628,29 @@ export const awsSecretsPayloadSchema = z.object({
   { message: "Role ARN is required when authType is assume_role", path: ["roleArn"] }
 );
 
+// ─── Connector Framework Schemas ─────────────────────────────────────────────
+
+const CONNECTOR_CATEGORY_VALUES = ["M365", "EXCHANGE", "SHAREPOINT", "FILESERVER", "CRM"] as const;
+
+export const createConnectorSchema = z.object({
+  name: z.string().min(1, "Connector name is required").max(200),
+  description: z.string().max(1000).optional(),
+  category: z.enum(CONNECTOR_CATEGORY_VALUES),
+  config: z.record(z.unknown()).optional(),
+});
+
+export const updateConnectorSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  description: z.string().max(1000).optional(),
+  enabled: z.boolean().optional(),
+  config: z.record(z.unknown()).optional(),
+});
+
+export const storeConnectorCredentialSchema = z.object({
+  label: z.string().max(100).optional().default("default"),
+  credentials: z.record(z.string()),
+});
+
 // ─── Finding Action Schemas ──────────────────────────────────────────────────
 
 export const findingAcceptSchema = z.object({
