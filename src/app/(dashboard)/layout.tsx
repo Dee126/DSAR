@@ -21,6 +21,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/integrations": "Integrations",
   "/governance": "Governance",
   "/governance/sla": "SLA Configuration",
+  "/heatmap": "Risk Heatmap",
   "/settings": "Settings",
 };
 
@@ -28,6 +29,8 @@ function getPageTitle(pathname: string): string {
   if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
   if (pathname.startsWith("/cases/")) return "Case Detail";
   if (pathname.startsWith("/data-inventory/")) return "System Detail";
+  if (pathname.startsWith("/heatmap/finding/")) return "Finding Detail";
+  if (pathname.startsWith("/heatmap/system/")) return "System Findings";
   if (pathname.startsWith("/governance/")) return "Governance";
   if (pathname.startsWith("/integrations/")) return "Integration";
   return "PrivacyPilot";

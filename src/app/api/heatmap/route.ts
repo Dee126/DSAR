@@ -52,10 +52,14 @@ export async function GET() {
       ).length;
       const red = findings.filter((f) => f.riskScore >= 70).length;
 
+      // Use avg of top 20 findings (highest risk) for the overall score
+      const top20 = [...findings]
+        .sort((a, b) => b.riskScore - a.riskScore)
+        .slice(0, 20);
       const avgRisk =
-        total > 0
+        top20.length > 0
           ? Math.round(
-              findings.reduce((sum, f) => sum + f.riskScore, 0) / total
+              top20.reduce((sum, f) => sum + f.riskScore, 0) / top20.length
             )
           : 0;
 
