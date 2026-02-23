@@ -8,15 +8,15 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 
 /**
- * GET /api/heatmap/system?systemId=...&color=&piiCategory=&status=&from=&to=&sort=score|lastSeen&dir=desc|asc
+ * GET /api/heatmap/system?systemId=...&limit=50&offset=0&minScore=&category=&status=&color=&sort=score|lastSeen&dir=desc|asc
  *
- * Returns findings for a single system with filtering and sorting.
- * Stable DTO — returns empty findings array when no data exists.
+ * Returns findings for a single system with counts, pagination, and filters.
+ * Default sort: sensitivityScore desc, createdAt desc.
  *
- * Color filter maps to risk-score bands:
- *   green  → riskScore < 40
- *   yellow → riskScore 40–69
- *   red    → riskScore >= 70
+ * Severity bands (based on sensitivityScore):
+ *   green:  < 40
+ *   yellow: 40–69
+ *   red:    >= 70
  */
 export async function GET(request: NextRequest) {
   try {
@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
       select: {
         id: true,
         name: true,
+        connectorType: true,
         description: true,
         criticality: true,
         containsSpecialCategories: true,
@@ -52,21 +53,30 @@ export async function GET(request: NextRequest) {
       systemId,
     };
 
-    // Color filter → risk-score bands
+    // Color filter → sensitivityScore bands
     const color = searchParams.get("color");
     if (color === "green") {
-      where.riskScore = { lt: 40 };
+      where.sensitivityScore = { lt: 40 };
     } else if (color === "yellow") {
-      where.riskScore = { gte: 40, lt: 70 };
+      where.sensitivityScore = { gte: 40, lt: 70 };
     } else if (color === "red") {
-      where.riskScore = { gte: 70 };
+      where.sensitivityScore = { gte: 70 };
     }
 
-    // PII category filter (also accept "category" param for compat)
-    const piiCategory =
-      searchParams.get("piiCategory") ?? searchParams.get("category");
-    if (piiCategory) {
-      where.dataCategory = piiCategory as Prisma.EnumDataCategoryFilter;
+    // Minimum score filter
+    const minScore = searchParams.get("minScore");
+    if (minScore && !color) {
+      const min = parseInt(minScore, 10);
+      if (!isNaN(min)) {
+        where.sensitivityScore = { gte: min };
+      }
+    }
+
+    // Category filter (accept both "category" and "piiCategory" params)
+    const category =
+      searchParams.get("category") ?? searchParams.get("piiCategory");
+    if (category) {
+      where.dataCategory = category as Prisma.EnumDataCategoryFilter;
     }
 
     // Status filter
@@ -75,7 +85,7 @@ export async function GET(request: NextRequest) {
       where.status = status as Prisma.EnumFindingStatusFilter;
     }
 
-    // Date range filter (on createdAt)
+    // Date range filter
     const from = searchParams.get("from");
     const to = searchParams.get("to");
     if (from || to) {
@@ -85,46 +95,121 @@ export async function GET(request: NextRequest) {
       if (to) (where.createdAt as Prisma.DateTimeFilter).lte = new Date(to);
     }
 
-    // Sorting
+    // Pagination
+    const limit = Math.min(
+      200,
+      Math.max(1, parseInt(searchParams.get("limit") ?? "50", 10))
+    );
+    const offset = Math.max(
+      0,
+      parseInt(searchParams.get("offset") ?? "0", 10)
+    );
+
+    // Sorting — default: sensitivityScore desc, createdAt desc
     const sort = searchParams.get("sort") ?? "score";
     const dir = searchParams.get("dir") === "asc" ? "asc" : "desc";
 
-    let orderBy: Prisma.FindingOrderByWithRelationInput;
-    if (sort === "lastSeen") {
-      orderBy = { createdAt: dir };
-    } else {
-      orderBy = { riskScore: dir };
-    }
+    const orderBy: Prisma.FindingOrderByWithRelationInput[] =
+      sort === "lastSeen"
+        ? [{ createdAt: dir }, { sensitivityScore: "desc" }]
+        : [{ sensitivityScore: dir }, { createdAt: "desc" }];
 
-    const findings = await prisma.finding.findMany({
-      where,
-      orderBy,
-      select: {
-        id: true,
-        riskScore: true,
-        severity: true,
-        status: true,
-        dataCategory: true,
-        summary: true,
-        confidence: true,
-        containsSpecialCategory: true,
-        dataAssetLocation: true,
-        statusComment: true,
-        mitigationDueDate: true,
-        createdAt: true,
-        statusChangedAt: true,
-        run: {
-          select: {
-            id: true,
-            case: {
-              select: { id: true, caseNumber: true },
+    // Fetch findings with pagination + total count
+    const [findings, totalCount] = await Promise.all([
+      prisma.finding.findMany({
+        where,
+        orderBy,
+        skip: offset,
+        take: limit,
+        select: {
+          id: true,
+          summary: true,
+          piiCategory: true,
+          sensitivityScore: true,
+          riskScore: true,
+          severity: true,
+          status: true,
+          dataCategory: true,
+          confidence: true,
+          containsSpecialCategory: true,
+          dataAssetLocation: true,
+          snippetPreview: true,
+          statusComment: true,
+          mitigationDueDate: true,
+          createdAt: true,
+          statusChangedAt: true,
+          run: {
+            select: {
+              id: true,
+              case: {
+                select: { id: true, caseNumber: true },
+              },
             },
           },
         },
-      },
+      }),
+      prisma.finding.count({ where }),
+    ]);
+
+    // Compute counts across ALL findings for this system (unfiltered)
+    const allFindings = await prisma.finding.findMany({
+      where: { tenantId: user.tenantId, systemId },
+      select: { sensitivityScore: true },
     });
 
-    return NextResponse.json({ system, findings });
+    const counts = {
+      green: allFindings.filter((f) => f.sensitivityScore < 40).length,
+      yellow: allFindings.filter(
+        (f) => f.sensitivityScore >= 40 && f.sensitivityScore < 70
+      ).length,
+      red: allFindings.filter((f) => f.sensitivityScore >= 70).length,
+      total: allFindings.length,
+    };
+
+    // Map findings to the required DTO
+    const findingRows = findings.map((f) => ({
+      id: f.id,
+      title: f.summary,
+      piiCategory: f.piiCategory ?? f.dataCategory,
+      sensitivityScore: f.sensitivityScore,
+      status: f.status,
+      createdAt: f.createdAt.toISOString(),
+      snippetPreview: f.snippetPreview ?? null,
+      // Extra fields for rich UI
+      riskScore: f.riskScore,
+      severity: f.severity,
+      dataCategory: f.dataCategory,
+      confidence: f.confidence,
+      containsSpecialCategory: f.containsSpecialCategory,
+      dataAssetLocation: f.dataAssetLocation,
+      statusComment: f.statusComment,
+      mitigationDueDate: f.mitigationDueDate
+        ? f.mitigationDueDate.toISOString()
+        : null,
+      statusChangedAt: f.statusChangedAt
+        ? f.statusChangedAt.toISOString()
+        : null,
+      run: f.run,
+    }));
+
+    return NextResponse.json({
+      system: {
+        id: system.id,
+        name: system.name,
+        type: system.connectorType,
+        description: system.description,
+        criticality: system.criticality,
+        containsSpecialCategories: system.containsSpecialCategories,
+      },
+      findings: findingRows,
+      counts,
+      pagination: {
+        limit,
+        offset,
+        total: totalCount,
+        hasMore: offset + limit < totalCount,
+      },
+    });
   } catch (error) {
     return handleApiError(error);
   }

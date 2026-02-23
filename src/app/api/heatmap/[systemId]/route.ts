@@ -9,8 +9,9 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/heatmap/[systemId]
  *
- * Returns all findings for a specific system, with filtering support.
- * Query params: ?color=red|yellow|green &status=NEW|ACCEPTED|MITIGATED &category=IDENTIFICATION|...
+ * Legacy endpoint — returns findings for a specific system.
+ * Uses sensitivityScore for risk band filtering.
+ * Query params: ?color=red|yellow|green &status=OPEN|ACCEPTED|MITIGATED &category=IDENTIFICATION|...
  */
 export async function GET(
   request: NextRequest,
@@ -18,7 +19,7 @@ export async function GET(
 ) {
   try {
     const user = await requireAuth();
-    checkPermission(user.role, "copilot", "read");
+    checkPermission(user.role, "data_inventory", "read");
 
     const { systemId } = params;
     const url = new URL(request.url);
@@ -32,6 +33,7 @@ export async function GET(
       select: {
         id: true,
         name: true,
+        connectorType: true,
         description: true,
         criticality: true,
         containsSpecialCategories: true,
@@ -42,18 +44,17 @@ export async function GET(
       throw new ApiError(404, "System not found");
     }
 
-    // Build filter conditions
     const where: Record<string, unknown> = {
       tenantId: user.tenantId,
       systemId,
     };
 
     if (color === "green") {
-      where.riskScore = { lt: 40 };
+      where.sensitivityScore = { lt: 40 };
     } else if (color === "yellow") {
-      where.riskScore = { gte: 40, lt: 70 };
+      where.sensitivityScore = { gte: 40, lt: 70 };
     } else if (color === "red") {
-      where.riskScore = { gte: 70 };
+      where.sensitivityScore = { gte: 70 };
     }
 
     if (status) {
@@ -68,11 +69,14 @@ export async function GET(
       where,
       select: {
         id: true,
+        sensitivityScore: true,
         riskScore: true,
         severity: true,
         status: true,
         dataCategory: true,
         summary: true,
+        piiCategory: true,
+        snippetPreview: true,
         confidence: true,
         containsSpecialCategory: true,
         dataAssetLocation: true,
@@ -89,10 +93,20 @@ export async function GET(
           },
         },
       },
-      orderBy: { riskScore: "desc" },
+      orderBy: [{ sensitivityScore: "desc" }, { createdAt: "desc" }],
     });
 
-    return NextResponse.json({ system, findings });
+    return NextResponse.json({
+      system: {
+        id: system.id,
+        name: system.name,
+        type: system.connectorType,
+        description: system.description,
+        criticality: system.criticality,
+        containsSpecialCategories: system.containsSpecialCategories,
+      },
+      findings,
+    });
   } catch (error) {
     return handleApiError(error);
   }

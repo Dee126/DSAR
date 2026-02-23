@@ -5,10 +5,11 @@ import Link from "next/link";
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 
-interface RiskBands {
+interface Counts {
   green: number;
   yellow: number;
   red: number;
+  total: number;
 }
 
 interface StatusCounts {
@@ -18,36 +19,29 @@ interface StatusCounts {
   MITIGATED: number;
 }
 
-interface Tile {
+interface SystemTile {
   systemId: string;
   systemName: string;
+  systemType: string;
+  lastScanAt: string | null;
+  counts: Counts;
+  riskScore: number;
   description: string | null;
   criticality: string;
   containsSpecialCategories: boolean;
-  totalFindings: number;
-  riskBands: RiskBands;
-  overallRiskScore: number;
   statusCounts: StatusCounts;
   severityCounts: { INFO: number; WARNING: number; CRITICAL: number };
   specialCategoryCount: number;
-  lastScanAt: string | null;
 }
 
 interface Summary {
   totalSystems: number;
   totalFindings: number;
-  riskBands: RiskBands;
   statusCounts: StatusCounts;
   categoryCounts: Record<string, number>;
 }
 
 /* ── Helpers ────────────────────────────────────────────────────────────── */
-
-function riskColor(score: number): string {
-  if (score >= 70) return "red";
-  if (score >= 40) return "yellow";
-  return "green";
-}
 
 function riskBg(score: number): string {
   if (score >= 70) return "bg-red-100 border-red-300";
@@ -55,16 +49,23 @@ function riskBg(score: number): string {
   return "bg-green-50 border-green-300";
 }
 
-function riskText(score: number): string {
-  if (score >= 70) return "text-red-700";
-  if (score >= 40) return "text-yellow-700";
-  return "text-green-700";
-}
-
 function riskBadgeBg(score: number): string {
   if (score >= 70) return "bg-red-600";
   if (score >= 40) return "bg-yellow-500";
   return "bg-green-500";
+}
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  return `${months}mo ago`;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -175,7 +176,8 @@ function DonutChart({
 /* ── Page ────────────────────────────────────────────────────────────── */
 
 export default function HeatmapPage() {
-  const [tiles, setTiles] = useState<Tile[]>([]);
+  const [systems, setSystems] = useState<SystemTile[]>([]);
+  const [totals, setTotals] = useState<Counts | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -186,7 +188,8 @@ export default function HeatmapPage() {
         const res = await fetch("/api/heatmap/overview");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        setTiles(data.tiles);
+        setSystems(data.systems);
+        setTotals(data.totals);
         setSummary(data.summary);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -214,6 +217,12 @@ export default function HeatmapPage() {
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
         <p className="text-sm text-red-700">Failed to load heatmap: {error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-2 text-sm font-medium text-red-600 hover:text-red-800"
+        >
+          Retry
+        </button>
       </div>
     );
   }
@@ -239,7 +248,7 @@ export default function HeatmapPage() {
       </div>
 
       {/* Summary Charts */}
-      {summary && summary.totalFindings > 0 && (
+      {totals && totals.total > 0 && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Risk Distribution Donut */}
           <div className="card flex flex-col items-center gap-4">
@@ -248,87 +257,77 @@ export default function HeatmapPage() {
             </h3>
             <DonutChart
               segments={[
-                {
-                  value: summary.riskBands.green,
-                  color: "#22c55e",
-                  label: "Green",
-                },
-                {
-                  value: summary.riskBands.yellow,
-                  color: "#eab308",
-                  label: "Yellow",
-                },
-                {
-                  value: summary.riskBands.red,
-                  color: "#ef4444",
-                  label: "Red",
-                },
+                { value: totals.green, color: "#22c55e", label: "Green" },
+                { value: totals.yellow, color: "#eab308", label: "Yellow" },
+                { value: totals.red, color: "#ef4444", label: "Red" },
               ]}
             />
             <div className="flex gap-4 text-xs">
               <span className="flex items-center gap-1">
                 <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
-                {summary.riskBands.green} Green
+                {totals.green} Green
               </span>
               <span className="flex items-center gap-1">
                 <span className="h-2.5 w-2.5 rounded-full bg-yellow-500" />
-                {summary.riskBands.yellow} Yellow
+                {totals.yellow} Yellow
               </span>
               <span className="flex items-center gap-1">
                 <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
-                {summary.riskBands.red} Red
+                {totals.red} Red
               </span>
             </div>
           </div>
 
           {/* Status Donut */}
-          <div className="card flex flex-col items-center gap-4">
-            <h3 className="text-sm font-semibold text-gray-700">
-              Finding Status
-            </h3>
-            <DonutChart
-              segments={[
-                {
-                  value: summary.statusCounts.OPEN,
-                  color: "#6366f1",
-                  label: "Open",
-                },
-                {
-                  value: summary.statusCounts.ACCEPTED,
-                  color: "#f59e0b",
-                  label: "Accepted",
-                },
-                {
-                  value: summary.statusCounts.MITIGATING,
-                  color: "#3b82f6",
-                  label: "Mitigating",
-                },
-                {
-                  value: summary.statusCounts.MITIGATED,
-                  color: "#10b981",
-                  label: "Mitigated",
-                },
-              ]}
-            />
-            <div className="flex flex-wrap gap-4 text-xs">
-              <span className="flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full bg-indigo-500" />
-                {summary.statusCounts.OPEN} Open
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
-                {summary.statusCounts.ACCEPTED} Accepted
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
-                {summary.statusCounts.MITIGATING} Mitigating
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                {summary.statusCounts.MITIGATED} Mitigated
-              </span>
+          {summary && (
+            <div className="card flex flex-col items-center gap-4">
+              <h3 className="text-sm font-semibold text-gray-700">
+                Finding Status
+              </h3>
+              <DonutChart
+                segments={[
+                  {
+                    value: summary.statusCounts.OPEN,
+                    color: "#6366f1",
+                    label: "Open",
+                  },
+                  {
+                    value: summary.statusCounts.ACCEPTED,
+                    color: "#f59e0b",
+                    label: "Accepted",
+                  },
+                  {
+                    value: summary.statusCounts.MITIGATING,
+                    color: "#3b82f6",
+                    label: "Mitigating",
+                  },
+                  {
+                    value: summary.statusCounts.MITIGATED,
+                    color: "#10b981",
+                    label: "Mitigated",
+                  },
+                ]}
+              />
+              <div className="flex flex-wrap gap-4 text-xs">
+                <span className="flex items-center gap-1">
+                  <span className="h-2.5 w-2.5 rounded-full bg-indigo-500" />
+                  {summary.statusCounts.OPEN} Open
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+                  {summary.statusCounts.ACCEPTED} Accepted
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
+                  {summary.statusCounts.MITIGATING} Mitigating
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                  {summary.statusCounts.MITIGATED} Mitigated
+                </span>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Top Data Categories */}
           <div className="card">
@@ -362,29 +361,25 @@ export default function HeatmapPage() {
       )}
 
       {/* KPI Cards */}
-      {summary && (
+      {totals && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div className="card text-center">
             <p className="text-2xl font-bold text-gray-900">
-              {summary.totalSystems}
+              {systems.length}
             </p>
             <p className="text-xs text-gray-500">Systems Scanned</p>
           </div>
           <div className="card text-center">
-            <p className="text-2xl font-bold text-gray-900">
-              {summary.totalFindings}
-            </p>
+            <p className="text-2xl font-bold text-gray-900">{totals.total}</p>
             <p className="text-xs text-gray-500">Total Findings</p>
           </div>
           <div className="card text-center">
-            <p className="text-2xl font-bold text-red-600">
-              {summary.riskBands.red}
-            </p>
+            <p className="text-2xl font-bold text-red-600">{totals.red}</p>
             <p className="text-xs text-gray-500">High Risk</p>
           </div>
           <div className="card text-center">
             <p className="text-2xl font-bold text-green-600">
-              {summary.statusCounts.MITIGATED}
+              {summary?.statusCounts.MITIGATED ?? 0}
             </p>
             <p className="text-xs text-gray-500">Mitigated</p>
           </div>
@@ -392,7 +387,7 @@ export default function HeatmapPage() {
       )}
 
       {/* System Tiles */}
-      {tiles.length === 0 ? (
+      {systems.length === 0 ? (
         <div className="card text-center py-12">
           <svg
             className="mx-auto h-12 w-12 text-gray-300"
@@ -415,92 +410,99 @@ export default function HeatmapPage() {
       ) : (
         <div>
           <h2 className="mb-4 text-lg font-semibold text-gray-900">
-            Systems ({tiles.length})
+            Systems ({systems.length})
           </h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {tiles
-              .sort((a, b) => b.overallRiskScore - a.overallRiskScore)
+            {systems
+              .sort((a, b) => b.riskScore - a.riskScore)
               .map((tile) => (
                 <Link
                   key={tile.systemId}
                   href={`/heatmap/system/${tile.systemId}`}
                   className={`relative rounded-lg border-2 p-4 transition-shadow hover:shadow-md ${riskBg(
-                    tile.overallRiskScore
+                    tile.riskScore
                   )}`}
                 >
                   {/* Risk Score Badge */}
                   <div
                     className={`absolute -right-2 -top-2 flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white ${riskBadgeBg(
-                      tile.overallRiskScore
+                      tile.riskScore
                     )}`}
                   >
-                    {tile.overallRiskScore}
+                    {tile.riskScore}
                   </div>
 
-                  {/* System name */}
+                  {/* System name + type */}
                   <h3 className="pr-8 text-sm font-semibold text-gray-900">
                     {tile.systemName}
                   </h3>
-                  {tile.description && (
-                    <p className="mt-0.5 truncate text-xs text-gray-500">
-                      {tile.description}
-                    </p>
-                  )}
+                  <div className="mt-0.5 flex items-center gap-2">
+                    {tile.systemType && tile.systemType !== "NONE" && (
+                      <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">
+                        {tile.systemType}
+                      </span>
+                    )}
+                    {tile.description && (
+                      <p className="truncate text-xs text-gray-500">
+                        {tile.description}
+                      </p>
+                    )}
+                  </div>
 
                   {/* Risk band mini-bar */}
                   <div className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-gray-200">
-                    {tile.riskBands.green > 0 && (
+                    {tile.counts.green > 0 && (
                       <div
                         className="bg-green-500"
                         style={{
                           width: `${
-                            (tile.riskBands.green / tile.totalFindings) * 100
+                            (tile.counts.green / tile.counts.total) * 100
                           }%`,
                         }}
-                        title={`${tile.riskBands.green} green`}
+                        title={`${tile.counts.green} green`}
                       />
                     )}
-                    {tile.riskBands.yellow > 0 && (
+                    {tile.counts.yellow > 0 && (
                       <div
                         className="bg-yellow-500"
                         style={{
                           width: `${
-                            (tile.riskBands.yellow / tile.totalFindings) * 100
+                            (tile.counts.yellow / tile.counts.total) * 100
                           }%`,
                         }}
-                        title={`${tile.riskBands.yellow} yellow`}
+                        title={`${tile.counts.yellow} yellow`}
                       />
                     )}
-                    {tile.riskBands.red > 0 && (
+                    {tile.counts.red > 0 && (
                       <div
                         className="bg-red-500"
                         style={{
                           width: `${
-                            (tile.riskBands.red / tile.totalFindings) * 100
+                            (tile.counts.red / tile.counts.total) * 100
                           }%`,
                         }}
-                        title={`${tile.riskBands.red} red`}
+                        title={`${tile.counts.red} red`}
                       />
                     )}
                   </div>
 
-                  {/* Counts */}
+                  {/* Colored chips for green/yellow/red counts */}
                   <div className="mt-2 flex items-center gap-3 text-[11px]">
                     <span className="flex items-center gap-1">
                       <span className="h-2 w-2 rounded-full bg-green-500" />
-                      {tile.riskBands.green}
+                      {tile.counts.green}
                     </span>
                     <span className="flex items-center gap-1">
                       <span className="h-2 w-2 rounded-full bg-yellow-500" />
-                      {tile.riskBands.yellow}
+                      {tile.counts.yellow}
                     </span>
                     <span className="flex items-center gap-1">
                       <span className="h-2 w-2 rounded-full bg-red-500" />
-                      {tile.riskBands.red}
+                      {tile.counts.red}
                     </span>
                     <span className="ml-auto text-gray-500">
-                      {tile.totalFindings} finding
-                      {tile.totalFindings !== 1 ? "s" : ""}
+                      {tile.counts.total} finding
+                      {tile.counts.total !== 1 ? "s" : ""}
                     </span>
                   </div>
 
@@ -535,21 +537,10 @@ export default function HeatmapPage() {
                     )}
                   </div>
 
-                  {/* Last scan timestamp */}
+                  {/* Last scan timestamp (relative) */}
                   <p className="mt-2 text-[10px] text-gray-400">
                     Last scan:{" "}
-                    {tile.lastScanAt
-                      ? new Date(tile.lastScanAt).toLocaleDateString(
-                          undefined,
-                          {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          }
-                        )
-                      : "Never"}
+                    {tile.lastScanAt ? relativeTime(tile.lastScanAt) : "Never"}
                   </p>
                 </Link>
               ))}

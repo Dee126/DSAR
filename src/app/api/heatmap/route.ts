@@ -9,33 +9,34 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/heatmap
  *
- * Returns aggregated heatmap data per system:
- *   - finding counts by risk band (green/yellow/red)
- *   - overall risk score (weighted average)
- *   - finding counts by status
+ * Legacy endpoint — redirects shape to match /api/heatmap/overview contract.
+ * Uses sensitivityScore for risk bands (green < 40, yellow 40-69, red >= 70).
+ * riskScore = weighted average: (red*100 + yellow*60 + green*20) / total.
  */
 export async function GET() {
   try {
     const user = await requireAuth();
-    checkPermission(user.role, "copilot", "read");
+    checkPermission(user.role, "data_inventory", "read");
 
-    // Fetch all systems for the tenant that are in scope
     const systems = await prisma.system.findMany({
       where: { tenantId: user.tenantId, inScopeForDsar: true },
       select: {
         id: true,
         name: true,
+        connectorType: true,
         description: true,
         criticality: true,
         containsSpecialCategories: true,
         findings: {
           select: {
             id: true,
+            sensitivityScore: true,
             riskScore: true,
             severity: true,
             status: true,
             dataCategory: true,
             containsSpecialCategory: true,
+            createdAt: true,
           },
         },
       },
@@ -46,22 +47,24 @@ export async function GET() {
       const findings = sys.findings;
       const total = findings.length;
 
-      const green = findings.filter((f) => f.riskScore < 40).length;
+      const green = findings.filter((f) => f.sensitivityScore < 40).length;
       const yellow = findings.filter(
-        (f) => f.riskScore >= 40 && f.riskScore < 70
+        (f) => f.sensitivityScore >= 40 && f.sensitivityScore < 70
       ).length;
-      const red = findings.filter((f) => f.riskScore >= 70).length;
+      const red = findings.filter((f) => f.sensitivityScore >= 70).length;
 
-      // Use avg of top 20 findings (highest risk) for the overall score
-      const top20 = [...findings]
-        .sort((a, b) => b.riskScore - a.riskScore)
-        .slice(0, 20);
-      const avgRisk =
-        top20.length > 0
-          ? Math.round(
-              top20.reduce((sum, f) => sum + f.riskScore, 0) / top20.length
-            )
+      const riskScore =
+        total > 0
+          ? Math.round((red * 100 + yellow * 60 + green * 20) / total)
           : 0;
+
+      const lastScanAt =
+        findings.length > 0
+          ? findings.reduce(
+              (latest, f) => (f.createdAt > latest ? f.createdAt : latest),
+              findings[0].createdAt
+            )
+          : null;
 
       const statusCounts = {
         OPEN: findings.filter((f) => f.status === "OPEN").length,
@@ -83,30 +86,36 @@ export async function GET() {
       return {
         systemId: sys.id,
         systemName: sys.name,
+        systemType: sys.connectorType,
         description: sys.description,
         criticality: sys.criticality,
         containsSpecialCategories: sys.containsSpecialCategories,
         totalFindings: total,
+        counts: { green, yellow, red, total },
+        riskScore,
+        overallRiskScore: riskScore,
         riskBands: { green, yellow, red },
-        overallRiskScore: avgRisk,
         statusCounts,
         severityCounts,
         specialCategoryCount,
+        lastScanAt: lastScanAt ? lastScanAt.toISOString() : null,
       };
     });
 
-    // Global aggregates for charts
     const allFindings = systems.flatMap((s) => s.findings);
+    const totals = {
+      green: allFindings.filter((f) => f.sensitivityScore < 40).length,
+      yellow: allFindings.filter(
+        (f) => f.sensitivityScore >= 40 && f.sensitivityScore < 70
+      ).length,
+      red: allFindings.filter((f) => f.sensitivityScore >= 70).length,
+      total: allFindings.length,
+    };
+
     const summary = {
       totalSystems: systems.length,
       totalFindings: allFindings.length,
-      riskBands: {
-        green: allFindings.filter((f) => f.riskScore < 40).length,
-        yellow: allFindings.filter(
-          (f) => f.riskScore >= 40 && f.riskScore < 70
-        ).length,
-        red: allFindings.filter((f) => f.riskScore >= 70).length,
-      },
+      riskBands: { ...totals },
       statusCounts: {
         OPEN: allFindings.filter((f) => f.status === "OPEN").length,
         ACCEPTED: allFindings.filter((f) => f.status === "ACCEPTED").length,
@@ -126,7 +135,7 @@ export async function GET() {
       ),
     };
 
-    return NextResponse.json({ tiles, summary });
+    return NextResponse.json({ systems: tiles, tiles, totals, summary });
   } catch (error) {
     return handleApiError(error);
   }
