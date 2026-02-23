@@ -21,6 +21,7 @@
     "reset:test-user": "npx tsx scripts/reset-test-user.ts",
     "seed:discovery": "npx tsx scripts/seed-discovery.ts",
     "seed:discovery:data": "npx tsx scripts/seed-discovery.ts --seed-only",
+    "seed:findings": "tsx scripts/seed_large_findings.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
