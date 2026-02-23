@@ -41,7 +41,6 @@ async function main() {
   // Clean existing data (order matters for FK constraints)
   // Discovery & Scan models
   await prisma.scanJob.deleteMany();
-  await prisma.dataAsset.deleteMany();
   await prisma.dsarAuditEvent.deleteMany();
   await prisma.dsarCaseItem.deleteMany();
   // Module 7: Executive KPI
@@ -104,6 +103,7 @@ async function main() {
   await prisma.copilotSummary.deleteMany();
   await prisma.detectorResult.deleteMany();
   await prisma.finding.deleteMany();
+  await prisma.dataAsset.deleteMany();
   await prisma.evidenceItem.deleteMany();
   await prisma.copilotQuery.deleteMany();
   await prisma.copilotRun.deleteMany();
@@ -3634,6 +3634,16 @@ async function main() {
     requiresLegalReview: boolean; systemId: string; riskScore: number;
     status: FindingStatus; dataAssetLocation: string | null;
     sampleRedacted: string | null; createdAt: Date;
+    sensitivityScore: number; piiCategory: string | null;
+    piiCount: number; snippetPreview: string | null;
+    dataAssetId: string | null;
+  }
+
+  // Group created DataAssets by systemId for linking findings
+  const assetsBySystemId: Record<string, typeof createdAssets> = {};
+  for (const asset of createdAssets) {
+    if (!assetsBySystemId[asset.systemId]) assetsBySystemId[asset.systemId] = [];
+    assetsBySystemId[asset.systemId].push(asset);
   }
 
   const findingRecords: FindingRecord[] = [];
@@ -3686,6 +3696,13 @@ async function main() {
     // Spread createdAt over last 90 days
     const createdAt = daysAgo(randInt(0, 90));
 
+    // Link to actual DataAsset record for this system
+    const systemAssets = assetsBySystemId[sys.sys.id] || [];
+    const linkedAsset = systemAssets.length > 0 ? pick(systemAssets) : null;
+
+    // PII count: higher risk → more PII items found
+    const piiCount = riskScore >= 70 ? randInt(10, 50) : riskScore >= 40 ? randInt(3, 15) : randInt(1, 5);
+
     return {
       tenantId: tenant.id,
       caseId: allCases[randInt(0, allCases.length - 1)].id,
@@ -3704,6 +3721,11 @@ async function main() {
       dataAssetLocation: assetPath,
       sampleRedacted,
       createdAt,
+      sensitivityScore: riskScore,  // mirrors riskScore for PII sensitivity
+      piiCategory: piiCat,
+      piiCount,
+      snippetPreview: sampleRedacted,
+      dataAssetId: linkedAsset ? linkedAsset.id : null,
     };
   }
 

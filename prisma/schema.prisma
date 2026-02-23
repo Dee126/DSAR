@@ -1171,9 +1171,17 @@ model Finding {
   sampleRedacted        String?                        // Redacted data sample for DPO review
   mitigationDueDate     DateTime?
 
+  // ─── Bulk-seed / PII enrichment fields ──────────────────────────────
+  sensitivityScore      Int             @default(0)   // 0–100
+  piiCategory           String?                        // e.g. "EMAIL", "PHONE", "IBAN"
+  piiCount              Int             @default(0)
+  snippetPreview        String?                        // Redacted preview snippet
+  dataAssetId           String?
+
   tenant          Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   run             CopilotRun @relation(fields: [runId], references: [id], onDelete: Cascade)
   system          System?    @relation(fields: [systemId], references: [id])
+  dataAsset       DataAsset? @relation(fields: [dataAssetId], references: [id])
   statusChangedBy User?      @relation("FindingStatusChangedBy", fields: [statusChangedByUserId], references: [id])
   mitigationTasks    Task[]              @relation("FindingMitigationTasks")
   dsarCaseItems      DsarCaseItem[]      @relation("CaseItemFinding")
@@ -1182,6 +1190,7 @@ model Finding {
   @@index([tenantId, runId])
   @@index([tenantId, caseId])
   @@index([tenantId, systemId])
+  @@index([tenantId, dataAssetId])
   @@map("findings")
 }
 
@@ -2758,8 +2767,9 @@ model DataAsset {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  system System @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  system   System    @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  findings Finding[]
 
   @@index([tenantId])
   @@index([tenantId, systemId])
