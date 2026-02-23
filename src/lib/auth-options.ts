@@ -5,7 +5,9 @@ import { prisma } from "./prisma";
 
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
-  debug: process.env.NODE_ENV === "development",
+  debug:
+    process.env.NODE_ENV === "development" &&
+    process.env.AUTH_DEBUG === "true",
   session: {
     strategy: "jwt",
     maxAge: 8 * 60 * 60, // 8 hours

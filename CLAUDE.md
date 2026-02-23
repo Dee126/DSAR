@@ -189,6 +189,7 @@ See `.env.example` for all variables. Key ones:
 - `NEXTAUTH_SECRET` — JWT signing secret (required)
 - `NEXTAUTH_URL` — App base URL
 - `STORAGE_TYPE` — `local` or `s3`
+- `AUTH_DEBUG` — Set to `"true"` to enable NextAuth debug logging (requires `NODE_ENV=development`)
 - `DEFAULT_SLA_DAYS` — Default SLA deadline in days (30)
 
 ---
