@@ -93,6 +93,17 @@ export async function GET() {
         (f) => f.containsSpecialCategory
       ).length;
 
+      // Per-category breakdown for the heatmap grid
+      const categoryBreakdown: Record<string, { green: number; yellow: number; red: number; total: number }> = {};
+      for (const f of findings) {
+        const cat = f.dataCategory as string;
+        if (!categoryBreakdown[cat]) categoryBreakdown[cat] = { green: 0, yellow: 0, red: 0, total: 0 };
+        categoryBreakdown[cat].total++;
+        if (f.sensitivityScore >= 70) categoryBreakdown[cat].red++;
+        else if (f.sensitivityScore >= 40) categoryBreakdown[cat].yellow++;
+        else categoryBreakdown[cat].green++;
+      }
+
       return {
         systemId: sys.id,
         systemName: sys.name,
@@ -107,6 +118,7 @@ export async function GET() {
         statusCounts,
         severityCounts,
         specialCategoryCount,
+        categoryBreakdown,
       };
     });
 
@@ -134,6 +146,12 @@ export async function GET() {
       ).sort(([, a], [, b]) => b - a)
     );
 
+    // Surface warnings (e.g. Supabase not configured)
+    const _warnings: string[] = [];
+    if (!process.env.DATABASE_URL && !process.env.POSTGRES_PRISMA_URL) {
+      _warnings.push("No DATABASE_URL configured — using Prisma fallback");
+    }
+
     return NextResponse.json({
       systems: systemTiles,
       totals,
@@ -150,6 +168,7 @@ export async function GET() {
         },
         categoryCounts,
       },
+      ...(_warnings.length > 0 ? { _warnings } : {}),
     });
   } catch (error) {
     return handleApiError(error);

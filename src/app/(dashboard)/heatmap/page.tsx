@@ -32,6 +32,7 @@ interface SystemTile {
   statusCounts: StatusCounts;
   severityCounts: { INFO: number; WARNING: number; CRITICAL: number };
   specialCategoryCount: number;
+  categoryBreakdown: Record<string, Counts>;
 }
 
 interface Summary {
@@ -179,6 +180,7 @@ export default function HeatmapPage() {
   const [systems, setSystems] = useState<SystemTile[]>([]);
   const [totals, setTotals] = useState<Counts | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -191,6 +193,7 @@ export default function HeatmapPage() {
         setSystems(data.systems);
         setTotals(data.totals);
         setSummary(data.summary);
+        if (data._warnings) setWarnings(data._warnings);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
@@ -236,6 +239,15 @@ export default function HeatmapPage() {
 
   return (
     <div className="space-y-8">
+      {/* Warnings Banner */}
+      {warnings.length > 0 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+          {warnings.map((w, i) => (
+            <p key={i} className="text-sm text-amber-800">{w}</p>
+          ))}
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <h1 className="text-xl font-bold text-gray-900 md:text-2xl">
@@ -385,6 +397,84 @@ export default function HeatmapPage() {
           </div>
         </div>
       )}
+
+      {/* Heatmap Grid: Systems × Data Categories */}
+      {systems.length > 0 && (() => {
+        // Collect all categories present across all systems
+        const allCategories = Array.from(
+          new Set(systems.flatMap((s) => Object.keys(s.categoryBreakdown)))
+        ).sort();
+
+        return (
+          <div>
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">
+              Systems &times; Data Categories
+            </h2>
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <table className="min-w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="sticky left-0 z-10 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-700">
+                      System
+                    </th>
+                    {allCategories.map((cat) => (
+                      <th
+                        key={cat}
+                        className="px-2 py-2 text-center font-medium text-gray-600"
+                      >
+                        {CATEGORY_LABELS[cat] ?? cat}
+                      </th>
+                    ))}
+                    <th className="px-3 py-2 text-center font-semibold text-gray-700">
+                      Total
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {systems
+                    .sort((a, b) => b.riskScore - a.riskScore)
+                    .map((sys) => (
+                      <tr key={sys.systemId} className="border-t border-gray-100 hover:bg-gray-50">
+                        <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium text-gray-900 whitespace-nowrap">
+                          <Link href={`/heatmap/system/${sys.systemId}`} className="hover:underline">
+                            {sys.systemName}
+                          </Link>
+                        </td>
+                        {allCategories.map((cat) => {
+                          const cell = sys.categoryBreakdown[cat];
+                          if (!cell || cell.total === 0) {
+                            return (
+                              <td key={cat} className="px-2 py-2 text-center text-gray-300">
+                                &mdash;
+                              </td>
+                            );
+                          }
+                          // Color based on proportion of red findings in this cell
+                          const redRatio = cell.red / cell.total;
+                          const yellowRatio = cell.yellow / cell.total;
+                          const bg =
+                            redRatio >= 0.5
+                              ? "bg-red-100 text-red-800"
+                              : redRatio > 0 || yellowRatio >= 0.5
+                                ? "bg-yellow-50 text-yellow-800"
+                                : "bg-green-50 text-green-800";
+                          return (
+                            <td key={cat} className={`px-2 py-2 text-center font-medium ${bg}`}>
+                              {cell.total}
+                            </td>
+                          );
+                        })}
+                        <td className="px-3 py-2 text-center font-bold text-gray-900">
+                          {sys.counts.total}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* System Tiles */}
       {systems.length === 0 ? (
