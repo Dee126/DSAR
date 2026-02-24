@@ -1,74 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useToast, ToastContainer } from "@/components/Toast";
+import { fetchHeatmapOverview } from "@/features/heatmap/services/heatmapApi";
+import type {
+  HeatmapOverviewResponse,
+  HeatmapSystemRow,
+  HeatmapCounts,
+  HeatmapSummary,
+  HeatmapSortKey,
+  HeatmapFilters,
+} from "@/features/heatmap/types";
 
-/* ── Types ──────────────────────────────────────────────────────────────── */
-
-interface Counts {
-  green: number;
-  yellow: number;
-  red: number;
-  total: number;
-}
-
-interface StatusCounts {
-  OPEN: number;
-  ACCEPTED: number;
-  MITIGATING: number;
-  MITIGATED: number;
-}
-
-interface SystemTile {
-  systemId: string;
-  systemName: string;
-  systemType: string;
-  lastScanAt: string | null;
-  counts: Counts;
-  riskScore: number;
-  description: string | null;
-  criticality: string;
-  containsSpecialCategories: boolean;
-  statusCounts: StatusCounts;
-  severityCounts: { INFO: number; WARNING: number; CRITICAL: number };
-  specialCategoryCount: number;
-  categoryBreakdown: Record<string, Counts>;
-}
-
-interface Summary {
-  totalSystems: number;
-  totalFindings: number;
-  statusCounts: StatusCounts;
-  categoryCounts: Record<string, number>;
-}
-
-/* ── Helpers ────────────────────────────────────────────────────────────── */
-
-function riskBg(score: number): string {
-  if (score >= 70) return "bg-red-100 border-red-300";
-  if (score >= 40) return "bg-yellow-50 border-yellow-300";
-  return "bg-green-50 border-green-300";
-}
-
-function riskBadgeBg(score: number): string {
-  if (score >= 70) return "bg-red-600";
-  if (score >= 40) return "bg-yellow-500";
-  return "bg-green-500";
-}
-
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  return `${months}mo ago`;
-}
+/* ── Constants ─────────────────────────────────────────────────────────── */
 
 const CATEGORY_LABELS: Record<string, string> = {
   IDENTIFICATION: "Identification",
@@ -87,7 +32,95 @@ const CATEGORY_LABELS: Record<string, string> = {
   OTHER: "Other",
 };
 
-/* ── Simple Bar Chart (pure CSS) ─────────────────────────────────────── */
+const SORT_OPTIONS: { value: HeatmapSortKey; label: string }[] = [
+  { value: "risk-desc", label: "Risk: High \u2192 Low" },
+  { value: "risk-asc", label: "Risk: Low \u2192 High" },
+  { value: "findings-desc", label: "Most Findings" },
+  { value: "name-asc", label: "Name: A \u2192 Z" },
+  { value: "name-desc", label: "Name: Z \u2192 A" },
+];
+
+const DEFAULT_FILTERS: HeatmapFilters = {
+  search: "",
+  criticality: "ALL",
+  systemType: "ALL",
+  onlySpecialCategories: false,
+  onlyHighRisk: false,
+};
+
+/* ── Helpers ───────────────────────────────────────────────────────────── */
+
+function riskBg(score: number): string {
+  if (score >= 70) return "bg-red-100 border-red-300";
+  if (score >= 40) return "bg-yellow-50 border-yellow-300";
+  return "bg-green-50 border-green-300";
+}
+
+function riskBadgeBg(score: number): string {
+  if (score >= 70) return "bg-red-600";
+  if (score >= 40) return "bg-yellow-500";
+  return "bg-green-500";
+}
+
+function riskLabel(score: number): string {
+  if (score >= 70) return "High";
+  if (score >= 40) return "Medium";
+  return "Low";
+}
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  return `${months}mo ago`;
+}
+
+function isSpecialCategory(cat: string): boolean {
+  return (
+    cat.includes("HEALTH") ||
+    cat.includes("RELIGION") ||
+    cat.includes("UNION") ||
+    cat.includes("POLITICAL") ||
+    cat.includes("SPECIAL")
+  );
+}
+
+/* ── Sorting ───────────────────────────────────────────────────────────── */
+
+function sortSystems(
+  systems: HeatmapSystemRow[],
+  key: HeatmapSortKey,
+): HeatmapSystemRow[] {
+  const sorted = [...systems];
+  switch (key) {
+    case "risk-desc":
+      return sorted.sort(
+        (a, b) => b.riskScore - a.riskScore || a.systemName.localeCompare(b.systemName),
+      );
+    case "risk-asc":
+      return sorted.sort(
+        (a, b) => a.riskScore - b.riskScore || a.systemName.localeCompare(b.systemName),
+      );
+    case "findings-desc":
+      return sorted.sort(
+        (a, b) => b.counts.total - a.counts.total || b.riskScore - a.riskScore,
+      );
+    case "name-asc":
+      return sorted.sort((a, b) => a.systemName.localeCompare(b.systemName));
+    case "name-desc":
+      return sorted.sort((a, b) => b.systemName.localeCompare(a.systemName));
+    default:
+      return sorted;
+  }
+}
+
+/* ── Simple Bar Chart (pure CSS) ──────────────────────────────────────── */
 
 function HorizontalBar({
   label,
@@ -115,7 +148,7 @@ function HorizontalBar({
   );
 }
 
-/* ── Donut Chart (SVG) ───────────────────────────────────────────────── */
+/* ── Donut Chart (SVG) ────────────────────────────────────────────────── */
 
 function DonutChart({
   segments,
@@ -175,7 +208,229 @@ function DonutChart({
   );
 }
 
-/* ── Pending Decision Item ─────────────────────────────────────────── */
+/* ── System Drilldown Modal ───────────────────────────────────────────── */
+
+function SystemDrilldownModal({
+  system,
+  onClose,
+}: {
+  system: HeatmapSystemRow;
+  onClose: () => void;
+}) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  // Close on Escape key
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  // Close on overlay click
+  function handleOverlayClick(e: React.MouseEvent) {
+    if (e.target === overlayRef.current) onClose();
+  }
+
+  const catEntries = Object.entries(system.categoryBreakdown)
+    .sort(([, a], [, b]) => b.total - a.total);
+
+  return (
+    <div
+      ref={overlayRef}
+      onClick={handleOverlayClick}
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-12 sm:pt-20"
+    >
+      <div className="w-full max-w-2xl rounded-xl bg-white shadow-xl">
+        {/* Header */}
+        <div className={`flex items-start justify-between rounded-t-xl border-b px-6 py-4 ${riskBg(system.riskScore)}`}>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg font-bold text-gray-900">
+              {system.systemName}
+            </h2>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+              {system.systemType && system.systemType !== "NONE" && (
+                <span className="rounded bg-gray-200 px-1.5 py-0.5 font-medium text-gray-600">
+                  {system.systemType}
+                </span>
+              )}
+              <span className="rounded bg-gray-200 px-1.5 py-0.5 font-medium text-gray-600">
+                {system.criticality}
+              </span>
+              {system.containsSpecialCategories && (
+                <span className="rounded-full bg-red-100 px-2 py-0.5 font-medium text-red-700">
+                  Art. 9 Data
+                </span>
+              )}
+            </div>
+            {system.description && (
+              <p className="mt-1 text-xs text-gray-500">{system.description}</p>
+            )}
+          </div>
+          <div className="ml-4 flex flex-col items-center">
+            <div
+              className={`flex h-14 w-14 items-center justify-center rounded-full text-lg font-bold text-white ${riskBadgeBg(system.riskScore)}`}
+            >
+              {system.riskScore}
+            </div>
+            <span className="mt-1 text-[10px] font-medium text-gray-500">
+              {riskLabel(system.riskScore)} Risk
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="ml-3 rounded-md p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
+            aria-label="Close"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="space-y-5 px-6 py-5">
+          {/* Section 1: Risk Band Counts */}
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-gray-700">
+              Findings by Risk Band
+            </h3>
+            <div className="grid grid-cols-4 gap-3">
+              {[
+                { label: "Green (<40)", value: system.counts.green, bg: "bg-green-50 border-green-200", text: "text-green-700" },
+                { label: "Yellow (40-69)", value: system.counts.yellow, bg: "bg-yellow-50 border-yellow-200", text: "text-yellow-700" },
+                { label: "Red (\u226570)", value: system.counts.red, bg: "bg-red-50 border-red-200", text: "text-red-700" },
+                { label: "Total", value: system.counts.total, bg: "bg-gray-50 border-gray-200", text: "text-gray-900" },
+              ].map((c) => (
+                <div key={c.label} className={`rounded-lg border p-3 text-center ${c.bg}`}>
+                  <p className={`text-xl font-bold ${c.text}`}>{c.value}</p>
+                  <p className="text-[10px] text-gray-500">{c.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Section 2: Status Counts */}
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-gray-700">
+              Finding Status
+            </h3>
+            <div className="grid grid-cols-4 gap-3">
+              {([
+                { key: "OPEN", color: "bg-indigo-50 border-indigo-200", text: "text-indigo-700" },
+                { key: "ACCEPTED", color: "bg-amber-50 border-amber-200", text: "text-amber-700" },
+                { key: "MITIGATING", color: "bg-blue-50 border-blue-200", text: "text-blue-700" },
+                { key: "MITIGATED", color: "bg-emerald-50 border-emerald-200", text: "text-emerald-700" },
+              ] as const).map((s) => (
+                <div key={s.key} className={`rounded-lg border p-3 text-center ${s.color}`}>
+                  <p className={`text-xl font-bold ${s.text}`}>
+                    {system.statusCounts[s.key]}
+                  </p>
+                  <p className="text-[10px] text-gray-500">{s.key}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Section 3: Severity Counts */}
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-gray-700">
+              Severity
+            </h3>
+            <div className="grid grid-cols-3 gap-3">
+              {([
+                { key: "CRITICAL", color: "bg-red-50 border-red-200", text: "text-red-700" },
+                { key: "WARNING", color: "bg-yellow-50 border-yellow-200", text: "text-yellow-700" },
+                { key: "INFO", color: "bg-blue-50 border-blue-200", text: "text-blue-700" },
+              ] as const).map((s) => (
+                <div key={s.key} className={`rounded-lg border p-3 text-center ${s.color}`}>
+                  <p className={`text-xl font-bold ${s.text}`}>
+                    {system.severityCounts[s.key]}
+                  </p>
+                  <p className="text-[10px] text-gray-500">{s.key}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Section 4: Category Breakdown */}
+          {catEntries.length > 0 && (
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-gray-700">
+                Data Categories
+              </h3>
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="min-w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Category</th>
+                      <th className="px-2 py-2 text-center font-medium text-gray-600">Total</th>
+                      <th className="px-2 py-2 text-center font-medium text-green-600">Green</th>
+                      <th className="px-2 py-2 text-center font-medium text-yellow-600">Yellow</th>
+                      <th className="px-2 py-2 text-center font-medium text-red-600">Red</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {catEntries.map(([cat, counts]) => (
+                      <tr key={cat} className="border-t border-gray-100">
+                        <td className="px-3 py-2 font-medium text-gray-900">
+                          {CATEGORY_LABELS[cat] ?? cat}
+                          {isSpecialCategory(cat) && (
+                            <span className="ml-1.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-medium text-red-600">
+                              Art.9
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-2 py-2 text-center font-bold text-gray-900">{counts.total}</td>
+                        <td className="px-2 py-2 text-center text-green-700">{counts.green}</td>
+                        <td className="px-2 py-2 text-center text-yellow-700">{counts.yellow}</td>
+                        <td className="px-2 py-2 text-center text-red-700">{counts.red}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Section 5: Special Category Count */}
+          {system.specialCategoryCount > 0 && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+              <p className="text-sm font-medium text-red-700">
+                {system.specialCategoryCount} finding{system.specialCategoryCount !== 1 ? "s" : ""} contain Art. 9 special category data
+              </p>
+            </div>
+          )}
+
+          {/* Last scan */}
+          <p className="text-xs text-gray-400">
+            Last scan:{" "}
+            {system.lastScanAt ? relativeTime(system.lastScanAt) : "No scans"}
+          </p>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between border-t px-6 py-4">
+          <Link
+            href={`/heatmap/system/${system.systemId}`}
+            className="text-sm font-medium text-brand-600 hover:text-brand-700 hover:underline"
+          >
+            View all findings &rarr;
+          </Link>
+          <button
+            onClick={onClose}
+            className="btn-secondary text-sm"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Pending Decision Item type ───────────────────────────────────────── */
 
 interface PendingItem {
   id: string;
@@ -191,20 +446,32 @@ interface PendingItem {
   createdAt: string;
 }
 
-/* ── Page ────────────────────────────────────────────────────────────── */
+/* ── Page ──────────────────────────────────────────────────────────────── */
 
 export default function HeatmapPage() {
-  const [systems, setSystems] = useState<SystemTile[]>([]);
-  const [totals, setTotals] = useState<Counts | null>(null);
-  const [summary, setSummary] = useState<Summary | null>(null);
+  // Data state
+  const [systems, setSystems] = useState<HeatmapSystemRow[]>([]);
+  const [totals, setTotals] = useState<HeatmapCounts | null>(null);
+  const [summary, setSummary] = useState<HeatmapSummary | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Filter & sort state
+  const [filters, setFilters] = useState<HeatmapFilters>(DEFAULT_FILTERS);
+  const [sortKey, setSortKey] = useState<HeatmapSortKey>("risk-desc");
+
+  // Drilldown modal
+  const [selectedSystem, setSelectedSystem] = useState<HeatmapSystemRow | null>(null);
+
+  // Demo controls (dev-only)
   const [seeding, setSeeding] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [demoStatus, setDemoStatus] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Toast
   const { toasts, addToast } = useToast();
 
   // AI Decisions panel state (dev-only)
@@ -223,13 +490,13 @@ export default function HeatmapPage() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  /* ── Data fetching ──────────────────────────────────────────────────── */
+
   const fetchHeatmap = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/heatmap/overview");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data: HeatmapOverviewResponse = await fetchHeatmapOverview();
       setSystems(data.systems);
       setTotals(data.totals);
       setSummary(data.summary);
@@ -261,15 +528,14 @@ export default function HeatmapPage() {
     }
   }, [fetchHeatmap, fetchPending]);
 
-  const submitDecision = async (
-    findingId: string,
-    decision: string,
-  ) => {
+  /* ── AI Decisions ───────────────────────────────────────────────────── */
+
+  const submitDecision = async (findingId: string, decision: string) => {
     const reason = window.prompt(
       `Reason for "${decision}" (min 5 chars):`,
     );
     if (!reason || reason.trim().length < 5) {
-      addToast("error", "Decision cancelled — reason must be at least 5 characters.");
+      addToast("error", "Decision cancelled \u2014 reason must be at least 5 characters.");
       return;
     }
     setDecidingId(findingId);
@@ -295,6 +561,8 @@ export default function HeatmapPage() {
       setDecidingId(null);
     }
   };
+
+  /* ── Demo controls ──────────────────────────────────────────────────── */
 
   const seedDemoData = async () => {
     setSeeding(true);
@@ -339,32 +607,158 @@ export default function HeatmapPage() {
     }
   };
 
+  /* ── Derived: filter options from data ──────────────────────────────── */
+
+  const criticalityOptions = useMemo(() => {
+    const set = new Set(systems.map((s) => s.criticality));
+    return ["ALL", ...Array.from(set).sort()];
+  }, [systems]);
+
+  const systemTypeOptions = useMemo(() => {
+    const set = new Set(systems.map((s) => s.systemType).filter((t) => t && t !== "NONE"));
+    return ["ALL", ...Array.from(set).sort()];
+  }, [systems]);
+
+  /* ── Derived: filtered + sorted systems ─────────────────────────────── */
+
+  const filteredSystems = useMemo(() => {
+    let result = systems;
+
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
+      result = result.filter(
+        (s) =>
+          s.systemName.toLowerCase().includes(q) ||
+          (s.description && s.description.toLowerCase().includes(q)),
+      );
+    }
+    if (filters.criticality !== "ALL") {
+      result = result.filter((s) => s.criticality === filters.criticality);
+    }
+    if (filters.systemType !== "ALL") {
+      result = result.filter((s) => s.systemType === filters.systemType);
+    }
+    if (filters.onlySpecialCategories) {
+      result = result.filter((s) => s.containsSpecialCategories);
+    }
+    if (filters.onlyHighRisk) {
+      result = result.filter((s) => s.riskScore >= 70);
+    }
+
+    return sortSystems(result, sortKey);
+  }, [systems, filters, sortKey]);
+
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (filters.search) n++;
+    if (filters.criticality !== "ALL") n++;
+    if (filters.systemType !== "ALL") n++;
+    if (filters.onlySpecialCategories) n++;
+    if (filters.onlyHighRisk) n++;
+    return n;
+  }, [filters]);
+
+  /* ── Render: Loading ────────────────────────────────────────────────── */
+
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="h-8 w-48 animate-pulse rounded bg-gray-200" />
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-40 animate-pulse rounded-lg bg-gray-100" />
+        {/* Skeleton header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="h-7 w-52 animate-pulse rounded bg-gray-200" />
+            <div className="mt-2 h-4 w-80 animate-pulse rounded bg-gray-100" />
+          </div>
+        </div>
+        {/* Skeleton KPI cards */}
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-20 animate-pulse rounded-lg bg-gray-100" />
+          ))}
+        </div>
+        {/* Skeleton filter bar */}
+        <div className="h-10 animate-pulse rounded-lg bg-gray-100" />
+        {/* Skeleton system cards */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="h-52 animate-pulse rounded-lg bg-gray-100" />
           ))}
         </div>
       </div>
     );
   }
 
+  /* ── Render: Error ──────────────────────────────────────────────────── */
+
   if (error) {
+    const isAuthError =
+      error.includes("Authentication") || error.includes("401") || error.includes("Unauthorized");
+
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
-        <p className="text-sm text-red-700">Failed to load heatmap: {error}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="mt-2 text-sm font-medium text-red-600 hover:text-red-800"
-        >
-          Retry
-        </button>
+      <div className="space-y-4">
+        {/* Dev-only: still show demo controls when there's an error */}
+        {process.env.NODE_ENV === "development" && (
+          <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-indigo-700">
+                Demo Mode: DEMO_TENANT_ID{" "}
+                {process.env.NEXT_PUBLIC_DEMO_TENANT_ID
+                  ? process.env.NEXT_PUBLIC_DEMO_TENANT_ID.slice(0, 8) + "\u2026"
+                  : "(set in .env)"}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={seedDemoData}
+                  disabled={seeding || resetting}
+                  className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {seeding ? "Seeding\u2026" : "Seed Demo Data"}
+                </button>
+                <button
+                  onClick={resetDemoData}
+                  disabled={seeding || resetting}
+                  className="rounded bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {resetting ? "Resetting\u2026" : "Reset Demo Data"}
+                </button>
+              </div>
+            </div>
+            {demoStatus && (
+              <pre className="mt-2 max-h-40 overflow-auto rounded bg-gray-900 p-2 text-[11px] text-green-300">
+                {demoStatus}
+              </pre>
+            )}
+          </div>
+        )}
+
+        <div className="rounded-lg border border-red-200 bg-red-50 px-6 py-8 text-center">
+          {isAuthError ? (
+            <>
+              <svg className="mx-auto h-10 w-10 text-red-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+              </svg>
+              <p className="mt-3 text-sm font-medium text-red-700">Please log in to view the heatmap.</p>
+              <Link href="/login" className="mt-3 inline-block text-sm font-medium text-red-600 hover:text-red-800 hover:underline">
+                Go to login &rarr;
+              </Link>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-medium text-red-700">Failed to load heatmap: {error}</p>
+              <button
+                onClick={fetchHeatmap}
+                className="mt-3 text-sm font-medium text-red-600 hover:text-red-800 hover:underline"
+              >
+                Retry
+              </button>
+            </>
+          )}
+        </div>
       </div>
     );
   }
+
+  /* ── Render: Derived data for charts ────────────────────────────────── */
 
   const topCategories = summary
     ? Object.entries(summary.categoryCounts).slice(0, 8)
@@ -374,8 +768,16 @@ export default function HeatmapPage() {
     : 0;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <ToastContainer toasts={toasts} />
+
+      {/* Drilldown Modal */}
+      {selectedSystem && (
+        <SystemDrilldownModal
+          system={selectedSystem}
+          onClose={() => setSelectedSystem(null)}
+        />
+      )}
 
       {/* Dev-only: Demo Controls Card */}
       {process.env.NODE_ENV === "development" && (
@@ -429,10 +831,10 @@ export default function HeatmapPage() {
           </h1>
           <p className="mt-1 text-sm text-gray-500">
             System-level risk overview based on discovery findings. Click a system
-            tile to drill into individual findings.
+            card to view breakdowns, or drill into individual findings.
           </p>
         </div>
-        {/* Dev-only: More menu with Demo actions */}
+        {/* Dev-only: More menu */}
         {process.env.NODE_ENV === "development" && (
           <div className="relative" ref={menuRef}>
             <button
@@ -442,13 +844,7 @@ export default function HeatmapPage() {
               aria-expanded={menuOpen}
             >
               More
-              <svg
-                className="ml-1 -mr-0.5 inline-block h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-              >
+              <svg className="ml-1 -mr-0.5 inline-block h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
               </svg>
             </button>
@@ -463,18 +859,8 @@ export default function HeatmapPage() {
                   disabled={seeding || resetting}
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                 >
-                  <svg
-                    className="h-4 w-4 text-indigo-500"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={2}
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375"
-                    />
+                  <svg className="h-4 w-4 text-indigo-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375" />
                   </svg>
                   {seeding ? "Seeding\u2026" : "Seed Demo Data"}
                 </button>
@@ -483,18 +869,8 @@ export default function HeatmapPage() {
                   disabled={seeding || resetting}
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
                 >
-                  <svg
-                    className="h-4 w-4 text-red-500"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={2}
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
-                    />
+                  <svg className="h-4 w-4 text-red-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
                   </svg>
                   {resetting ? "Resetting\u2026" : "Reset Demo Data"}
                 </button>
@@ -509,9 +885,7 @@ export default function HeatmapPage() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Risk Distribution Donut */}
           <div className="card flex flex-col items-center gap-4">
-            <h3 className="text-sm font-semibold text-gray-700">
-              Risk Distribution
-            </h3>
+            <h3 className="text-sm font-semibold text-gray-700">Risk Distribution</h3>
             <DonutChart
               segments={[
                 { value: totals.green, color: "#22c55e", label: "Green" },
@@ -538,31 +912,13 @@ export default function HeatmapPage() {
           {/* Status Donut */}
           {summary && (
             <div className="card flex flex-col items-center gap-4">
-              <h3 className="text-sm font-semibold text-gray-700">
-                Finding Status
-              </h3>
+              <h3 className="text-sm font-semibold text-gray-700">Finding Status</h3>
               <DonutChart
                 segments={[
-                  {
-                    value: summary.statusCounts.OPEN,
-                    color: "#6366f1",
-                    label: "Open",
-                  },
-                  {
-                    value: summary.statusCounts.ACCEPTED,
-                    color: "#f59e0b",
-                    label: "Accepted",
-                  },
-                  {
-                    value: summary.statusCounts.MITIGATING,
-                    color: "#3b82f6",
-                    label: "Mitigating",
-                  },
-                  {
-                    value: summary.statusCounts.MITIGATED,
-                    color: "#10b981",
-                    label: "Mitigated",
-                  },
+                  { value: summary.statusCounts.OPEN, color: "#6366f1", label: "Open" },
+                  { value: summary.statusCounts.ACCEPTED, color: "#f59e0b", label: "Accepted" },
+                  { value: summary.statusCounts.MITIGATING, color: "#3b82f6", label: "Mitigating" },
+                  { value: summary.statusCounts.MITIGATED, color: "#10b981", label: "Mitigated" },
                 ]}
               />
               <div className="flex flex-wrap gap-4 text-xs">
@@ -588,9 +944,7 @@ export default function HeatmapPage() {
 
           {/* Top Data Categories */}
           <div className="card">
-            <h3 className="mb-3 text-sm font-semibold text-gray-700">
-              Top Data Categories
-            </h3>
+            <h3 className="mb-3 text-sm font-semibold text-gray-700">Top Data Categories</h3>
             <div className="space-y-2">
               {topCategories.map(([cat, count]) => (
                 <HorizontalBar
@@ -598,15 +952,7 @@ export default function HeatmapPage() {
                   label={CATEGORY_LABELS[cat] ?? cat}
                   value={count}
                   max={maxCatCount}
-                  color={
-                    cat.includes("HEALTH") ||
-                    cat.includes("RELIGION") ||
-                    cat.includes("UNION") ||
-                    cat.includes("POLITICAL") ||
-                    cat.includes("SPECIAL")
-                      ? "bg-red-500"
-                      : "bg-brand-500"
-                  }
+                  color={isSpecialCategory(cat) ? "bg-red-500" : "bg-brand-500"}
                 />
               ))}
               {topCategories.length === 0 && (
@@ -621,9 +967,7 @@ export default function HeatmapPage() {
       {totals && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div className="card text-center">
-            <p className="text-2xl font-bold text-gray-900">
-              {systems.length}
-            </p>
+            <p className="text-2xl font-bold text-gray-900">{systems.length}</p>
             <p className="text-xs text-gray-500">Systems Scanned</p>
           </div>
           <div className="card text-center">
@@ -635,9 +979,7 @@ export default function HeatmapPage() {
             <p className="text-xs text-gray-500">High Risk</p>
           </div>
           <div className="card text-center">
-            <p className="text-2xl font-bold text-green-600">
-              {summary?.statusCounts.MITIGATED ?? 0}
-            </p>
+            <p className="text-2xl font-bold text-green-600">{summary?.statusCounts.MITIGATED ?? 0}</p>
             <p className="text-xs text-gray-500">Mitigated</p>
           </div>
         </div>
@@ -655,19 +997,13 @@ export default function HeatmapPage() {
               {pendingItems.length !== 1 ? "s" : ""}
             </span>
             <svg
-              className={`h-4 w-4 text-amber-600 transition-transform ${
-                pendingOpen ? "rotate-180" : ""
-              }`}
+              className={`h-4 w-4 text-amber-600 transition-transform ${pendingOpen ? "rotate-180" : ""}`}
               fill="none"
               viewBox="0 0 24 24"
               strokeWidth={2}
               stroke="currentColor"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="m19.5 8.25-7.5 7.5-7.5-7.5"
-              />
+              <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
             </svg>
           </button>
 
@@ -680,13 +1016,10 @@ export default function HeatmapPage() {
                     className="flex flex-col gap-2 rounded-md border border-gray-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-gray-900">
-                        {item.summary}
-                      </p>
+                      <p className="truncate text-sm font-medium text-gray-900">{item.summary}</p>
                       <div className="mt-1 flex flex-wrap gap-2 text-xs">
                         <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">
-                          {CATEGORY_LABELS[item.dataCategory] ??
-                            item.dataCategory}
+                          {CATEGORY_LABELS[item.dataCategory] ?? item.dataCategory}
                         </span>
                         {item.aiSuggestedAction && (
                           <span
@@ -713,27 +1046,21 @@ export default function HeatmapPage() {
                     </div>
                     <div className="flex shrink-0 gap-1.5">
                       <button
-                        onClick={() =>
-                          submitDecision(item.id, "APPROVE_DELETE")
-                        }
+                        onClick={() => submitDecision(item.id, "APPROVE_DELETE")}
                         disabled={decidingId === item.id}
                         className="rounded bg-red-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
                       >
                         Approve Delete
                       </button>
                       <button
-                        onClick={() =>
-                          submitDecision(item.id, "REJECT_DELETE")
-                        }
+                        onClick={() => submitDecision(item.id, "REJECT_DELETE")}
                         disabled={decidingId === item.id}
                         className="rounded bg-gray-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
                       >
                         Reject
                       </button>
                       <button
-                        onClick={() =>
-                          submitDecision(item.id, "NEEDS_LEGAL")
-                        }
+                        onClick={() => submitDecision(item.id, "NEEDS_LEGAL")}
                         disabled={decidingId === item.id}
                         className="rounded bg-amber-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
                       >
@@ -753,9 +1080,106 @@ export default function HeatmapPage() {
         </div>
       )}
 
-      {/* Heatmap Grid: Systems × Data Categories */}
+      {/* Filter + Sort Row */}
+      {systems.length > 0 && (
+        <div className="card">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Search */}
+            <div className="relative flex-1 min-w-[180px]">
+              <svg
+                className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search systems\u2026"
+                value={filters.search}
+                onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
+                className="w-full rounded-md border border-gray-300 bg-white py-1.5 pl-8 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              />
+            </div>
+
+            {/* Criticality dropdown */}
+            <select
+              value={filters.criticality}
+              onChange={(e) => setFilters((f) => ({ ...f, criticality: e.target.value }))}
+              className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            >
+              {criticalityOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt === "ALL" ? "All Criticality" : opt}
+                </option>
+              ))}
+            </select>
+
+            {/* System Type dropdown */}
+            <select
+              value={filters.systemType}
+              onChange={(e) => setFilters((f) => ({ ...f, systemType: e.target.value }))}
+              className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            >
+              {systemTypeOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt === "ALL" ? "All Types" : opt}
+                </option>
+              ))}
+            </select>
+
+            {/* Special Categories toggle */}
+            <label className="flex cursor-pointer items-center gap-1.5 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={filters.onlySpecialCategories}
+                onChange={(e) => setFilters((f) => ({ ...f, onlySpecialCategories: e.target.checked }))}
+                className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+              />
+              Art. 9
+            </label>
+
+            {/* High Risk toggle */}
+            <label className="flex cursor-pointer items-center gap-1.5 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={filters.onlyHighRisk}
+                onChange={(e) => setFilters((f) => ({ ...f, onlyHighRisk: e.target.checked }))}
+                className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+              />
+              High Risk
+            </label>
+
+            {/* Sort dropdown */}
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as HeatmapSortKey)}
+              className="ml-auto rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            >
+              {SORT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+
+            {/* Clear filters */}
+            {activeFilterCount > 0 && (
+              <button
+                onClick={() => setFilters(DEFAULT_FILTERS)}
+                className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline"
+              >
+                Clear ({activeFilterCount})
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Heatmap Grid: Systems x Data Categories */}
       {systems.length > 0 && (() => {
-        // Collect all categories present across all systems
         const allCategories = Array.from(
           new Set(systems.flatMap((s) => Object.keys(s.categoryBreakdown)))
         ).sort();
@@ -773,57 +1197,52 @@ export default function HeatmapPage() {
                       System
                     </th>
                     {allCategories.map((cat) => (
-                      <th
-                        key={cat}
-                        className="px-2 py-2 text-center font-medium text-gray-600"
-                      >
+                      <th key={cat} className="px-2 py-2 text-center font-medium text-gray-600">
                         {CATEGORY_LABELS[cat] ?? cat}
                       </th>
                     ))}
-                    <th className="px-3 py-2 text-center font-semibold text-gray-700">
-                      Total
-                    </th>
+                    <th className="px-3 py-2 text-center font-semibold text-gray-700">Total</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {systems
-                    .sort((a, b) => b.riskScore - a.riskScore)
-                    .map((sys) => (
-                      <tr key={sys.systemId} className="border-t border-gray-100 hover:bg-gray-50">
-                        <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium text-gray-900 whitespace-nowrap">
-                          <Link href={`/heatmap/system/${sys.systemId}`} className="hover:underline">
-                            {sys.systemName}
-                          </Link>
-                        </td>
-                        {allCategories.map((cat) => {
-                          const cell = sys.categoryBreakdown[cat];
-                          if (!cell || cell.total === 0) {
-                            return (
-                              <td key={cat} className="px-2 py-2 text-center text-gray-300">
-                                &mdash;
-                              </td>
-                            );
-                          }
-                          // Color based on proportion of red findings in this cell
-                          const redRatio = cell.red / cell.total;
-                          const yellowRatio = cell.yellow / cell.total;
-                          const bg =
-                            redRatio >= 0.5
-                              ? "bg-red-100 text-red-800"
-                              : redRatio > 0 || yellowRatio >= 0.5
-                                ? "bg-yellow-50 text-yellow-800"
-                                : "bg-green-50 text-green-800";
+                  {filteredSystems.map((sys) => (
+                    <tr key={sys.systemId} className="border-t border-gray-100 hover:bg-gray-50">
+                      <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium text-gray-900 whitespace-nowrap">
+                        <button
+                          onClick={() => setSelectedSystem(sys)}
+                          className="text-left hover:underline hover:text-brand-600"
+                        >
+                          {sys.systemName}
+                        </button>
+                      </td>
+                      {allCategories.map((cat) => {
+                        const cell = sys.categoryBreakdown[cat];
+                        if (!cell || cell.total === 0) {
                           return (
-                            <td key={cat} className={`px-2 py-2 text-center font-medium ${bg}`}>
-                              {cell.total}
+                            <td key={cat} className="px-2 py-2 text-center text-gray-300">
+                              &mdash;
                             </td>
                           );
-                        })}
-                        <td className="px-3 py-2 text-center font-bold text-gray-900">
-                          {sys.counts.total}
-                        </td>
-                      </tr>
-                    ))}
+                        }
+                        const redRatio = cell.red / cell.total;
+                        const yellowRatio = cell.yellow / cell.total;
+                        const bg =
+                          redRatio >= 0.5
+                            ? "bg-red-100 text-red-800"
+                            : redRatio > 0 || yellowRatio >= 0.5
+                              ? "bg-yellow-50 text-yellow-800"
+                              : "bg-green-50 text-green-800";
+                        return (
+                          <td key={cat} className={`px-2 py-2 text-center font-medium ${bg}`}>
+                            {cell.total}
+                          </td>
+                        );
+                      })}
+                      <td className="px-3 py-2 text-center font-bold text-gray-900">
+                        {sys.counts.total}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -831,7 +1250,7 @@ export default function HeatmapPage() {
         );
       })()}
 
-      {/* System Tiles */}
+      {/* System Cards Grid */}
       {systems.length === 0 ? (
         <div className="card text-center py-12">
           <svg
@@ -854,25 +1273,36 @@ export default function HeatmapPage() {
         </div>
       ) : (
         <div>
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">
-            Systems ({systems.length})
-          </h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {systems
-              .sort((a, b) => b.riskScore - a.riskScore)
-              .map((tile) => (
-                <Link
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Systems ({filteredSystems.length}
+              {filteredSystems.length !== systems.length && ` of ${systems.length}`})
+            </h2>
+          </div>
+
+          {filteredSystems.length === 0 ? (
+            <div className="card py-8 text-center">
+              <p className="text-sm text-gray-500">
+                No systems match the current filters.
+              </p>
+              <button
+                onClick={() => setFilters(DEFAULT_FILTERS)}
+                className="mt-2 text-sm font-medium text-brand-600 hover:text-brand-700 hover:underline"
+              >
+                Clear filters
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {filteredSystems.map((tile) => (
+                <button
                   key={tile.systemId}
-                  href={`/heatmap/system/${tile.systemId}`}
-                  className={`relative rounded-lg border-2 p-4 transition-shadow hover:shadow-md ${riskBg(
-                    tile.riskScore
-                  )}`}
+                  onClick={() => setSelectedSystem(tile)}
+                  className={`relative rounded-lg border-2 p-4 text-left transition-shadow hover:shadow-md ${riskBg(tile.riskScore)}`}
                 >
                   {/* Risk Score Badge */}
                   <div
-                    className={`absolute -right-2 -top-2 flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white ${riskBadgeBg(
-                      tile.riskScore
-                    )}`}
+                    className={`absolute -right-2 -top-2 flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white ${riskBadgeBg(tile.riskScore)}`}
                   >
                     {tile.riskScore}
                   </div>
@@ -887,11 +1317,9 @@ export default function HeatmapPage() {
                         {tile.systemType}
                       </span>
                     )}
-                    {tile.description && (
-                      <p className="truncate text-xs text-gray-500">
-                        {tile.description}
-                      </p>
-                    )}
+                    <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">
+                      {tile.criticality}
+                    </span>
                   </div>
 
                   {/* Risk band mini-bar */}
@@ -899,33 +1327,21 @@ export default function HeatmapPage() {
                     {tile.counts.green > 0 && (
                       <div
                         className="bg-green-500"
-                        style={{
-                          width: `${
-                            (tile.counts.green / tile.counts.total) * 100
-                          }%`,
-                        }}
+                        style={{ width: `${(tile.counts.green / tile.counts.total) * 100}%` }}
                         title={`${tile.counts.green} green`}
                       />
                     )}
                     {tile.counts.yellow > 0 && (
                       <div
                         className="bg-yellow-500"
-                        style={{
-                          width: `${
-                            (tile.counts.yellow / tile.counts.total) * 100
-                          }%`,
-                        }}
+                        style={{ width: `${(tile.counts.yellow / tile.counts.total) * 100}%` }}
                         title={`${tile.counts.yellow} yellow`}
                       />
                     )}
                     {tile.counts.red > 0 && (
                       <div
                         className="bg-red-500"
-                        style={{
-                          width: `${
-                            (tile.counts.red / tile.counts.total) * 100
-                          }%`,
-                        }}
+                        style={{ width: `${(tile.counts.red / tile.counts.total) * 100}%` }}
                         title={`${tile.counts.red} red`}
                       />
                     )}
@@ -946,20 +1362,19 @@ export default function HeatmapPage() {
                       {tile.counts.red}
                     </span>
                     <span className="ml-auto text-gray-500">
-                      {tile.counts.total} finding
-                      {tile.counts.total !== 1 ? "s" : ""}
+                      {tile.counts.total} finding{tile.counts.total !== 1 ? "s" : ""}
                     </span>
                   </div>
 
                   {/* Special category flag */}
-                  {tile.specialCategoryCount > 0 && (
+                  {tile.containsSpecialCategories && (
                     <div className="mt-2 inline-flex rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">
-                      Art. 9: {tile.specialCategoryCount} special category
+                      Art. 9 {tile.specialCategoryCount > 0 && `(${tile.specialCategoryCount})`}
                     </div>
                   )}
 
                   {/* Status row */}
-                  <div className="mt-2 flex gap-2 text-[10px] text-gray-500">
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-gray-500">
                     {tile.statusCounts.OPEN > 0 && (
                       <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-indigo-700">
                         {tile.statusCounts.OPEN} open
@@ -982,14 +1397,14 @@ export default function HeatmapPage() {
                     )}
                   </div>
 
-                  {/* Last scan timestamp (relative) */}
+                  {/* Last scan timestamp */}
                   <p className="mt-2 text-[10px] text-gray-400">
-                    Last scan:{" "}
-                    {tile.lastScanAt ? relativeTime(tile.lastScanAt) : "Never"}
+                    Last scan: {tile.lastScanAt ? relativeTime(tile.lastScanAt) : "No scans"}
                   </p>
-                </Link>
+                </button>
               ))}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>
