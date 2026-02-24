@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           ok: false,
-          error: "DEMO_TENANT_ID not found",
+          error: "Tenant not found",
           effectiveTenantId,
           detail: `effectiveTenantId "${effectiveTenantId}" does not exist in the tenant table. Check DEMO_TENANT_ID or seed the tenant first.`,
         },
