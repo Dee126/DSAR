@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
@@ -183,25 +183,42 @@ export default function HeatmapPage() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [seeding, setSeeding] = useState(false);
+
+  const fetchHeatmap = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/heatmap/overview");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setSystems(data.systems);
+      setTotals(data.totals);
+      setSummary(data.summary);
+      if (data._warnings) setWarnings(data._warnings);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function fetchHeatmap() {
-      try {
-        const res = await fetch("/api/heatmap/overview");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        setSystems(data.systems);
-        setTotals(data.totals);
-        setSummary(data.summary);
-        if (data._warnings) setWarnings(data._warnings);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setLoading(false);
-      }
-    }
     fetchHeatmap();
-  }, []);
+  }, [fetchHeatmap]);
+
+  const seedDemoData = async () => {
+    setSeeding(true);
+    try {
+      const res = await fetch("/api/demo/seed-heatmap");
+      if (!res.ok) throw new Error(`Seed failed: HTTP ${res.status}`);
+      await fetchHeatmap();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSeeding(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -249,14 +266,25 @@ export default function HeatmapPage() {
       )}
 
       {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-gray-900 md:text-2xl">
-          DPO Risk Heatmap
-        </h1>
-        <p className="mt-1 text-sm text-gray-500">
-          System-level risk overview based on discovery findings. Click a system
-          tile to drill into individual findings.
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 md:text-2xl">
+            DPO Risk Heatmap
+          </h1>
+          <p className="mt-1 text-sm text-gray-500">
+            System-level risk overview based on discovery findings. Click a system
+            tile to drill into individual findings.
+          </p>
+        </div>
+        {process.env.NODE_ENV === "development" && (
+          <button
+            onClick={seedDemoData}
+            disabled={seeding}
+            className="shrink-0 rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {seeding ? "Seeding\u2026" : "Seed Heatmap Demo Data"}
+          </button>
+        )}
       </div>
 
       {/* Summary Charts */}

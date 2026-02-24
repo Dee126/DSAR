@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     if (runId) findingsWhere.runId = runId;
 
     const systemRows = await prisma.system.findMany({
-      where: { tenantId: user.tenantId },
+      where: { tenantId: user.tenantId, inScopeForDsar: true },
       select: {
         id: true,
         name: true,
@@ -52,6 +52,8 @@ export async function GET(request: NextRequest) {
             sensitivityScore: true,
             status: true,
             severity: true,
+            dataCategory: true,
+            containsSpecialCategory: true,
             createdAt: true,
           },
         },
@@ -63,6 +65,8 @@ export async function GET(request: NextRequest) {
     let totalYellow = 0;
     let totalRed = 0;
     let totalFindings = 0;
+    const globalStatusCounts = { OPEN: 0, ACCEPTED: 0, MITIGATING: 0, MITIGATED: 0 };
+    const globalCategoryCounts: Record<string, number> = {};
 
     const systems = systemRows.map((sys) => {
       const findings = sys.findings ?? [];
@@ -87,27 +91,71 @@ export async function GET(request: NextRequest) {
               .filter(Boolean)
               .sort((a, b) => +new Date(b) - +new Date(a))[0] ?? null;
 
+      // Per-system status counts
+      const statusCounts = { OPEN: 0, ACCEPTED: 0, MITIGATING: 0, MITIGATED: 0 };
+      for (const f of findings) {
+        if (f.status in statusCounts) statusCounts[f.status as keyof typeof statusCounts]++;
+      }
+
+      // Per-system severity counts
+      const severityCounts = { INFO: 0, WARNING: 0, CRITICAL: 0 };
+      for (const f of findings) {
+        if (f.severity in severityCounts) severityCounts[f.severity as keyof typeof severityCounts]++;
+      }
+
+      // Special category count
+      const specialCategoryCount = findings.filter((f) => f.containsSpecialCategory).length;
+
+      // Per-system category breakdown with risk bands
+      const categoryBreakdown: Record<string, { total: number; green: number; yellow: number; red: number }> = {};
+      for (const f of findings) {
+        const cat = f.dataCategory;
+        if (!categoryBreakdown[cat]) categoryBreakdown[cat] = { total: 0, green: 0, yellow: 0, red: 0 };
+        categoryBreakdown[cat].total++;
+        const s = f.sensitivityScore ?? 0;
+        if (s >= 70) categoryBreakdown[cat].red++;
+        else if (s >= 40) categoryBreakdown[cat].yellow++;
+        else categoryBreakdown[cat].green++;
+      }
+
+      // Accumulate globals
       totalGreen += green;
       totalYellow += yellow;
       totalRed += red;
       totalFindings += total;
+      for (const key of Object.keys(statusCounts) as (keyof typeof statusCounts)[]) {
+        globalStatusCounts[key] += statusCounts[key];
+      }
+      for (const f of findings) {
+        globalCategoryCounts[f.dataCategory] = (globalCategoryCounts[f.dataCategory] ?? 0) + 1;
+      }
 
       return {
         systemId: sys.id,
-        name: sys.name,
-        connectorType: sys.connectorType,
+        systemName: sys.name,
+        systemType: sys.connectorType,
         description: sys.description,
         criticality: sys.criticality,
         containsSpecialCategories: sys.containsSpecialCategories,
         counts: { total, green, yellow, red },
         riskScore,
         lastScanAt,
+        statusCounts,
+        severityCounts,
+        specialCategoryCount,
+        categoryBreakdown,
       };
     });
+
+    // Sort categories by count descending for the summary
+    const sortedCategoryCounts = Object.fromEntries(
+      Object.entries(globalCategoryCounts).sort(([, a], [, b]) => b - a),
+    );
 
     const totals = {
       systems: systemRows.length,
       findings: totalFindings,
+      total: totalFindings,
       green: totalGreen,
       yellow: totalYellow,
       red: totalRed,
@@ -122,6 +170,10 @@ export async function GET(request: NextRequest) {
 
     const summary = {
       overallRiskScore: overallRisk,
+      totalSystems: systemRows.length,
+      totalFindings,
+      statusCounts: globalStatusCounts,
+      categoryCounts: sortedCategoryCounts,
       scope: {
         caseId: caseId ?? null,
         runId: runId ?? null,
