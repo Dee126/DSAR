@@ -1,25 +1,113 @@
-import { NextResponse } from "next/server";
+export const dynamic = "force-dynamic";
+
+import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { checkPermission } from "@/lib/rbac";
 import { handleApiError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
 
-export const dynamic = "force-dynamic";
-
 /**
- * GET /api/heatmap
+ * GET /api/heatmap?caseId=...&runId=...
  *
- * Legacy endpoint — redirects shape to match /api/heatmap/overview contract.
- * Uses sensitivityScore for risk bands (green < 40, yellow 40-69, red >= 70).
- * riskScore = weighted average: (red*100 + yellow*60 + green*20) / total.
+ * Legacy endpoint — mirrors /api/heatmap/overview contract with additional
+ * backward-compatible fields (tiles, riskBands, overallRiskScore).
+ *
+ * Uses the same active-scope resolution and fallback strategy as /overview.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth();
     checkPermission(user.role, "data_inventory", "read");
 
+    const { searchParams } = new URL(request.url);
+
+    // ── 1. Resolve active scope ──────────────────────────────────────────────
+    let activeCaseId = searchParams.get("caseId") ?? undefined;
+    let activeRunId = searchParams.get("runId") ?? undefined;
+
+    if (!activeRunId) {
+      const latestRun = await prisma.copilotRun.findFirst({
+        where: { tenantId: user.tenantId },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+      activeRunId = latestRun?.id;
+    }
+
+    if (!activeCaseId) {
+      const latestCase = await prisma.dSARCase.findFirst({
+        where: { tenantId: user.tenantId },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+      activeCaseId = latestCase?.id;
+    }
+
+    // ── 2. Query findings with fallback ──────────────────────────────────────
+    const baseWhere = {
+      tenantId: user.tenantId,
+      systemId: { not: null } as { not: null },
+    };
+
+    const primaryWhere = {
+      ...baseWhere,
+      ...(activeCaseId ? { caseId: activeCaseId } : {}),
+      ...(activeRunId ? { runId: activeRunId } : {}),
+    };
+
+    let usedClause: "primary" | "fallback" = "primary";
+
+    let allFindings = await prisma.finding.findMany({
+      where: primaryWhere,
+      select: {
+        id: true,
+        systemId: true,
+        sensitivityScore: true,
+        riskScore: true,
+        severity: true,
+        status: true,
+        dataCategory: true,
+        containsSpecialCategory: true,
+        createdAt: true,
+      },
+    });
+
+    if (allFindings.length === 0) {
+      usedClause = "fallback";
+      allFindings = await prisma.finding.findMany({
+        where: baseWhere,
+        select: {
+          id: true,
+          systemId: true,
+          sensitivityScore: true,
+          riskScore: true,
+          severity: true,
+          status: true,
+          dataCategory: true,
+          containsSpecialCategory: true,
+          createdAt: true,
+        },
+      });
+    }
+
+    if (process.env.NODE_ENV === "development") {
+      console.log(
+        "[heatmap]",
+        JSON.stringify({
+          tenantId: user.tenantId,
+          activeCaseId: activeCaseId ?? null,
+          activeRunId: activeRunId ?? null,
+          clause: usedClause,
+          findingsCount: allFindings.length,
+        })
+      );
+    }
+
+    // ── 3. Group by system ───────────────────────────────────────────────────
+    const systemIds = Array.from(new Set(allFindings.map((f) => f.systemId!)));
+
     const systems = await prisma.system.findMany({
-      where: { tenantId: user.tenantId, inScopeForDsar: true },
+      where: { id: { in: systemIds }, tenantId: user.tenantId },
       select: {
         id: true,
         name: true,
@@ -27,82 +115,85 @@ export async function GET() {
         description: true,
         criticality: true,
         containsSpecialCategories: true,
-        findings: {
-          select: {
-            id: true,
-            sensitivityScore: true,
-            riskScore: true,
-            severity: true,
-            status: true,
-            dataCategory: true,
-            containsSpecialCategory: true,
-            createdAt: true,
-          },
-        },
       },
-      orderBy: { name: "asc" },
     });
 
-    const tiles = systems.map((sys) => {
-      const findings = sys.findings;
-      const total = findings.length;
+    const systemMap = new Map(systems.map((s) => [s.id, s]));
 
-      const green = findings.filter((f) => f.sensitivityScore < 40).length;
-      const yellow = findings.filter(
-        (f) => f.sensitivityScore >= 40 && f.sensitivityScore < 70
-      ).length;
-      const red = findings.filter((f) => f.sensitivityScore >= 70).length;
+    const findingsBySystem = new Map<string, typeof allFindings>();
+    for (const f of allFindings) {
+      const sid = f.systemId!;
+      if (!findingsBySystem.has(sid)) findingsBySystem.set(sid, []);
+      findingsBySystem.get(sid)!.push(f);
+    }
 
-      const riskScore =
-        total > 0
-          ? Math.round((red * 100 + yellow * 60 + green * 20) / total)
-          : 0;
+    // ── 4. Build tiles ───────────────────────────────────────────────────────
+    const tiles = systemIds
+      .map((sid) => {
+        const sys = systemMap.get(sid);
+        if (!sys) return null;
 
-      const lastScanAt =
-        findings.length > 0
-          ? findings.reduce(
-              (latest, f) => (f.createdAt > latest ? f.createdAt : latest),
-              findings[0].createdAt
-            )
-          : null;
+        const findings = findingsBySystem.get(sid) ?? [];
+        const total = findings.length;
 
-      const statusCounts = {
-        OPEN: findings.filter((f) => f.status === "OPEN").length,
-        ACCEPTED: findings.filter((f) => f.status === "ACCEPTED").length,
-        MITIGATING: findings.filter((f) => f.status === "MITIGATING").length,
-        MITIGATED: findings.filter((f) => f.status === "MITIGATED").length,
-      };
+        const green = findings.filter((f) => f.sensitivityScore < 40).length;
+        const yellow = findings.filter(
+          (f) => f.sensitivityScore >= 40 && f.sensitivityScore < 70
+        ).length;
+        const red = findings.filter((f) => f.sensitivityScore >= 70).length;
 
-      const severityCounts = {
-        INFO: findings.filter((f) => f.severity === "INFO").length,
-        WARNING: findings.filter((f) => f.severity === "WARNING").length,
-        CRITICAL: findings.filter((f) => f.severity === "CRITICAL").length,
-      };
+        const riskScore =
+          total > 0
+            ? Math.round((red * 100 + yellow * 60 + green * 20) / total)
+            : 0;
 
-      const specialCategoryCount = findings.filter(
-        (f) => f.containsSpecialCategory
-      ).length;
+        const lastScanAt =
+          findings.length > 0
+            ? findings.reduce(
+                (latest, f) =>
+                  f.createdAt > latest ? f.createdAt : latest,
+                findings[0].createdAt
+              )
+            : null;
 
-      return {
-        systemId: sys.id,
-        systemName: sys.name,
-        systemType: sys.connectorType,
-        description: sys.description,
-        criticality: sys.criticality,
-        containsSpecialCategories: sys.containsSpecialCategories,
-        totalFindings: total,
-        counts: { green, yellow, red, total },
-        riskScore,
-        overallRiskScore: riskScore,
-        riskBands: { green, yellow, red },
-        statusCounts,
-        severityCounts,
-        specialCategoryCount,
-        lastScanAt: lastScanAt ? lastScanAt.toISOString() : null,
-      };
-    });
+        const statusCounts = {
+          OPEN: findings.filter((f) => f.status === "OPEN").length,
+          ACCEPTED: findings.filter((f) => f.status === "ACCEPTED").length,
+          MITIGATING: findings.filter((f) => f.status === "MITIGATING").length,
+          MITIGATED: findings.filter((f) => f.status === "MITIGATED").length,
+        };
 
-    const allFindings = systems.flatMap((s) => s.findings);
+        const severityCounts = {
+          INFO: findings.filter((f) => f.severity === "INFO").length,
+          WARNING: findings.filter((f) => f.severity === "WARNING").length,
+          CRITICAL: findings.filter((f) => f.severity === "CRITICAL").length,
+        };
+
+        const specialCategoryCount = findings.filter(
+          (f) => f.containsSpecialCategory
+        ).length;
+
+        return {
+          systemId: sys.id,
+          systemName: sys.name,
+          systemType: sys.connectorType,
+          description: sys.description,
+          criticality: sys.criticality,
+          containsSpecialCategories: sys.containsSpecialCategories,
+          totalFindings: total,
+          counts: { green, yellow, red, total },
+          riskScore,
+          overallRiskScore: riskScore,
+          riskBands: { green, yellow, red },
+          statusCounts,
+          severityCounts,
+          specialCategoryCount,
+          lastScanAt: lastScanAt ? lastScanAt.toISOString() : null,
+        };
+      })
+      .filter(Boolean);
+
+    // ── 5. Totals & summary ──────────────────────────────────────────────────
     const totals = {
       green: allFindings.filter((f) => f.sensitivityScore < 40).length,
       yellow: allFindings.filter(
@@ -113,7 +204,7 @@ export async function GET() {
     };
 
     const summary = {
-      totalSystems: systems.length,
+      totalSystems: systemIds.length,
       totalFindings: allFindings.length,
       riskBands: { ...totals },
       statusCounts: {
