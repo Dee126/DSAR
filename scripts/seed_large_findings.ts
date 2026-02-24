@@ -281,8 +281,8 @@ async function main() {
     runId: string;
     evidenceItemId: string;
     detectorType: string;
-    detectedElements: unknown;
-    detectedCategories: unknown;
+    detectedElements: { elementType: string; confidence: number; snippetPreview: string }[];
+    detectedCategories: { category: string; confidence: number }[];
     containsSpecialCategorySuspected: boolean;
   }> = [];
   let totalDetectorResults = 0;
