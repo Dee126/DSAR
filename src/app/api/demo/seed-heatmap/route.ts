@@ -155,7 +155,30 @@ export async function POST(request: NextRequest) {
       checkPermission(user.role, "data_inventory", "read");
     }
 
-    const tenantId = user.tenantId;
+    // Dev-only: allow DEMO_TENANT_ID to override tenant scoping so seeded
+    // data lands in the correct tenant even when the session user belongs
+    // to a different (auto-created) tenant.
+    const effectiveTenantId =
+      process.env.NODE_ENV === "development" && process.env.DEMO_TENANT_ID
+        ? process.env.DEMO_TENANT_ID
+        : user.tenantId;
+
+    // Guard: verify the effective tenant actually exists in the DB
+    const tenantExists = await prisma.tenant.findUnique({
+      where: { id: effectiveTenantId },
+      select: { id: true },
+    });
+    if (!tenantExists) {
+      return NextResponse.json(
+        {
+          error: "Tenant not found",
+          detail: `effectiveTenantId "${effectiveTenantId}" does not exist in the tenant table. Check DEMO_TENANT_ID or seed the tenant first.`,
+        },
+        { status: 400 },
+      );
+    }
+
+    const tenantId = effectiveTenantId;
 
     // ── 1. Clean up previous demo data ──────────────────────────────────
     const oldDemoSystems = await prisma.system.findMany({

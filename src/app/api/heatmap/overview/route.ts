@@ -22,6 +22,29 @@ export async function GET(request: NextRequest) {
     const user = await requireAuth();
     checkPermission(user.role, "data_inventory", "read");
 
+    // Dev-only: allow DEMO_TENANT_ID to override tenant scoping so the
+    // heatmap reads from the correct tenant even when the session user
+    // belongs to a different (auto-created) tenant.
+    const effectiveTenantId =
+      process.env.NODE_ENV === "development" && process.env.DEMO_TENANT_ID
+        ? process.env.DEMO_TENANT_ID
+        : user.tenantId;
+
+    // Guard: verify the effective tenant actually exists in the DB
+    const tenantExists = await prisma.tenant.findUnique({
+      where: { id: effectiveTenantId },
+      select: { id: true },
+    });
+    if (!tenantExists) {
+      return NextResponse.json(
+        {
+          error: "Tenant not found",
+          detail: `effectiveTenantId "${effectiveTenantId}" does not exist in the tenant table. Check DEMO_TENANT_ID or seed the tenant first.`,
+        },
+        { status: 400 },
+      );
+    }
+
     const sp = request.nextUrl.searchParams;
     const caseId = sp.get("caseId") || undefined;
     const runId = sp.get("runId") || undefined;
@@ -36,11 +59,12 @@ export async function GET(request: NextRequest) {
     let debug: Record<string, unknown> | undefined;
     if (process.env.NODE_ENV === "development") {
       const totalSystemsForTenant = await prisma.system.count({
-        where: { tenantId: user.tenantId },
+        where: { tenantId: effectiveTenantId },
       });
       const totalSystemsAllTenants = await prisma.system.count();
       debug = {
         userTenantId: user.tenantId,
+        effectiveTenantId,
         totalSystemsForTenant,
         totalSystemsAllTenants,
       };
@@ -48,7 +72,7 @@ export async function GET(request: NextRequest) {
     }
 
     const systemRows = await prisma.system.findMany({
-      where: { tenantId: user.tenantId },
+      where: { tenantId: effectiveTenantId },
       include: {
         findings: {
           where: Object.keys(findingsWhere).length > 0 ? findingsWhere : undefined,
