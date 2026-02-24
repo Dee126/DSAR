@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { checkPermission } from "@/lib/rbac";
-import { handleApiError } from "@/lib/errors";
+import { handleApiError, ApiError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
 import {
   FindingSeverity,
@@ -64,6 +63,20 @@ const DEMO_SYSTEMS: {
     criticality: "HIGH",
     containsSpecialCategories: true,
   },
+  {
+    name: "SharePoint Document Hub",
+    connectorType: "M365",
+    description: `${DEMO_TAG} Corporate file storage — contracts, policies, reports`,
+    criticality: "MEDIUM",
+    containsSpecialCategories: false,
+  },
+  {
+    name: "M365 Mailbox (Exchange Online)",
+    connectorType: "M365",
+    description: `${DEMO_TAG} Email and calendar — employee communications`,
+    criticality: "HIGH",
+    containsSpecialCategories: true,
+  },
 ];
 
 const DATA_CATEGORIES: DataCategory[] = [
@@ -73,6 +86,8 @@ const DATA_CATEGORIES: DataCategory[] = [
   "COMMUNICATION",
   "IDENTIFICATION",
   "HEALTH",
+  "CONTRACT",
+  "ONLINE_TECHNICAL",
 ];
 
 function rand(min: number, max: number): number {
@@ -90,15 +105,59 @@ function randomDate(daysBack: number): Date {
   return d;
 }
 
+/** Weighted sensitivity: ~40% low, ~35% medium, ~25% high */
+function weightedSensitivity(): number {
+  const r = Math.random();
+  if (r < 0.4) return rand(5, 39);
+  if (r < 0.75) return rand(40, 69);
+  return rand(70, 95);
+}
+
+function sensitivityToSeverity(score: number): FindingSeverity {
+  if (score >= 70) return "CRITICAL";
+  if (score >= 40) return "WARNING";
+  return "INFO";
+}
+
+/** Weighted status: ~55% OPEN, ~15% ACCEPTED, ~15% MITIGATING, ~15% MITIGATED */
+function weightedStatus(): FindingStatus {
+  const r = Math.random();
+  if (r < 0.55) return "OPEN";
+  if (r < 0.7) return "ACCEPTED";
+  if (r < 0.85) return "MITIGATING";
+  return "MITIGATED";
+}
+
+const FINDINGS_PER_SYSTEM = 20;
+
 /**
  * GET /api/demo/seed-heatmap
- * Seeds demo systems and findings for the authenticated tenant.
- * Idempotent: deletes previous [DEMO]-tagged data before re-creating.
+ * Returns a hint directing callers to POST.
  */
 export async function GET() {
+  return NextResponse.json({ ok: true, hint: "POST to seed" });
+}
+
+/**
+ * POST /api/demo/seed-heatmap
+ * Seeds 8 demo systems with 20 findings each for the authenticated tenant.
+ * Idempotent: deletes previous [DEMO]-tagged data before re-creating.
+ *
+ * Protection: only allowed in non-production OR for TENANT_ADMIN / SUPER_ADMIN.
+ */
+export async function POST() {
   try {
     const user = await requireAuth();
-    checkPermission(user.role, "data_inventory", "manage");
+
+    // Guard: block in production unless the user is TENANT_ADMIN or SUPER_ADMIN
+    const isProduction = process.env.NODE_ENV === "production";
+    const isAdmin = user.role === "TENANT_ADMIN" || user.role === "SUPER_ADMIN";
+    if (isProduction && !isAdmin) {
+      throw new ApiError(
+        403,
+        "Demo seed endpoint is disabled in production for non-admin roles",
+      );
+    }
 
     const tenantId = user.tenantId;
 
@@ -110,7 +169,6 @@ export async function GET() {
     const oldSystemIds = oldDemoSystems.map((s) => s.id);
 
     if (oldSystemIds.length > 0) {
-      // Delete findings linked to demo systems
       await prisma.finding.deleteMany({
         where: { tenantId, systemId: { in: oldSystemIds } },
       });
@@ -123,18 +181,22 @@ export async function GET() {
     });
     if (oldRun) {
       await prisma.copilotRun.delete({ where: { id: oldRun.id } });
-      // Delete the demo case
       const oldCase = await prisma.dSARCase.findFirst({
-        where: { id: oldRun.caseId, tenantId, description: { contains: DEMO_TAG } },
+        where: {
+          id: oldRun.caseId,
+          tenantId,
+          description: { contains: DEMO_TAG },
+        },
         select: { id: true, dataSubjectId: true },
       });
       if (oldCase) {
         await prisma.dSARCase.delete({ where: { id: oldCase.id } });
-        await prisma.dataSubject.delete({ where: { id: oldCase.dataSubjectId } }).catch(() => {});
+        await prisma.dataSubject
+          .delete({ where: { id: oldCase.dataSubjectId } })
+          .catch(() => {});
       }
     }
 
-    // Delete old demo systems
     if (oldSystemIds.length > 0) {
       await prisma.system.deleteMany({
         where: { id: { in: oldSystemIds } },
@@ -178,7 +240,7 @@ export async function GET() {
       },
     });
 
-    // ── 3. Upsert 6 demo systems ───────────────────────────────────────
+    // ── 3. Create 8 demo systems ────────────────────────────────────────
     const createdSystems: { id: string; name: string }[] = [];
     for (const def of DEMO_SYSTEMS) {
       const sys = await prisma.system.create({
@@ -195,21 +257,18 @@ export async function GET() {
       createdSystems.push({ id: sys.id, name: sys.name });
     }
 
-    // ── 4. Create findings for each system ──────────────────────────────
+    // ── 4. Create 20 findings for each system ───────────────────────────
     let totalFindings = 0;
 
     for (const sys of createdSystems) {
-      const count = rand(10, 30);
       const findings = [];
 
-      for (let i = 0; i < count; i++) {
-        // Generate a sensitivity score with a realistic distribution
+      for (let i = 0; i < FINDINGS_PER_SYSTEM; i++) {
         const sensitivityScore = weightedSensitivity();
         const severity = sensitivityToSeverity(sensitivityScore);
         const status = weightedStatus();
         const category = pick(DATA_CATEGORIES);
-        const isSpecial =
-          category === "HEALTH" || Math.random() < 0.2;
+        const isSpecial = category === "HEALTH" || Math.random() < 0.2;
 
         findings.push({
           tenantId,
@@ -218,10 +277,10 @@ export async function GET() {
           systemId: sys.id,
           dataCategory: category,
           sensitivityScore,
-          riskScore: sensitivityScore, // mirror for heatmap
+          riskScore: sensitivityScore,
           severity,
           status,
-          confidence: +(Math.random() * 0.4 + 0.6).toFixed(2), // 0.60–1.00
+          confidence: +(Math.random() * 0.4 + 0.6).toFixed(2),
           containsSpecialCategory: isSpecial,
           summary: `${severity} finding in ${sys.name} — ${category} data (score ${sensitivityScore})`,
           createdAt: randomDate(30),
@@ -240,35 +299,11 @@ export async function GET() {
 
     return NextResponse.json({
       ok: true,
-      createdSystems: createdSystems.length,
-      createdFindings: totalFindings,
-      demoCaseId: dsarCase.id,
-      demoRunId: copilotRun.id,
+      tenantId,
+      systemsCreated: createdSystems.length,
+      findingsCreated: totalFindings,
     });
   } catch (err) {
     return handleApiError(err);
   }
-}
-
-/** Weighted sensitivity: ~40% low, ~35% medium, ~25% high */
-function weightedSensitivity(): number {
-  const r = Math.random();
-  if (r < 0.4) return rand(5, 39);
-  if (r < 0.75) return rand(40, 69);
-  return rand(70, 95);
-}
-
-function sensitivityToSeverity(score: number): FindingSeverity {
-  if (score >= 70) return "CRITICAL";
-  if (score >= 40) return "WARNING";
-  return "INFO";
-}
-
-/** Weighted status: ~55% OPEN, ~15% ACCEPTED, ~15% MITIGATING, ~15% MITIGATED */
-function weightedStatus(): FindingStatus {
-  const r = Math.random();
-  if (r < 0.55) return "OPEN";
-  if (r < 0.7) return "ACCEPTED";
-  if (r < 0.85) return "MITIGATING";
-  return "MITIGATED";
 }
