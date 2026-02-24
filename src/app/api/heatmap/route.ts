@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     const user = await requireAuth();
     checkPermission(user.role, "data_inventory", "read");
 
-    const { searchParams } = new URL(request.url);
+    const { searchParams } = request.nextUrl;
 
     // ── Resolve caseId / runId with fallback ─────────────────────────
     const { caseId, runId } = await resolveHeatmapScope(
