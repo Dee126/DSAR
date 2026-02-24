@@ -90,11 +90,7 @@ const evidenceDelegate = getDelegate([
   "evidence",
 ]);
 const systemDelegate = getDelegate(["system", "System"]);
-const dataAssetDelegate = getDelegate([
-  "dataAsset",
-  "DataAsset",
-  "data_asset",
-]);
+// NOTE: dataAsset is intentionally NOT queried — some schemas lack this model.
 
 function printDelegateResolution() {
   const delegates = [
@@ -103,7 +99,7 @@ function printDelegateResolution() {
     { name: "copilotRun", resolved: copilotRunDelegate },
     { name: "evidenceItem", resolved: evidenceDelegate },
     { name: "system", resolved: systemDelegate },
-    { name: "dataAsset", resolved: dataAssetDelegate },
+    // dataAsset intentionally omitted — not all schemas include it
   ];
 
   console.log("[seed-findings] Delegate resolution:");
@@ -155,6 +151,14 @@ function sanitizeRow(
     }
   }
   return clean;
+}
+
+/**
+ * Strip any keys from a Finding row that are not in the DMMF-derived allow-list.
+ * If the allow-list could not be built (DMMF unavailable), returns the row unchanged.
+ */
+function stripUnknownFindingFields<T extends Record<string, any>>(row: T): Partial<T> {
+  return sanitizeRow(row, allowedFindingFields) as Partial<T>;
 }
 
 function printAllowedFields(modelName: string, fields: Set<string> | null) {
@@ -330,23 +334,8 @@ async function main() {
     console.warn("[seed-findings] WARN: system delegate not found — skipping systemId population.");
   }
 
-  // 5. Find existing data assets (optional, for dataAssetId on findings)
-  let dataAssetIds: string[] = [];
-  if (dataAssetDelegate) {
-    try {
-      const dataAssets = await dataAssetDelegate.findMany({
-        where: { tenantId: tenant.id },
-        select: { id: true },
-      });
-      dataAssetIds = dataAssets.map((a: { id: string }) => a.id);
-    } catch (err) {
-      console.warn("[seed-findings] WARN: Failed to query dataAssets — skipping dataAssetId population.", err);
-    }
-  } else {
-    console.warn("[seed-findings] WARN: dataAsset delegate not found — skipping dataAssetId population.");
-  }
-
-  // 6. Reuse or create a CopilotRun (required FK for findings)
+  // 5. Reuse or create a CopilotRun (required FK for findings)
+  //    (Step 6 — dataAsset query — intentionally removed; not all schemas include DataAsset)
   let copilotRunId: string | null = null;
   if (copilotRunDelegate) {
     try {
@@ -492,11 +481,10 @@ async function main() {
         piiCategory: pii,
         piiCount: randInt(1, 50),
         snippetPreview: `...${pii.toLowerCase()} value detected in document...`,
-        dataAssetId:
-          dataAssetIds.length > 0 ? pick(dataAssetIds) : null,
+        // dataAssetId intentionally omitted — not all schemas include the DataAsset model
       };
 
-      const sanitized = sanitizeRow(row, allowedFindingFields);
+      const sanitized = stripUnknownFindingFields(row);
 
       // Log stripped keys once for visibility
       if (!_strippedFindingKeysLogged && allowedFindingFields) {
