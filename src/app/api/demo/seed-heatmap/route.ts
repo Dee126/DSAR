@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { handleApiError, ApiError } from "@/lib/errors";
+import { hasPermission, checkPermission } from "@/lib/rbac";
+import { handleApiError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
 import {
   FindingSeverity,
@@ -145,18 +146,13 @@ export async function GET() {
  *
  * Protection: only allowed in non-production OR for TENANT_ADMIN / SUPER_ADMIN.
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth();
 
-    // Guard: block in production unless the user is TENANT_ADMIN or SUPER_ADMIN
-    const isProduction = process.env.NODE_ENV === "production";
-    const isAdmin = user.role === "TENANT_ADMIN" || user.role === "SUPER_ADMIN";
-    if (isProduction && !isAdmin) {
-      throw new ApiError(
-        403,
-        "Demo seed endpoint is disabled in production for non-admin roles",
-      );
+    // Prefer data_inventory "manage" (write equivalent); fall back to "read"
+    if (!hasPermission(user.role, "data_inventory", "manage")) {
+      checkPermission(user.role, "data_inventory", "read");
     }
 
     const tenantId = user.tenantId;
@@ -299,9 +295,8 @@ export async function POST() {
 
     return NextResponse.json({
       ok: true,
-      tenantId,
-      systemsCreated: createdSystems.length,
-      findingsCreated: totalFindings,
+      seededSystems: createdSystems.length,
+      seededFindings: totalFindings,
     });
   } catch (err) {
     return handleApiError(err);
