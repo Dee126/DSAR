@@ -226,7 +226,7 @@ export default function HeatmapPage() {
     setSeeding(true);
     setMenuOpen(false);
     try {
-      const res = await fetch("/api/demo/seed-heatmap", { method: "POST" });
+      const res = await fetch("/api/demo/seed-heatmap", { method: "POST", credentials: "include" });
       if (!res.ok) throw new Error(`Seed failed: HTTP ${res.status}`);
       const data = await res.json();
       await fetchHeatmap();
@@ -300,54 +300,56 @@ export default function HeatmapPage() {
             tile to drill into individual findings.
           </p>
         </div>
-        {/* More menu with Demo actions */}
-        <div className="relative" ref={menuRef}>
-          <button
-            onClick={() => setMenuOpen((o) => !o)}
-            className="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            aria-haspopup="true"
-            aria-expanded={menuOpen}
-          >
-            More
-            <svg
-              className="ml-1 -mr-0.5 inline-block h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={2}
-              stroke="currentColor"
+        {/* Dev-only: More menu with Demo actions */}
+        {process.env.NODE_ENV === "development" && (
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen((o) => !o)}
+              className="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              aria-haspopup="true"
+              aria-expanded={menuOpen}
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-            </svg>
-          </button>
-
-          {menuOpen && (
-            <div className="absolute right-0 z-20 mt-1 w-52 rounded-md border border-gray-200 bg-white py-1 shadow-lg">
-              <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                Demo
-              </div>
-              <button
-                onClick={seedDemoData}
-                disabled={seeding}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              More
+              <svg
+                className="ml-1 -mr-0.5 inline-block h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
               >
-                <svg
-                  className="h-4 w-4 text-indigo-500"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={2}
-                  stroke="currentColor"
+                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+              </svg>
+            </button>
+
+            {menuOpen && (
+              <div className="absolute right-0 z-20 mt-1 w-52 rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+                <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                  Demo
+                </div>
+                <button
+                  onClick={seedDemoData}
+                  disabled={seeding}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375"
-                  />
-                </svg>
-                {seeding ? "Seeding\u2026" : "Seed Demo Data"}
-              </button>
-            </div>
-          )}
-        </div>
+                  <svg
+                    className="h-4 w-4 text-indigo-500"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375"
+                    />
+                  </svg>
+                  {seeding ? "Seeding\u2026" : "Seed Demo Data"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Summary Charts */}
