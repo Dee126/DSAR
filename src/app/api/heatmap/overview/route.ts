@@ -30,15 +30,26 @@ export async function GET(request: NextRequest) {
         ? process.env.DEMO_TENANT_ID
         : user.tenantId;
 
+    if (process.env.NODE_ENV === "development") {
+      console.log("[heatmap/overview] GET started", {
+        userTenantId: user.tenantId,
+        effectiveTenantId,
+        DEMO_TENANT_ID: process.env.DEMO_TENANT_ID ?? "(not set)",
+      });
+    }
+
     // Guard: verify the effective tenant actually exists in the DB
     const tenantExists = await prisma.tenant.findUnique({
       where: { id: effectiveTenantId },
       select: { id: true },
     });
     if (!tenantExists) {
+      console.error("[heatmap/overview] Tenant not found:", effectiveTenantId);
       return NextResponse.json(
         {
-          error: "Tenant not found",
+          ok: false,
+          error: "DEMO_TENANT_ID not found",
+          effectiveTenantId,
           detail: `effectiveTenantId "${effectiveTenantId}" does not exist in the tenant table. Check DEMO_TENANT_ID or seed the tenant first.`,
         },
         { status: 400 },
