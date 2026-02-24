@@ -20,7 +20,7 @@
  *   7. Logs final counts
  */
 
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 import { randomUUID } from "crypto";
 
 // Import enums safely — they may not exist in every generated client version
@@ -113,6 +113,62 @@ function printDelegateResolution() {
   }
 }
 
+// ── DMMF-based Payload Sanitizer ────────────────────────────────────────────
+
+/**
+ * Build a Set of allowed scalar/enum field names for a model from Prisma DMMF.
+ * Excludes relation fields (kind === 'object') which are not valid in createMany.
+ * Returns null if the model is not found in DMMF.
+ */
+function buildAllowedFields(modelName: string): Set<string> | null {
+  try {
+    const model = Prisma.dmmf.datamodel.models.find(
+      (m) => m.name === modelName
+    );
+    if (!model) return null;
+    return new Set(
+      model.fields
+        .filter((f) => f.kind !== "object")
+        .map((f) => f.name)
+    );
+  } catch {
+    return null;
+  }
+}
+
+const allowedFindingFields = buildAllowedFields("Finding");
+const allowedDetectorFields = buildAllowedFields("DetectorResult");
+
+/**
+ * Remove keys from a row that are not in the allowedFields set.
+ * If allowedFields is null (DMMF unavailable), returns the row unchanged.
+ */
+function sanitizeRow(
+  row: Record<string, any>,
+  allowedFields: Set<string> | null
+): Record<string, any> {
+  if (!allowedFields) return row;
+  const clean: Record<string, any> = {};
+  for (const key of Object.keys(row)) {
+    if (allowedFields.has(key)) {
+      clean[key] = row[key];
+    }
+  }
+  return clean;
+}
+
+function printAllowedFields(modelName: string, fields: Set<string> | null) {
+  if (fields) {
+    console.log(
+      `[seed-findings] ${modelName} allowed fields (${fields.size}): ${[...fields].join(", ")}`
+    );
+  } else {
+    console.log(
+      `[seed-findings] ${modelName}: DMMF lookup failed — no field filtering (payloads sent as-is)`
+    );
+  }
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function pick<T>(arr: readonly T[]): T {
@@ -188,53 +244,15 @@ function makeSummary(cat: string, pii: string): string {
   return `Detected ${pii} data in ${cat.toLowerCase().replace(/_/g, " ")} category — review recommended.`;
 }
 
-/**
- * Detect whether the Finding model has a `status` column by attempting a
- * small write and catching the Prisma validation error. The result is cached.
- */
-let _hasStatusField: boolean | null = null;
-
-async function hasStatusField(): Promise<boolean> {
-  if (_hasStatusField !== null) return _hasStatusField;
-
-  // Inspect the Prisma DMMF metadata if available
-  try {
-    const dmmf = (prisma as any)._baseDmmf ?? (prisma as any)._dmmf;
-    if (dmmf) {
-      const findingModel = dmmf.modelMap?.Finding ?? dmmf.datamodelMap?.Finding;
-      if (findingModel) {
-        _hasStatusField = findingModel.fields.some(
-          (f: any) => f.name === "status"
-        );
-        return _hasStatusField;
-      }
-    }
-  } catch {
-    // DMMF introspection not available — fall through
-  }
-
-  // Fallback: assume status exists (schema has it)
-  _hasStatusField = true;
-  return _hasStatusField;
-}
-
-/** Strip `status` from a finding payload if the model doesn't have the field. */
-function stripUnknownFields<T extends Record<string, any>>(
-  obj: T,
-  includeStatus: boolean
-): T {
-  if (includeStatus) return obj;
-  const { status, ...rest } = obj;
-  return rest as T;
-}
-
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
   console.log(`[seed-findings] Starting — target: ${FINDINGS_COUNT} findings`);
 
-  // Print resolved delegate names at start
+  // Print resolved delegate names and allowed fields at start
   printDelegateResolution();
+  printAllowedFields("Finding", allowedFindingFields);
+  printAllowedFields("DetectorResult", allowedDetectorFields);
 
   // Validate that the finding delegate exists — it's required
   if (!findingDelegate) {
@@ -429,13 +447,10 @@ async function main() {
   }
 
   // 8. Create Findings in batches
-  const includeStatus = await hasStatusField();
   console.log(
     `[seed-findings] Creating ${FINDINGS_COUNT} findings in batches of ${BATCH_SIZE}...`
   );
-  if (!includeStatus) {
-    console.log("[seed-findings] NOTE: Finding model has no 'status' column — omitting status field.");
-  }
+  let _strippedFindingKeysLogged = false;
   const allFindingIds: string[] = [];
   const findingEvidenceMap: Map<string, string[]> = new Map();
 
@@ -481,7 +496,22 @@ async function main() {
           dataAssetIds.length > 0 ? pick(dataAssetIds) : null,
       };
 
-      return stripUnknownFields(row, includeStatus);
+      const sanitized = sanitizeRow(row, allowedFindingFields);
+
+      // Log stripped keys once for visibility
+      if (!_strippedFindingKeysLogged && allowedFindingFields) {
+        const stripped = Object.keys(row).filter(
+          (k) => !allowedFindingFields.has(k)
+        );
+        if (stripped.length > 0) {
+          console.log(
+            `[seed-findings] NOTE: Stripped unknown Finding fields: ${stripped.join(", ")}`
+          );
+        }
+        _strippedFindingKeysLogged = true;
+      }
+
+      return sanitized;
     });
 
     await findingDelegate.createMany({ data: batch as any });
@@ -493,17 +523,7 @@ async function main() {
   // 9. Create DetectorResults (1-3 per Finding) in batches — skip if delegate or evidence pool missing
   if (detectorDelegate && evidencePool.length > 0) {
     console.log("[seed-findings] Creating DetectorResults (1-3 per finding)...");
-    let detectorBatch: Array<{
-      id: string;
-      tenantId: string;
-      caseId: string;
-      runId: string;
-      evidenceItemId: string;
-      detectorType: string;
-      detectedElements: { elementType: string; confidence: number; snippetPreview: string }[];
-      detectedCategories: { category: string; confidence: number }[];
-      containsSpecialCategorySuspected: boolean;
-    }> = [];
+    let detectorBatch: Record<string, any>[] = [];
     let totalDetectorResults = 0;
 
     for (const findingId of allFindingIds) {
@@ -516,7 +536,7 @@ async function main() {
         const cat = pick(DATA_CATEGORIES);
         const confidence = Math.round(Math.random() * 100) / 100;
 
-        detectorBatch.push({
+        const row: Record<string, any> = {
           id: randomUUID(),
           tenantId: tenant.id,
           caseId: dsarCase.id,
@@ -534,8 +554,9 @@ async function main() {
           containsSpecialCategorySuspected: (
             ["HEALTH", "RELIGION", "UNION", "POLITICAL_OPINION", "OTHER_SPECIAL_CATEGORY"] as string[]
           ).includes(cat as string),
-        });
+        };
 
+        detectorBatch.push(sanitizeRow(row, allowedDetectorFields));
         totalDetectorResults++;
 
         if (detectorBatch.length >= BATCH_SIZE) {
