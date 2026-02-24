@@ -38,24 +38,9 @@ export async function GET(request: NextRequest) {
 
     const systemRows = await prisma.system.findMany({
       where: { tenantId: user.tenantId, inScopeForDsar: true },
-      select: {
-        id: true,
-        name: true,
-        connectorType: true,
-        description: true,
-        criticality: true,
-        containsSpecialCategories: true,
+      include: {
         findings: {
           where: Object.keys(findingsWhere).length > 0 ? findingsWhere : undefined,
-          select: {
-            id: true,
-            sensitivityScore: true,
-            status: true,
-            severity: true,
-            dataCategory: true,
-            containsSpecialCategory: true,
-            createdAt: true,
-          },
         },
       },
       orderBy: { name: "asc" },
@@ -65,7 +50,7 @@ export async function GET(request: NextRequest) {
     let totalYellow = 0;
     let totalRed = 0;
     let totalFindings = 0;
-    const globalStatusCounts = { OPEN: 0, ACCEPTED: 0, MITIGATING: 0, MITIGATED: 0 };
+    const globalStatusCounts: Record<string, number> = { OPEN: 0, ACCEPTED: 0, MITIGATING: 0, MITIGATED: 0 };
     const globalCategoryCounts: Record<string, number> = {};
 
     const systems = systemRows.map((sys) => {
@@ -92,15 +77,15 @@ export async function GET(request: NextRequest) {
               .sort((a, b) => +new Date(b) - +new Date(a))[0] ?? null;
 
       // Per-system status counts
-      const statusCounts = { OPEN: 0, ACCEPTED: 0, MITIGATING: 0, MITIGATED: 0 };
+      const statusCounts: Record<string, number> = { OPEN: 0, ACCEPTED: 0, MITIGATING: 0, MITIGATED: 0 };
       for (const f of findings) {
-        if (f.status in statusCounts) statusCounts[f.status as keyof typeof statusCounts]++;
+        if (f.status in statusCounts) statusCounts[f.status]++;
       }
 
       // Per-system severity counts
-      const severityCounts = { INFO: 0, WARNING: 0, CRITICAL: 0 };
+      const severityCounts: Record<string, number> = { INFO: 0, WARNING: 0, CRITICAL: 0 };
       for (const f of findings) {
-        if (f.severity in severityCounts) severityCounts[f.severity as keyof typeof severityCounts]++;
+        if (f.severity in severityCounts) severityCounts[f.severity]++;
       }
 
       // Special category count
@@ -123,8 +108,8 @@ export async function GET(request: NextRequest) {
       totalYellow += yellow;
       totalRed += red;
       totalFindings += total;
-      for (const key of Object.keys(statusCounts) as (keyof typeof statusCounts)[]) {
-        globalStatusCounts[key] += statusCounts[key];
+      for (const key of Object.keys(statusCounts)) {
+        globalStatusCounts[key] = (globalStatusCounts[key] ?? 0) + statusCounts[key];
       }
       for (const f of findings) {
         globalCategoryCounts[f.dataCategory] = (globalCategoryCounts[f.dataCategory] ?? 0) + 1;
@@ -134,12 +119,12 @@ export async function GET(request: NextRequest) {
         systemId: sys.id,
         systemName: sys.name,
         systemType: sys.connectorType,
+        lastScanAt,
+        counts: { green, yellow, red, total },
+        riskScore,
         description: sys.description,
         criticality: sys.criticality,
         containsSpecialCategories: sys.containsSpecialCategories,
-        counts: { total, green, yellow, red },
-        riskScore,
-        lastScanAt,
         statusCounts,
         severityCounts,
         specialCategoryCount,
@@ -153,35 +138,25 @@ export async function GET(request: NextRequest) {
     );
 
     const totals = {
-      systems: systemRows.length,
-      findings: totalFindings,
-      total: totalFindings,
       green: totalGreen,
       yellow: totalYellow,
       red: totalRed,
+      total: totalFindings,
     };
 
-    const overallRisk =
-      totalFindings === 0
-        ? 0
-        : Math.round(
-            ((totalRed * 100 + totalYellow * 60 + totalGreen * 20) / totalFindings) * 10
-          ) / 10;
-
     const summary = {
-      overallRiskScore: overallRisk,
       totalSystems: systemRows.length,
       totalFindings,
       statusCounts: globalStatusCounts,
       categoryCounts: sortedCategoryCounts,
-      scope: {
-        caseId: caseId ?? null,
-        runId: runId ?? null,
-        tenantId: user.tenantId,
-      },
     };
 
-    return NextResponse.json({ systems, totals, summary });
+    return NextResponse.json({
+      systems,
+      systemsCount: systems.length,
+      totals,
+      summary,
+    });
   } catch (err) {
     return handleApiError(err);
   }
