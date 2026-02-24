@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     if (runId) findingsWhere.runId = runId;
 
     const systemRows = await prisma.system.findMany({
-      where: { tenantId: user.tenantId, inScopeForDsar: true },
+      where: { tenantId: user.tenantId },
       include: {
         findings: {
           where: Object.keys(findingsWhere).length > 0 ? findingsWhere : undefined,
