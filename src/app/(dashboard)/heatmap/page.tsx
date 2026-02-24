@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useToast, ToastContainer } from "@/components/Toast";
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 
@@ -184,6 +185,20 @@ export default function HeatmapPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const { toasts, addToast } = useToast();
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
 
   const fetchHeatmap = useCallback(async () => {
     setLoading(true);
@@ -209,12 +224,19 @@ export default function HeatmapPage() {
 
   const seedDemoData = async () => {
     setSeeding(true);
+    setMenuOpen(false);
     try {
-      const res = await fetch("/api/demo/seed-heatmap");
+      const res = await fetch("/api/demo/seed-heatmap", { method: "POST" });
       if (!res.ok) throw new Error(`Seed failed: HTTP ${res.status}`);
+      const data = await res.json();
       await fetchHeatmap();
+      addToast(
+        "success",
+        `Demo data seeded: ${data.seededSystems} systems, ${data.seededFindings} findings`,
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      addToast("error", `Failed to seed demo data: ${msg}`);
     } finally {
       setSeeding(false);
     }
@@ -256,6 +278,8 @@ export default function HeatmapPage() {
 
   return (
     <div className="space-y-8">
+      <ToastContainer toasts={toasts} />
+
       {/* Warnings Banner */}
       {warnings.length > 0 && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
@@ -276,15 +300,54 @@ export default function HeatmapPage() {
             tile to drill into individual findings.
           </p>
         </div>
-        {process.env.NODE_ENV === "development" && (
+        {/* More menu with Demo actions */}
+        <div className="relative" ref={menuRef}>
           <button
-            onClick={seedDemoData}
-            disabled={seeding}
-            className="shrink-0 rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            onClick={() => setMenuOpen((o) => !o)}
+            className="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            aria-haspopup="true"
+            aria-expanded={menuOpen}
           >
-            {seeding ? "Seeding\u2026" : "Seed Heatmap Demo Data"}
+            More
+            <svg
+              className="ml-1 -mr-0.5 inline-block h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+            </svg>
           </button>
-        )}
+
+          {menuOpen && (
+            <div className="absolute right-0 z-20 mt-1 w-52 rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+              <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                Demo
+              </div>
+              <button
+                onClick={seedDemoData}
+                disabled={seeding}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                <svg
+                  className="h-4 w-4 text-indigo-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375"
+                  />
+                </svg>
+                {seeding ? "Seeding\u2026" : "Seed Demo Data"}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Summary Charts */}
