@@ -109,26 +109,38 @@ function makeSummary(cat: DataCategory, pii: string): string {
 async function main() {
   console.log(`[seed-findings] Starting — target: ${FINDINGS_COUNT} findings`);
 
-  // 1. Find the default tenant
-  const tenant = await prisma.tenant.findFirst({
+  // 1. Find the default tenant ("Acme Corp"), fallback to first tenant
+  let tenant = await prisma.tenant.findFirst({
     where: { name: "Acme Corp" },
   });
   if (!tenant) {
+    console.warn(
+      '[seed-findings] WARN: Tenant "Acme Corp" not found — falling back to first tenant.'
+    );
+    tenant = await prisma.tenant.findFirst({ orderBy: { createdAt: "asc" } });
+  }
+  if (!tenant) {
     console.error(
-      '[seed-findings] ERROR: Tenant "Acme Corp" not found. Run the main seed first.'
+      "[seed-findings] ERROR: No tenant found at all. Run the main seed first."
     );
     process.exit(1);
   }
   console.log(`[seed-findings] Tenant: ${tenant.name} (${tenant.id})`);
 
-  // 2. Find the newest DSAR case for this tenant
-  const dsarCase = await prisma.dSARCase.findFirst({
+  // 2. Find the newest DSAR case for this tenant, fallback to first case
+  let dsarCase = await prisma.dSARCase.findFirst({
     where: { tenantId: tenant.id },
     orderBy: { createdAt: "desc" },
   });
   if (!dsarCase) {
+    console.warn(
+      "[seed-findings] WARN: No case for selected tenant — falling back to first case."
+    );
+    dsarCase = await prisma.dSARCase.findFirst({ orderBy: { createdAt: "asc" } });
+  }
+  if (!dsarCase) {
     console.error(
-      "[seed-findings] ERROR: No DSAR case found for tenant. Run the main seed first."
+      "[seed-findings] ERROR: No DSAR case found at all. Run the main seed first."
     );
     process.exit(1);
   }
