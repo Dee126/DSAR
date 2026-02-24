@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { hasPermission, checkPermission } from "@/lib/rbac";
-import { handleApiError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
 import {
   FindingSeverity,
@@ -150,6 +149,15 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth();
 
+    console.log("[seed-heatmap] POST started", {
+      NODE_ENV: process.env.NODE_ENV,
+      DEMO_TENANT_ID: process.env.DEMO_TENANT_ID ?? "(not set)",
+      userId: user.id,
+      userEmail: user.email,
+      userTenantId: user.tenantId,
+      userRole: user.role,
+    });
+
     // Prefer data_inventory "manage" (write equivalent); fall back to "read"
     if (!hasPermission(user.role, "data_inventory", "manage")) {
       checkPermission(user.role, "data_inventory", "read");
@@ -163,15 +171,20 @@ export async function POST(request: NextRequest) {
         ? process.env.DEMO_TENANT_ID
         : user.tenantId;
 
+    console.log("[seed-heatmap] effectiveTenantId =", effectiveTenantId);
+
     // Guard: verify the effective tenant actually exists in the DB
     const tenantExists = await prisma.tenant.findUnique({
       where: { id: effectiveTenantId },
       select: { id: true },
     });
     if (!tenantExists) {
+      console.error("[seed-heatmap] Tenant not found:", effectiveTenantId);
       return NextResponse.json(
         {
-          error: "Tenant not found",
+          ok: false,
+          error: "DEMO_TENANT_ID not found",
+          effectiveTenantId,
           detail: `effectiveTenantId "${effectiveTenantId}" does not exist in the tenant table. Check DEMO_TENANT_ID or seed the tenant first.`,
         },
         { status: 400 },
@@ -181,6 +194,7 @@ export async function POST(request: NextRequest) {
     const tenantId = effectiveTenantId;
 
     // ── 1. Clean up previous demo data ──────────────────────────────────
+    console.log("[seed-heatmap] Step 1: Cleaning up previous demo data");
     const oldDemoSystems = await prisma.system.findMany({
       where: { tenantId, description: { contains: DEMO_TAG } },
       select: { id: true },
@@ -188,17 +202,20 @@ export async function POST(request: NextRequest) {
     const oldSystemIds = oldDemoSystems.map((s) => s.id);
 
     if (oldSystemIds.length > 0) {
+      console.log("[seed-heatmap] Deleting old findings for", oldSystemIds.length, "demo systems");
       await prisma.finding.deleteMany({
         where: { tenantId, systemId: { in: oldSystemIds } },
       });
     }
 
     // Delete the demo copilot run + case + data subject (if they exist)
+    console.log("[seed-heatmap] Looking for old copilot run to clean up");
     const oldRun = await prisma.copilotRun.findFirst({
       where: { tenantId, justification: { contains: DEMO_TAG } },
       select: { id: true, caseId: true },
     });
     if (oldRun) {
+      console.log("[seed-heatmap] Deleting old copilotRun:", oldRun.id, "caseId:", oldRun.caseId);
       await prisma.copilotRun.delete({ where: { id: oldRun.id } });
       const oldCase = await prisma.dSARCase.findFirst({
         where: {
@@ -209,20 +226,24 @@ export async function POST(request: NextRequest) {
         select: { id: true, dataSubjectId: true },
       });
       if (oldCase) {
+        console.log("[seed-heatmap] Deleting old DSARCase:", oldCase.id, "dataSubjectId:", oldCase.dataSubjectId);
         await prisma.dSARCase.delete({ where: { id: oldCase.id } });
+        console.log("[seed-heatmap] Deleting old DataSubject:", oldCase.dataSubjectId);
         await prisma.dataSubject
           .delete({ where: { id: oldCase.dataSubjectId } })
-          .catch(() => {});
+          .catch((e: unknown) => { console.warn("[seed-heatmap] DataSubject delete failed (non-fatal):", e); });
       }
     }
 
     if (oldSystemIds.length > 0) {
+      console.log("[seed-heatmap] Deleting", oldSystemIds.length, "old demo systems");
       await prisma.system.deleteMany({
         where: { id: { in: oldSystemIds } },
       });
     }
 
     // ── 2. Create scaffolding: DataSubject → DSARCase → CopilotRun ─────
+    console.log("[seed-heatmap] Step 2: Creating DataSubject");
     const dataSubject = await prisma.dataSubject.create({
       data: {
         tenantId,
@@ -231,9 +252,12 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    console.log("[seed-heatmap] DataSubject created:", dataSubject.id);
+
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 30);
 
+    console.log("[seed-heatmap] Creating DSARCase");
     const dsarCase = await prisma.dSARCase.create({
       data: {
         tenantId,
@@ -248,6 +272,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    console.log("[seed-heatmap] DSARCase created:", dsarCase.id);
+
+    console.log("[seed-heatmap] Creating CopilotRun");
     const copilotRun = await prisma.copilotRun.create({
       data: {
         tenantId,
@@ -259,7 +286,10 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    console.log("[seed-heatmap] CopilotRun created:", copilotRun.id);
+
     // ── 3. Create 8 demo systems ────────────────────────────────────────
+    console.log("[seed-heatmap] Step 3: Creating", DEMO_SYSTEMS.length, "demo systems");
     const createdSystems: { id: string; name: string }[] = [];
     for (const def of DEMO_SYSTEMS) {
       const sys = await prisma.system.create({
@@ -276,7 +306,10 @@ export async function POST(request: NextRequest) {
       createdSystems.push({ id: sys.id, name: sys.name });
     }
 
+    console.log("[seed-heatmap] Systems created:", createdSystems.length);
+
     // ── 4. Create 20 findings for each system ───────────────────────────
+    console.log("[seed-heatmap] Step 4: Creating findings (", FINDINGS_PER_SYSTEM, "per system )");
     let totalFindings = 0;
 
     for (const sys of createdSystems) {
@@ -306,22 +339,39 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      console.log("[seed-heatmap] Creating", findings.length, "findings for system:", sys.name);
       await prisma.finding.createMany({ data: findings });
       totalFindings += findings.length;
     }
 
     // Update run totals
+    console.log("[seed-heatmap] Updating CopilotRun totalFindings:", totalFindings);
     await prisma.copilotRun.update({
       where: { id: copilotRun.id },
       data: { totalFindings },
     });
+
+    console.log("[seed-heatmap] SUCCESS — seeded", createdSystems.length, "systems,", totalFindings, "findings");
 
     return NextResponse.json({
       ok: true,
       seededSystems: createdSystems.length,
       seededFindings: totalFindings,
     });
-  } catch (err) {
-    return handleApiError(err);
+  } catch (err: unknown) {
+    console.error("[seed-heatmap] ERROR", err);
+
+    // Extract Prisma-specific error details when available
+    const e = err as { name?: string; code?: string; meta?: unknown; message?: string };
+    return NextResponse.json(
+      {
+        ok: false,
+        error: String(err),
+        name: e.name,
+        code: e.code,
+        meta: e.meta,
+      },
+      { status: 500 },
+    );
   }
 }
