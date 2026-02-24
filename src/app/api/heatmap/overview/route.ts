@@ -1,5 +1,3 @@
-export const dynamic = "force-dynamic";
-
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { checkPermission } from "@/lib/rbac";
@@ -7,6 +5,8 @@ import { handleApiError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { resolveHeatmapScope } from "@/lib/resolve-heatmap-scope";
+
+export const dynamic = "force-dynamic";
 
 /**
  * GET /api/heatmap/overview?caseId=...&runId=...
