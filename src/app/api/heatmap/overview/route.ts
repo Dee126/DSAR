@@ -3,57 +3,41 @@ import { requireAuth } from "@/lib/auth";
 import { checkPermission } from "@/lib/rbac";
 import { handleApiError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@prisma/client";
-import { resolveHeatmapScope } from "@/lib/resolve-heatmap-scope";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/heatmap/overview?caseId=...&runId=...
- *
- * Returns per-system risk overview based on finding sensitivityScore bands:
- *   green:  sensitivityScore < 40
- *   yellow: sensitivityScore 40–69
- *   red:    sensitivityScore >= 70
- *
- * riskScore = weighted average: (red*100 + yellow*60 + green*20) / total
- * lastScanAt = latest finding.createdAt for that system (null if none)
- *
- * Queries findings directly (not through system.findings relation) so that
- * findings without a systemId are still included in totals.
- *
- * Optional params:
- *   caseId — scope to a specific DSAR case (fallback: newest case)
- *   runId  — scope to a specific copilot run (fallback: newest run for case)
+ * GET /api/heatmap/overview
+ * Returns per-system risk overview based on findings (Finding.systemId != null).
+ * Optional query params:
+ *  - caseId
+ *  - runId
+ * If scoped query returns 0 findings, falls back to tenant-only.
  */
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth();
     checkPermission(user.role, "data_inventory", "read");
 
-    const { searchParams } = request.nextUrl;
+    const tenantId = user.tenantId;
+    const sp = request.nextUrl.searchParams;
+    const caseId = sp.get("caseId") || undefined;
+    const runId = sp.get("runId") || undefined;
 
-    // ── Resolve caseId / runId with fallback ─────────────────────────
-    const { caseId, runId } = await resolveHeatmapScope(
-      user.tenantId,
-      searchParams.get("caseId"),
-      searchParams.get("runId")
-    );
-
-    // ── Build finding where filter (no run.status filter!) ───────────
-    const findingWhere: Prisma.FindingWhereInput = {
-      tenantId: user.tenantId,
-      ...(caseId ? { caseId } : {}),
-      ...(runId ? { runId } : {}),
+    // Base clause: only findings that belong on the heatmap
+    const baseWhere: any = {
+      tenantId,
+      systemId: { not: null },
     };
 
-    console.log(
-      `[heatmap/overview] tenantId=${user.tenantId} caseId=${caseId ?? "(auto-none)"} runId=${runId ?? "(auto-none)"} where=${JSON.stringify(findingWhere)}`
-    );
+    const scopedWhere: any = { ...baseWhere };
+    if (caseId) scopedWhere.caseId = caseId;
+    if (runId) scopedWhere.runId = runId;
 
-    // ── Query findings directly ──────────────────────────────────────
-    const allFindings = await prisma.finding.findMany({
-      where: findingWhere,
+    // Try scoped first, fallback if empty
+    let clause: "scoped" | "fallback" = "scoped";
+    let findings = await prisma.finding.findMany({
+      where: scopedWhere,
       select: {
         id: true,
         systemId: true,
@@ -65,11 +49,31 @@ export async function GET(request: NextRequest) {
         containsSpecialCategory: true,
         createdAt: true,
       },
+      orderBy: { createdAt: "desc" },
     });
 
-    // ── Load in-scope systems for metadata ───────────────────────────
+    if (findings.length === 0) {
+      clause = "fallback";
+      findings = await prisma.finding.findMany({
+        where: baseWhere,
+        select: {
+          id: true,
+          systemId: true,
+          sensitivityScore: true,
+          riskScore: true,
+          severity: true,
+          status: true,
+          dataCategory: true,
+          containsSpecialCategory: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+      });
+    }
+
+    // Load tenant systems (NO inScopeForDsar filter for demo/dev)
     const systems = await prisma.system.findMany({
-      where: { tenantId: user.tenantId, inScopeForDsar: true },
+      where: { tenantId },
       select: {
         id: true,
         name: true,
@@ -80,157 +84,106 @@ export async function GET(request: NextRequest) {
       },
       orderBy: { name: "asc" },
     });
-    const systemMap = new Map(systems.map((s) => [s.id, s]));
 
-    // ── Group findings by systemId ───────────────────────────────────
-    type FindingRow = (typeof allFindings)[number];
-    const grouped = new Map<string | null, FindingRow[]>();
-    for (const f of allFindings) {
-      const key = f.systemId;
-      if (!grouped.has(key)) grouped.set(key, []);
-      grouped.get(key)!.push(f);
+    // Group findings by systemId
+    const bySystem = new Map<string, typeof findings>();
+    for (const f of findings) {
+      const sid = f.systemId as string;
+      const arr = bySystem.get(sid) || [];
+      arr.push(f);
+      bySystem.set(sid, arr);
     }
 
-    // ── Helper: build a tile from a list of findings ─────────────────
-    const buildTile = (
-      sysId: string,
-      sysName: string,
-      sysType: string | null,
-      description: string | null,
-      criticality: string | null,
-      containsSpecialCategories: boolean,
-      findings: FindingRow[]
-    ) => {
-      const total = findings.length;
-      const green = findings.filter((f) => f.sensitivityScore < 40).length;
-      const yellow = findings.filter(
-        (f) => f.sensitivityScore >= 40 && f.sensitivityScore < 70
-      ).length;
-      const red = findings.filter((f) => f.sensitivityScore >= 70).length;
-      const riskScore =
-        total > 0
-          ? Math.round((red * 100 + yellow * 60 + green * 20) / total)
-          : 0;
+    const systemTiles = systems
+      .map((sys) => {
+        const fs = bySystem.get(sys.id) || [];
+        if (fs.length === 0) return null;
 
-      const lastScanAt =
-        findings.length > 0
-          ? findings.reduce(
-              (latest, f) =>
-                f.createdAt > latest ? f.createdAt : latest,
-              findings[0].createdAt
-            )
+        const total = fs.length;
+        const green = fs.filter((f) => (f.sensitivityScore ?? 0) < 40).length;
+        const yellow = fs.filter(
+          (f) =>
+            (f.sensitivityScore ?? 0) >= 40 && (f.sensitivityScore ?? 0) < 70
+        ).length;
+        const red = fs.filter((f) => (f.sensitivityScore ?? 0) >= 70).length;
+        const riskScore =
+          total > 0
+            ? Math.round((red * 100 + yellow * 60 + green * 20) / total)
+            : 0;
+
+        const lastScanAt = fs[0]?.createdAt
+          ? fs[0].createdAt.toISOString()
           : null;
 
-      const statusCounts = {
-        OPEN: findings.filter((f) => f.status === "OPEN").length,
-        ACCEPTED: findings.filter((f) => f.status === "ACCEPTED").length,
-        MITIGATING: findings.filter((f) => f.status === "MITIGATING").length,
-        MITIGATED: findings.filter((f) => f.status === "MITIGATED").length,
-      };
-      const severityCounts = {
-        INFO: findings.filter((f) => f.severity === "INFO").length,
-        WARNING: findings.filter((f) => f.severity === "WARNING").length,
-        CRITICAL: findings.filter((f) => f.severity === "CRITICAL").length,
-      };
-      const specialCategoryCount = findings.filter(
-        (f) => f.containsSpecialCategory
-      ).length;
+        const statusCounts = {
+          OPEN: fs.filter((f) => f.status === "OPEN").length,
+          ACCEPTED: fs.filter((f) => f.status === "ACCEPTED").length,
+          MITIGATING: fs.filter((f) => f.status === "MITIGATING").length,
+          MITIGATED: fs.filter((f) => f.status === "MITIGATED").length,
+        };
+        const severityCounts = {
+          INFO: fs.filter((f) => f.severity === "INFO").length,
+          WARNING: fs.filter((f) => f.severity === "WARNING").length,
+          CRITICAL: fs.filter((f) => f.severity === "CRITICAL").length,
+        };
+        const specialCategoryCount = fs.filter(
+          (f) => f.containsSpecialCategory
+        ).length;
 
-      const categoryBreakdown: Record<
-        string,
-        { green: number; yellow: number; red: number; total: number }
-      > = {};
-      for (const f of findings) {
-        const cat = f.dataCategory as string;
-        if (!categoryBreakdown[cat])
-          categoryBreakdown[cat] = { green: 0, yellow: 0, red: 0, total: 0 };
-        categoryBreakdown[cat].total++;
-        if (f.sensitivityScore >= 70) categoryBreakdown[cat].red++;
-        else if (f.sensitivityScore >= 40) categoryBreakdown[cat].yellow++;
-        else categoryBreakdown[cat].green++;
-      }
+        const categoryBreakdown: Record<
+          string,
+          { green: number; yellow: number; red: number; total: number }
+        > = {};
+        for (const f of fs) {
+          const cat = String(f.dataCategory || "UNKNOWN");
+          if (!categoryBreakdown[cat])
+            categoryBreakdown[cat] = {
+              green: 0,
+              yellow: 0,
+              red: 0,
+              total: 0,
+            };
+          categoryBreakdown[cat].total++;
+          const s = f.sensitivityScore ?? 0;
+          if (s >= 70) categoryBreakdown[cat].red++;
+          else if (s >= 40) categoryBreakdown[cat].yellow++;
+          else categoryBreakdown[cat].green++;
+        }
 
-      return {
-        systemId: sysId,
-        systemName: sysName,
-        systemType: sysType,
-        lastScanAt: lastScanAt ? lastScanAt.toISOString() : null,
-        counts: { green, yellow, red, total },
-        riskScore,
-        description,
-        criticality,
-        containsSpecialCategories,
-        statusCounts,
-        severityCounts,
-        specialCategoryCount,
-        categoryBreakdown,
-      };
-    };
+        return {
+          systemId: sys.id,
+          systemName: sys.name,
+          systemType: sys.connectorType,
+          lastScanAt,
+          counts: { green, yellow, red, total },
+          riskScore,
+          description: sys.description,
+          criticality: sys.criticality,
+          containsSpecialCategories: sys.containsSpecialCategories,
+          statusCounts,
+          severityCounts,
+          specialCategoryCount,
+          categoryBreakdown,
+        };
+      })
+      .filter(Boolean);
 
-    // ── Build tiles ──────────────────────────────────────────────────
-    const systemTiles: ReturnType<typeof buildTile>[] = [];
-
-    for (const [sysId, findings] of grouped) {
-      if (sysId && systemMap.has(sysId)) {
-        const sys = systemMap.get(sysId)!;
-        systemTiles.push(
-          buildTile(
-            sys.id,
-            sys.name,
-            sys.connectorType,
-            sys.description,
-            sys.criticality,
-            sys.containsSpecialCategories,
-            findings
-          )
-        );
-      } else if (sysId) {
-        // System not in-scope or deleted — still surface its findings
-        systemTiles.push(
-          buildTile(sysId, `System ${sysId.slice(0, 8)}…`, null, null, null, false, findings)
-        );
-      } else {
-        // Findings without systemId
-        systemTiles.push(
-          buildTile("__unassigned__", "(Unassigned)", null, null, null, false, findings)
-        );
-      }
-    }
-
-    // Add empty tiles for in-scope systems that have zero findings
-    for (const sys of systems) {
-      if (!grouped.has(sys.id)) {
-        systemTiles.push(
-          buildTile(
-            sys.id,
-            sys.name,
-            sys.connectorType,
-            sys.description,
-            sys.criticality,
-            sys.containsSpecialCategories,
-            []
-          )
-        );
-      }
-    }
-
-    systemTiles.sort((a, b) => a.systemName.localeCompare(b.systemName));
-
-    // ── Global totals ────────────────────────────────────────────────
     const totals = {
-      green: allFindings.filter((f) => f.sensitivityScore < 40).length,
-      yellow: allFindings.filter(
-        (f) => f.sensitivityScore >= 40 && f.sensitivityScore < 70
+      green: findings.filter((f) => (f.sensitivityScore ?? 0) < 40).length,
+      yellow: findings.filter(
+        (f) =>
+          (f.sensitivityScore ?? 0) >= 40 && (f.sensitivityScore ?? 0) < 70
       ).length,
-      red: allFindings.filter((f) => f.sensitivityScore >= 70).length,
-      total: allFindings.length,
+      red: findings.filter((f) => (f.sensitivityScore ?? 0) >= 70).length,
+      total: findings.length,
     };
 
     const categoryCounts = Object.fromEntries(
       Object.entries(
-        allFindings.reduce(
+        findings.reduce(
           (acc, f) => {
-            acc[f.dataCategory] = (acc[f.dataCategory] || 0) + 1;
+            const k = String(f.dataCategory || "UNKNOWN");
+            acc[k] = (acc[k] || 0) + 1;
             return acc;
           },
           {} as Record<string, number>
@@ -238,27 +191,41 @@ export async function GET(request: NextRequest) {
       ).sort(([, a], [, b]) => b - a)
     );
 
-    const _warnings: string[] = [];
-    if (!process.env.DATABASE_URL && !process.env.POSTGRES_PRISMA_URL) {
-      _warnings.push("No DATABASE_URL configured — using Prisma fallback");
+    const distinctSystemIds = new Set(
+      findings.map((f) => String(f.systemId))
+    ).size;
+
+    if (process.env.NODE_ENV === "development") {
+      console.log("[heatmap/overview]", {
+        tenantId,
+        caseId,
+        runId,
+        clause,
+        findings: findings.length,
+        systems: systems.length,
+        systemsWithFindings: distinctSystemIds,
+      });
     }
 
     return NextResponse.json({
       systems: systemTiles,
       totals,
       summary: {
-        totalSystems: systems.length,
-        totalFindings: allFindings.length,
+        totalSystems: distinctSystemIds,
+        totalFindings: findings.length,
         statusCounts: {
-          OPEN: allFindings.filter((f) => f.status === "OPEN").length,
-          ACCEPTED: allFindings.filter((f) => f.status === "ACCEPTED").length,
-          MITIGATING: allFindings.filter((f) => f.status === "MITIGATING")
-            .length,
-          MITIGATED: allFindings.filter((f) => f.status === "MITIGATED").length,
+          OPEN: findings.filter((f) => f.status === "OPEN").length,
+          ACCEPTED: findings.filter((f) => f.status === "ACCEPTED").length,
+          MITIGATING: findings.filter((f) => f.status === "MITIGATING").length,
+          MITIGATED: findings.filter((f) => f.status === "MITIGATED").length,
         },
         categoryCounts,
       },
-      ...(_warnings.length > 0 ? { _warnings } : {}),
+      scope: {
+        activeCaseId: caseId || null,
+        activeRunId: runId || null,
+        clause,
+      },
     });
   } catch (error) {
     return handleApiError(error);
