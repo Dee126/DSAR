@@ -51,15 +51,21 @@ const DEFAULT_FILTERS: HeatmapFilters = {
 /* ── Helpers ───────────────────────────────────────────────────────────── */
 
 function riskBg(score: number): string {
-  if (score >= 70) return "bg-red-100 border-red-300";
-  if (score >= 40) return "bg-yellow-50 border-yellow-300";
-  return "bg-green-50 border-green-300";
+  if (score >= 70) return "bg-red-50 border-red-300";
+  if (score >= 40) return "bg-amber-50 border-amber-300";
+  return "bg-emerald-50 border-emerald-300";
 }
 
 function riskBadgeBg(score: number): string {
   if (score >= 70) return "bg-red-600";
-  if (score >= 40) return "bg-yellow-500";
-  return "bg-green-500";
+  if (score >= 40) return "bg-amber-500";
+  return "bg-emerald-500";
+}
+
+function riskTextColor(score: number): string {
+  if (score >= 70) return "text-red-700";
+  if (score >= 40) return "text-amber-700";
+  return "text-emerald-700";
 }
 
 function riskLabel(score: number): string {
@@ -120,31 +126,61 @@ function sortSystems(
   }
 }
 
-/* ── Simple Bar Chart (pure CSS) ──────────────────────────────────────── */
+/* ── SVG Icons (inline) ───────────────────────────────────────────────── */
 
-function HorizontalBar({
-  label,
-  value,
-  max,
-  color,
-}: {
-  label: string;
-  value: number;
-  max: number;
-  color: string;
-}) {
-  const pct = max > 0 ? (value / max) * 100 : 0;
+function IconSearch({ className }: { className?: string }) {
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <span className="w-28 truncate text-gray-600">{label}</span>
-      <div className="flex-1 h-4 bg-gray-100 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all ${color}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <span className="w-8 text-right font-medium text-gray-700">{value}</span>
-    </div>
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+    </svg>
+  );
+}
+
+function IconX({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+    </svg>
+  );
+}
+
+function IconChevron({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+    </svg>
+  );
+}
+
+function IconLock({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+    </svg>
+  );
+}
+
+function IconDatabase({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375" />
+    </svg>
+  );
+}
+
+function IconTrash({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+    </svg>
+  );
+}
+
+function IconArrowRight({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+    </svg>
   );
 }
 
@@ -208,9 +244,200 @@ function DonutChart({
   );
 }
 
-/* ── System Drilldown Modal ───────────────────────────────────────────── */
+/* ── Horizontal Bar ───────────────────────────────────────────────────── */
 
-function SystemDrilldownModal({
+function HorizontalBar({
+  label,
+  value,
+  max,
+  color,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  color: string;
+}) {
+  const pct = max > 0 ? (value / max) * 100 : 0;
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="w-28 truncate text-gray-600">{label}</span>
+      <div className="flex-1 h-4 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${color}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="w-8 text-right font-medium text-gray-700">{value}</span>
+    </div>
+  );
+}
+
+/* ── Summary Ribbon ───────────────────────────────────────────────────── */
+
+function SummaryRibbon({
+  totals,
+  systemsCount,
+  summary,
+}: {
+  totals: HeatmapCounts;
+  systemsCount: number;
+  summary: HeatmapSummary;
+}) {
+  const items = [
+    { label: "Systems", value: systemsCount, bgClass: "bg-slate-50 border-slate-200", textClass: "text-slate-800", dotClass: "bg-slate-400" },
+    { label: "Total Findings", value: totals.total, bgClass: "bg-gray-50 border-gray-200", textClass: "text-gray-900", dotClass: "bg-gray-500" },
+    { label: "Green (<40)", value: totals.green, bgClass: "bg-emerald-50 border-emerald-200", textClass: "text-emerald-700", dotClass: "bg-emerald-500" },
+    { label: "Yellow (40-69)", value: totals.yellow, bgClass: "bg-amber-50 border-amber-200", textClass: "text-amber-700", dotClass: "bg-amber-500" },
+    { label: "Red (\u226570)", value: totals.red, bgClass: "bg-red-50 border-red-200", textClass: "text-red-700", dotClass: "bg-red-500" },
+    { label: "Mitigated", value: summary.statusCounts.MITIGATED, bgClass: "bg-teal-50 border-teal-200", textClass: "text-teal-700", dotClass: "bg-teal-500" },
+  ];
+
+  return (
+    <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+      {items.map((item) => (
+        <div
+          key={item.label}
+          className={`rounded-xl border px-3 py-3 text-center transition-shadow hover:shadow-sm ${item.bgClass}`}
+        >
+          <p className={`text-2xl font-bold tabular-nums ${item.textClass}`}>{item.value}</p>
+          <p className="mt-0.5 flex items-center justify-center gap-1.5 text-[11px] text-gray-500">
+            <span className={`inline-block h-1.5 w-1.5 rounded-full ${item.dotClass}`} />
+            {item.label}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── System Card ──────────────────────────────────────────────────────── */
+
+function SystemCard({
+  system,
+  onClick,
+}: {
+  system: HeatmapSystemRow;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`group relative flex flex-col rounded-xl border-2 p-4 text-left transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 ${riskBg(system.riskScore)}`}
+    >
+      {/* Risk Score Badge */}
+      <div
+        className={`absolute -right-2 -top-2 flex h-11 w-11 items-center justify-center rounded-full text-sm font-bold text-white shadow-md transition-transform group-hover:scale-110 ${riskBadgeBg(system.riskScore)}`}
+      >
+        {system.riskScore}
+      </div>
+
+      {/* System name */}
+      <h3 className="pr-10 text-sm font-bold text-gray-900 leading-tight">
+        {system.systemName}
+      </h3>
+
+      {/* Badges row */}
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        {system.systemType && system.systemType !== "NONE" && (
+          <span className="rounded-md bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 ring-1 ring-gray-200">
+            {system.systemType}
+          </span>
+        )}
+        <span className="rounded-md bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 ring-1 ring-gray-200">
+          {system.criticality}
+        </span>
+        {system.containsSpecialCategories && (
+          <span className="rounded-md bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700 ring-1 ring-red-200">
+            Art. 9 {system.specialCategoryCount > 0 && `(${system.specialCategoryCount})`}
+          </span>
+        )}
+      </div>
+
+      {/* Risk band progress bar */}
+      <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-gray-200/80">
+        {system.counts.total > 0 && (
+          <>
+            {system.counts.green > 0 && (
+              <div
+                className="bg-emerald-500 transition-all duration-500"
+                style={{ width: `${(system.counts.green / system.counts.total) * 100}%` }}
+              />
+            )}
+            {system.counts.yellow > 0 && (
+              <div
+                className="bg-amber-500 transition-all duration-500"
+                style={{ width: `${(system.counts.yellow / system.counts.total) * 100}%` }}
+              />
+            )}
+            {system.counts.red > 0 && (
+              <div
+                className="bg-red-500 transition-all duration-500"
+                style={{ width: `${(system.counts.red / system.counts.total) * 100}%` }}
+              />
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Counts row */}
+      <div className="mt-2 flex items-center gap-3 text-[11px] font-medium">
+        <span className="flex items-center gap-1 text-emerald-700">
+          <span className="h-2 w-2 rounded-full bg-emerald-500" />
+          {system.counts.green}
+        </span>
+        <span className="flex items-center gap-1 text-amber-700">
+          <span className="h-2 w-2 rounded-full bg-amber-500" />
+          {system.counts.yellow}
+        </span>
+        <span className="flex items-center gap-1 text-red-700">
+          <span className="h-2 w-2 rounded-full bg-red-500" />
+          {system.counts.red}
+        </span>
+        <span className="ml-auto font-bold text-gray-700">
+          {system.counts.total} total
+        </span>
+      </div>
+
+      {/* Status chips */}
+      <div className="mt-2 flex flex-wrap gap-1">
+        {system.statusCounts.OPEN > 0 && (
+          <span className="rounded-md bg-indigo-100/80 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">
+            {system.statusCounts.OPEN} open
+          </span>
+        )}
+        {system.statusCounts.MITIGATING > 0 && (
+          <span className="rounded-md bg-blue-100/80 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+            {system.statusCounts.MITIGATING} mitigating
+          </span>
+        )}
+        {system.statusCounts.ACCEPTED > 0 && (
+          <span className="rounded-md bg-amber-100/80 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+            {system.statusCounts.ACCEPTED} accepted
+          </span>
+        )}
+        {system.statusCounts.MITIGATED > 0 && (
+          <span className="rounded-md bg-emerald-100/80 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+            {system.statusCounts.MITIGATED} mitigated
+          </span>
+        )}
+      </div>
+
+      {/* Last scan */}
+      <p className="mt-auto pt-2 text-[10px] text-gray-400">
+        Last scan: {system.lastScanAt ? relativeTime(system.lastScanAt) : "No scans"}
+      </p>
+
+      {/* Hover arrow indicator */}
+      <div className="absolute bottom-3 right-3 opacity-0 transition-opacity group-hover:opacity-100">
+        <IconArrowRight className="h-4 w-4 text-gray-400" />
+      </div>
+    </button>
+  );
+}
+
+/* ── System Drilldown Drawer ──────────────────────────────────────────── */
+
+function SystemDrawer({
   system,
   onClose,
 }: {
@@ -218,6 +445,12 @@ function SystemDrilldownModal({
   onClose: () => void;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  // Animate in
+  useEffect(() => {
+    requestAnimationFrame(() => setVisible(true));
+  }, []);
 
   // Close on Escape key
   useEffect(() => {
@@ -228,7 +461,6 @@ function SystemDrilldownModal({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // Close on overlay click
   function handleOverlayClick(e: React.MouseEvent) {
     if (e.target === overlayRef.current) onClose();
   }
@@ -240,163 +472,167 @@ function SystemDrilldownModal({
     <div
       ref={overlayRef}
       onClick={handleOverlayClick}
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-12 sm:pt-20"
+      className={`fixed inset-0 z-50 transition-colors duration-300 ${visible ? "bg-black/40" : "bg-black/0"}`}
     >
-      <div className="w-full max-w-2xl rounded-xl bg-white shadow-xl">
+      <div
+        className={`absolute right-0 top-0 h-full w-full max-w-xl overflow-y-auto bg-white shadow-2xl transition-transform duration-300 ease-out ${
+          visible ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
         {/* Header */}
-        <div className={`flex items-start justify-between rounded-t-xl border-b px-6 py-4 ${riskBg(system.riskScore)}`}>
-          <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-bold text-gray-900">
-              {system.systemName}
-            </h2>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-              {system.systemType && system.systemType !== "NONE" && (
-                <span className="rounded bg-gray-200 px-1.5 py-0.5 font-medium text-gray-600">
-                  {system.systemType}
+        <div className={`sticky top-0 z-10 border-b px-6 py-5 ${riskBg(system.riskScore)}`}>
+          <div className="flex items-start gap-4">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-lg font-bold text-gray-900">
+                {system.systemName}
+              </h2>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+                {system.systemType && system.systemType !== "NONE" && (
+                  <span className="rounded-md bg-white/80 px-2 py-0.5 font-semibold text-gray-700 ring-1 ring-gray-300">
+                    {system.systemType}
+                  </span>
+                )}
+                <span className="rounded-md bg-white/80 px-2 py-0.5 font-semibold text-gray-700 ring-1 ring-gray-300">
+                  {system.criticality}
                 </span>
+                {system.containsSpecialCategories && (
+                  <span className="rounded-full bg-red-100 px-2.5 py-0.5 font-bold text-red-700">
+                    Art. 9 Data
+                  </span>
+                )}
+              </div>
+              {system.description && (
+                <p className="mt-2 text-xs text-gray-500 leading-relaxed">{system.description}</p>
               )}
-              <span className="rounded bg-gray-200 px-1.5 py-0.5 font-medium text-gray-600">
-                {system.criticality}
+            </div>
+            <div className="flex flex-col items-center shrink-0">
+              <div
+                className={`flex h-16 w-16 items-center justify-center rounded-full text-xl font-bold text-white shadow-lg ${riskBadgeBg(system.riskScore)}`}
+              >
+                {system.riskScore}
+              </div>
+              <span className={`mt-1 text-[10px] font-bold ${riskTextColor(system.riskScore)}`}>
+                {riskLabel(system.riskScore)} Risk
               </span>
-              {system.containsSpecialCategories && (
-                <span className="rounded-full bg-red-100 px-2 py-0.5 font-medium text-red-700">
-                  Art. 9 Data
-                </span>
-              )}
             </div>
-            {system.description && (
-              <p className="mt-1 text-xs text-gray-500">{system.description}</p>
-            )}
-          </div>
-          <div className="ml-4 flex flex-col items-center">
-            <div
-              className={`flex h-14 w-14 items-center justify-center rounded-full text-lg font-bold text-white ${riskBadgeBg(system.riskScore)}`}
+            <button
+              onClick={onClose}
+              className="shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-white/60 hover:text-gray-700 transition-colors"
+              aria-label="Close"
             >
-              {system.riskScore}
-            </div>
-            <span className="mt-1 text-[10px] font-medium text-gray-500">
-              {riskLabel(system.riskScore)} Risk
-            </span>
+              <IconX className="h-5 w-5" />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="ml-3 rounded-md p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
-            aria-label="Close"
-          >
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-            </svg>
-          </button>
         </div>
 
         {/* Body */}
-        <div className="space-y-5 px-6 py-5">
+        <div className="space-y-6 px-6 py-6">
           {/* Section 1: Risk Band Counts */}
-          <div>
-            <h3 className="mb-2 text-sm font-semibold text-gray-700">
+          <section>
+            <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500">
               Findings by Risk Band
             </h3>
             <div className="grid grid-cols-4 gap-3">
               {[
-                { label: "Green (<40)", value: system.counts.green, bg: "bg-green-50 border-green-200", text: "text-green-700" },
-                { label: "Yellow (40-69)", value: system.counts.yellow, bg: "bg-yellow-50 border-yellow-200", text: "text-yellow-700" },
+                { label: "Green (<40)", value: system.counts.green, bg: "bg-emerald-50 border-emerald-200", text: "text-emerald-700" },
+                { label: "Yellow (40-69)", value: system.counts.yellow, bg: "bg-amber-50 border-amber-200", text: "text-amber-700" },
                 { label: "Red (\u226570)", value: system.counts.red, bg: "bg-red-50 border-red-200", text: "text-red-700" },
                 { label: "Total", value: system.counts.total, bg: "bg-gray-50 border-gray-200", text: "text-gray-900" },
               ].map((c) => (
-                <div key={c.label} className={`rounded-lg border p-3 text-center ${c.bg}`}>
-                  <p className={`text-xl font-bold ${c.text}`}>{c.value}</p>
-                  <p className="text-[10px] text-gray-500">{c.label}</p>
+                <div key={c.label} className={`rounded-xl border p-3 text-center ${c.bg}`}>
+                  <p className={`text-2xl font-bold tabular-nums ${c.text}`}>{c.value}</p>
+                  <p className="mt-0.5 text-[10px] text-gray-500">{c.label}</p>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
 
           {/* Section 2: Status Counts */}
-          <div>
-            <h3 className="mb-2 text-sm font-semibold text-gray-700">
+          <section>
+            <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500">
               Finding Status
             </h3>
             <div className="grid grid-cols-4 gap-3">
               {([
-                { key: "OPEN", color: "bg-indigo-50 border-indigo-200", text: "text-indigo-700" },
-                { key: "ACCEPTED", color: "bg-amber-50 border-amber-200", text: "text-amber-700" },
-                { key: "MITIGATING", color: "bg-blue-50 border-blue-200", text: "text-blue-700" },
-                { key: "MITIGATED", color: "bg-emerald-50 border-emerald-200", text: "text-emerald-700" },
+                { key: "OPEN", label: "Open", color: "bg-indigo-50 border-indigo-200", text: "text-indigo-700" },
+                { key: "ACCEPTED", label: "Accepted", color: "bg-amber-50 border-amber-200", text: "text-amber-700" },
+                { key: "MITIGATING", label: "Mitigating", color: "bg-blue-50 border-blue-200", text: "text-blue-700" },
+                { key: "MITIGATED", label: "Mitigated", color: "bg-emerald-50 border-emerald-200", text: "text-emerald-700" },
               ] as const).map((s) => (
-                <div key={s.key} className={`rounded-lg border p-3 text-center ${s.color}`}>
-                  <p className={`text-xl font-bold ${s.text}`}>
+                <div key={s.key} className={`rounded-xl border p-3 text-center ${s.color}`}>
+                  <p className={`text-2xl font-bold tabular-nums ${s.text}`}>
                     {system.statusCounts[s.key]}
                   </p>
-                  <p className="text-[10px] text-gray-500">{s.key}</p>
+                  <p className="mt-0.5 text-[10px] text-gray-500">{s.label}</p>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
 
           {/* Section 3: Severity Counts */}
-          <div>
-            <h3 className="mb-2 text-sm font-semibold text-gray-700">
+          <section>
+            <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500">
               Severity
             </h3>
             <div className="grid grid-cols-3 gap-3">
               {([
-                { key: "CRITICAL", color: "bg-red-50 border-red-200", text: "text-red-700" },
-                { key: "WARNING", color: "bg-yellow-50 border-yellow-200", text: "text-yellow-700" },
-                { key: "INFO", color: "bg-blue-50 border-blue-200", text: "text-blue-700" },
+                { key: "CRITICAL", label: "Critical", color: "bg-red-50 border-red-200", text: "text-red-700" },
+                { key: "WARNING", label: "Warning", color: "bg-yellow-50 border-yellow-200", text: "text-yellow-700" },
+                { key: "INFO", label: "Info", color: "bg-blue-50 border-blue-200", text: "text-blue-700" },
               ] as const).map((s) => (
-                <div key={s.key} className={`rounded-lg border p-3 text-center ${s.color}`}>
-                  <p className={`text-xl font-bold ${s.text}`}>
+                <div key={s.key} className={`rounded-xl border p-3 text-center ${s.color}`}>
+                  <p className={`text-2xl font-bold tabular-nums ${s.text}`}>
                     {system.severityCounts[s.key]}
                   </p>
-                  <p className="text-[10px] text-gray-500">{s.key}</p>
+                  <p className="mt-0.5 text-[10px] text-gray-500">{s.label}</p>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
 
           {/* Section 4: Category Breakdown */}
           {catEntries.length > 0 && (
-            <div>
-              <h3 className="mb-2 text-sm font-semibold text-gray-700">
+            <section>
+              <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500">
                 Data Categories
               </h3>
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <div className="overflow-x-auto rounded-xl border border-gray-200">
                 <table className="min-w-full text-xs">
                   <thead>
                     <tr className="bg-gray-50">
-                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Category</th>
-                      <th className="px-2 py-2 text-center font-medium text-gray-600">Total</th>
-                      <th className="px-2 py-2 text-center font-medium text-green-600">Green</th>
-                      <th className="px-2 py-2 text-center font-medium text-yellow-600">Yellow</th>
-                      <th className="px-2 py-2 text-center font-medium text-red-600">Red</th>
+                      <th className="px-3 py-2.5 text-left font-bold text-gray-700">Category</th>
+                      <th className="px-2 py-2.5 text-center font-semibold text-gray-600">Total</th>
+                      <th className="px-2 py-2.5 text-center font-semibold text-emerald-600">Green</th>
+                      <th className="px-2 py-2.5 text-center font-semibold text-amber-600">Yellow</th>
+                      <th className="px-2 py-2.5 text-center font-semibold text-red-600">Red</th>
                     </tr>
                   </thead>
                   <tbody>
                     {catEntries.map(([cat, counts]) => (
-                      <tr key={cat} className="border-t border-gray-100">
+                      <tr key={cat} className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
                         <td className="px-3 py-2 font-medium text-gray-900">
                           {CATEGORY_LABELS[cat] ?? cat}
                           {isSpecialCategory(cat) && (
-                            <span className="ml-1.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-medium text-red-600">
+                            <span className="ml-1.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-600">
                               Art.9
                             </span>
                           )}
                         </td>
                         <td className="px-2 py-2 text-center font-bold text-gray-900">{counts.total}</td>
-                        <td className="px-2 py-2 text-center text-green-700">{counts.green}</td>
-                        <td className="px-2 py-2 text-center text-yellow-700">{counts.yellow}</td>
+                        <td className="px-2 py-2 text-center text-emerald-700">{counts.green}</td>
+                        <td className="px-2 py-2 text-center text-amber-700">{counts.yellow}</td>
                         <td className="px-2 py-2 text-center text-red-700">{counts.red}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </div>
+            </section>
           )}
 
-          {/* Section 5: Special Category Count */}
+          {/* Section 5: Special Category Warning */}
           {system.specialCategoryCount > 0 && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
               <p className="text-sm font-medium text-red-700">
                 {system.specialCategoryCount} finding{system.specialCategoryCount !== 1 ? "s" : ""} contain Art. 9 special category data
               </p>
@@ -411,12 +647,13 @@ function SystemDrilldownModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t px-6 py-4">
+        <div className="sticky bottom-0 flex items-center justify-between border-t bg-white px-6 py-4">
           <Link
             href={`/heatmap/system/${system.systemId}`}
-            className="text-sm font-medium text-brand-600 hover:text-brand-700 hover:underline"
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-600 hover:text-brand-700 transition-colors"
           >
-            View all findings &rarr;
+            View all findings
+            <IconArrowRight className="h-3.5 w-3.5" />
           </Link>
           <button
             onClick={onClose}
@@ -461,8 +698,13 @@ export default function HeatmapPage() {
   const [filters, setFilters] = useState<HeatmapFilters>(DEFAULT_FILTERS);
   const [sortKey, setSortKey] = useState<HeatmapSortKey>("risk-desc");
 
-  // Drilldown modal
+  // Drilldown drawer
   const [selectedSystem, setSelectedSystem] = useState<HeatmapSystemRow | null>(null);
+
+  // Analytics panel toggle
+  const [analyticsOpen, setAnalyticsOpen] = useState(true);
+  // Grid table toggle
+  const [gridOpen, setGridOpen] = useState(false);
 
   // Demo controls (dev-only)
   const [seeding, setSeeding] = useState(false);
@@ -576,7 +818,7 @@ export default function HeatmapPage() {
       await fetchHeatmap();
       addToast(
         "success",
-        `Demo data seeded: ${data.seededSystems} systems, ${data.seededFindings} findings`,
+        `Seed complete \u2014 ${data.seededSystems} systems, ${data.seededFindings} findings`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -588,6 +830,7 @@ export default function HeatmapPage() {
 
   const resetDemoData = async () => {
     setResetting(true);
+    setMenuOpen(false);
     setDemoStatus(null);
     try {
       const res = await fetch("/api/demo/reset-heatmap", { method: "POST", credentials: "include" });
@@ -597,7 +840,7 @@ export default function HeatmapPage() {
       await fetchHeatmap();
       addToast(
         "success",
-        `Demo data reset: ${data.removedSystems} systems, ${data.removedFindings} findings removed`,
+        `Reset complete \u2014 ${data.removedSystems} systems, ${data.removedFindings} findings removed`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -666,22 +909,22 @@ export default function HeatmapPage() {
         {/* Skeleton header */}
         <div className="flex items-center justify-between">
           <div>
-            <div className="h-7 w-52 animate-pulse rounded bg-gray-200" />
-            <div className="mt-2 h-4 w-80 animate-pulse rounded bg-gray-100" />
+            <div className="h-7 w-52 animate-pulse rounded-lg bg-gray-200" />
+            <div className="mt-2 h-4 w-80 animate-pulse rounded-lg bg-gray-100" />
           </div>
         </div>
-        {/* Skeleton KPI cards */}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-20 animate-pulse rounded-lg bg-gray-100" />
+        {/* Skeleton summary ribbon */}
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="h-[76px] animate-pulse rounded-xl bg-gray-100" />
           ))}
         </div>
         {/* Skeleton filter bar */}
-        <div className="h-10 animate-pulse rounded-lg bg-gray-100" />
+        <div className="h-14 animate-pulse rounded-xl bg-gray-100" />
         {/* Skeleton system cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="h-52 animate-pulse rounded-lg bg-gray-100" />
+            <div key={i} className="h-56 animate-pulse rounded-xl bg-gray-100" />
           ))}
         </div>
       </div>
@@ -698,7 +941,7 @@ export default function HeatmapPage() {
       <div className="space-y-4">
         {/* Dev-only: still show demo controls when there's an error */}
         {process.env.NODE_ENV === "development" && (
-          <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3">
+          <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-indigo-700">
                 Demo Mode: DEMO_TENANT_ID{" "}
@@ -710,44 +953,50 @@ export default function HeatmapPage() {
                 <button
                   onClick={seedDemoData}
                   disabled={seeding || resetting}
-                  className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                  className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
                 >
                   {seeding ? "Seeding\u2026" : "Seed Demo Data"}
                 </button>
                 <button
                   onClick={resetDemoData}
                   disabled={seeding || resetting}
-                  className="rounded bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
                 >
                   {resetting ? "Resetting\u2026" : "Reset Demo Data"}
                 </button>
               </div>
             </div>
             {demoStatus && (
-              <pre className="mt-2 max-h-40 overflow-auto rounded bg-gray-900 p-2 text-[11px] text-green-300">
+              <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-gray-900 p-2 text-[11px] text-green-300">
                 {demoStatus}
               </pre>
             )}
           </div>
         )}
 
-        <div className="rounded-lg border border-red-200 bg-red-50 px-6 py-8 text-center">
+        <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-10 text-center">
           {isAuthError ? (
             <>
-              <svg className="mx-auto h-10 w-10 text-red-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
-              </svg>
-              <p className="mt-3 text-sm font-medium text-red-700">Please log in to view the heatmap.</p>
-              <Link href="/login" className="mt-3 inline-block text-sm font-medium text-red-600 hover:text-red-800 hover:underline">
-                Go to login &rarr;
+              <IconLock className="mx-auto h-10 w-10 text-red-400" />
+              <p className="mt-3 text-sm font-medium text-red-700">
+                Please log in to view the heatmap.
+              </p>
+              <Link
+                href="/login"
+                className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-red-600 hover:text-red-800 transition-colors"
+              >
+                Go to login
+                <IconArrowRight className="h-3.5 w-3.5" />
               </Link>
             </>
           ) : (
             <>
-              <p className="text-sm font-medium text-red-700">Failed to load heatmap: {error}</p>
+              <p className="text-sm font-medium text-red-700">
+                Failed to load heatmap: {error}
+              </p>
               <button
                 onClick={fetchHeatmap}
-                className="mt-3 text-sm font-medium text-red-600 hover:text-red-800 hover:underline"
+                className="mt-3 text-sm font-semibold text-red-600 hover:text-red-800 transition-colors"
               >
                 Retry
               </button>
@@ -758,7 +1007,7 @@ export default function HeatmapPage() {
     );
   }
 
-  /* ── Render: Derived data for charts ────────────────────────────────── */
+  /* ── Render: Chart data ──────────────────────────────────────────────── */
 
   const topCategories = summary
     ? Object.entries(summary.categoryCounts).slice(0, 8)
@@ -771,17 +1020,17 @@ export default function HeatmapPage() {
     <div className="space-y-6">
       <ToastContainer toasts={toasts} />
 
-      {/* Drilldown Modal */}
+      {/* Drilldown Drawer */}
       {selectedSystem && (
-        <SystemDrilldownModal
+        <SystemDrawer
           system={selectedSystem}
           onClose={() => setSelectedSystem(null)}
         />
       )}
 
-      {/* Dev-only: Demo Controls Card */}
+      {/* Dev-only: Demo Controls */}
       {process.env.NODE_ENV === "development" && (
-        <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3">
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-indigo-700">
               Demo Mode: DEMO_TENANT_ID{" "}
@@ -793,21 +1042,23 @@ export default function HeatmapPage() {
               <button
                 onClick={seedDemoData}
                 disabled={seeding || resetting}
-                className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
               >
+                <IconDatabase className="h-3.5 w-3.5" />
                 {seeding ? "Seeding\u2026" : "Seed Demo Data"}
               </button>
               <button
                 onClick={resetDemoData}
                 disabled={seeding || resetting}
-                className="rounded bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
               >
+                <IconTrash className="h-3.5 w-3.5" />
                 {resetting ? "Resetting\u2026" : "Reset Demo Data"}
               </button>
             </div>
           </div>
           {demoStatus && (
-            <pre className="mt-2 max-h-40 overflow-auto rounded bg-gray-900 p-2 text-[11px] text-green-300">
+            <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-gray-900 p-2 text-[11px] text-green-300">
               {demoStatus}
             </pre>
           )}
@@ -816,22 +1067,22 @@ export default function HeatmapPage() {
 
       {/* Warnings Banner */}
       {warnings.length > 0 && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
           {warnings.map((w, i) => (
             <p key={i} className="text-sm text-amber-800">{w}</p>
           ))}
         </div>
       )}
 
-      {/* Header */}
+      {/* Header + Menu */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900 md:text-2xl">
             DPO Risk Heatmap
           </h1>
           <p className="mt-1 text-sm text-gray-500">
-            System-level risk overview based on discovery findings. Click a system
-            card to view breakdowns, or drill into individual findings.
+            System-level risk overview based on discovery findings. Click a
+            system card to view breakdowns, or drill into individual findings.
           </p>
         </div>
         {/* Dev-only: More menu */}
@@ -839,39 +1090,33 @@ export default function HeatmapPage() {
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((o) => !o)}
-              className="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
               aria-haspopup="true"
               aria-expanded={menuOpen}
             >
               More
-              <svg className="ml-1 -mr-0.5 inline-block h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-              </svg>
+              <IconChevron className="ml-1 -mr-0.5 inline-block h-4 w-4" />
             </button>
 
             {menuOpen && (
-              <div className="absolute right-0 z-20 mt-1 w-52 rounded-md border border-gray-200 bg-white py-1 shadow-lg">
-                <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+              <div className="absolute right-0 z-20 mt-1 w-52 rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400">
                   Demo
                 </div>
                 <button
                   onClick={seedDemoData}
                   disabled={seeding || resetting}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
                 >
-                  <svg className="h-4 w-4 text-indigo-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375" />
-                  </svg>
+                  <IconDatabase className="h-4 w-4 text-indigo-500" />
                   {seeding ? "Seeding\u2026" : "Seed Demo Data"}
                 </button>
                 <button
                   onClick={resetDemoData}
                   disabled={seeding || resetting}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
                 >
-                  <svg className="h-4 w-4 text-red-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                  </svg>
+                  <IconTrash className="h-4 w-4 text-red-500" />
                   {resetting ? "Resetting\u2026" : "Reset Demo Data"}
                 </button>
               </div>
@@ -880,114 +1125,123 @@ export default function HeatmapPage() {
         )}
       </div>
 
-      {/* Summary Charts */}
-      {totals && totals.total > 0 && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* Risk Distribution Donut */}
-          <div className="card flex flex-col items-center gap-4">
-            <h3 className="text-sm font-semibold text-gray-700">Risk Distribution</h3>
-            <DonutChart
-              segments={[
-                { value: totals.green, color: "#22c55e", label: "Green" },
-                { value: totals.yellow, color: "#eab308", label: "Yellow" },
-                { value: totals.red, color: "#ef4444", label: "Red" },
-              ]}
-            />
-            <div className="flex gap-4 text-xs">
-              <span className="flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
-                {totals.green} Green
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full bg-yellow-500" />
-                {totals.yellow} Yellow
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
-                {totals.red} Red
-              </span>
-            </div>
-          </div>
+      {/* ── Summary Ribbon ─────────────────────────────────────────────── */}
+      {totals && summary && (
+        <SummaryRibbon
+          totals={totals}
+          systemsCount={systems.length}
+          summary={summary}
+        />
+      )}
 
-          {/* Status Donut */}
-          {summary && (
-            <div className="card flex flex-col items-center gap-4">
-              <h3 className="text-sm font-semibold text-gray-700">Finding Status</h3>
-              <DonutChart
-                segments={[
-                  { value: summary.statusCounts.OPEN, color: "#6366f1", label: "Open" },
-                  { value: summary.statusCounts.ACCEPTED, color: "#f59e0b", label: "Accepted" },
-                  { value: summary.statusCounts.MITIGATING, color: "#3b82f6", label: "Mitigating" },
-                  { value: summary.statusCounts.MITIGATED, color: "#10b981", label: "Mitigated" },
-                ]}
-              />
-              <div className="flex flex-wrap gap-4 text-xs">
-                <span className="flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-full bg-indigo-500" />
-                  {summary.statusCounts.OPEN} Open
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
-                  {summary.statusCounts.ACCEPTED} Accepted
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
-                  {summary.statusCounts.MITIGATING} Mitigating
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                  {summary.statusCounts.MITIGATED} Mitigated
-                </span>
+      {/* ── Analytics Section (collapsible) ────────────────────────────── */}
+      {totals && totals.total > 0 && (
+        <div className="rounded-xl border border-gray-200 bg-white">
+          <button
+            onClick={() => setAnalyticsOpen((o) => !o)}
+            className="flex w-full items-center justify-between px-5 py-3 text-left hover:bg-gray-50 transition-colors rounded-xl"
+          >
+            <span className="text-sm font-semibold text-gray-700">Analytics</span>
+            <IconChevron
+              className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${analyticsOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+
+          {analyticsOpen && (
+            <div className="border-t border-gray-100 px-5 pb-5 pt-4">
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                {/* Risk Distribution Donut */}
+                <div className="flex flex-col items-center gap-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                    Risk Distribution
+                  </h3>
+                  <DonutChart
+                    segments={[
+                      { value: totals.green, color: "#10b981", label: "Green" },
+                      { value: totals.yellow, color: "#f59e0b", label: "Yellow" },
+                      { value: totals.red, color: "#ef4444", label: "Red" },
+                    ]}
+                  />
+                  <div className="flex gap-4 text-xs">
+                    <span className="flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                      {totals.green} Green
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+                      {totals.yellow} Yellow
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+                      {totals.red} Red
+                    </span>
+                  </div>
+                </div>
+
+                {/* Status Donut */}
+                {summary && (
+                  <div className="flex flex-col items-center gap-4">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                      Finding Status
+                    </h3>
+                    <DonutChart
+                      segments={[
+                        { value: summary.statusCounts.OPEN, color: "#6366f1", label: "Open" },
+                        { value: summary.statusCounts.ACCEPTED, color: "#f59e0b", label: "Accepted" },
+                        { value: summary.statusCounts.MITIGATING, color: "#3b82f6", label: "Mitigating" },
+                        { value: summary.statusCounts.MITIGATED, color: "#10b981", label: "Mitigated" },
+                      ]}
+                    />
+                    <div className="flex flex-wrap gap-4 text-xs">
+                      <span className="flex items-center gap-1">
+                        <span className="h-2.5 w-2.5 rounded-full bg-indigo-500" />
+                        {summary.statusCounts.OPEN} Open
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+                        {summary.statusCounts.ACCEPTED} Accepted
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
+                        {summary.statusCounts.MITIGATING} Mitigating
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                        {summary.statusCounts.MITIGATED} Mitigated
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Top Data Categories */}
+                <div>
+                  <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500 text-center lg:text-left">
+                    Top Data Categories
+                  </h3>
+                  <div className="space-y-2">
+                    {topCategories.map(([cat, count]) => (
+                      <HorizontalBar
+                        key={cat}
+                        label={CATEGORY_LABELS[cat] ?? cat}
+                        value={count}
+                        max={maxCatCount}
+                        color={isSpecialCategory(cat) ? "bg-red-500" : "bg-brand-500"}
+                      />
+                    ))}
+                    {topCategories.length === 0 && (
+                      <p className="text-xs text-gray-400">No findings yet</p>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}
-
-          {/* Top Data Categories */}
-          <div className="card">
-            <h3 className="mb-3 text-sm font-semibold text-gray-700">Top Data Categories</h3>
-            <div className="space-y-2">
-              {topCategories.map(([cat, count]) => (
-                <HorizontalBar
-                  key={cat}
-                  label={CATEGORY_LABELS[cat] ?? cat}
-                  value={count}
-                  max={maxCatCount}
-                  color={isSpecialCategory(cat) ? "bg-red-500" : "bg-brand-500"}
-                />
-              ))}
-              {topCategories.length === 0 && (
-                <p className="text-xs text-gray-400">No findings yet</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* KPI Cards */}
-      {totals && (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div className="card text-center">
-            <p className="text-2xl font-bold text-gray-900">{systems.length}</p>
-            <p className="text-xs text-gray-500">Systems Scanned</p>
-          </div>
-          <div className="card text-center">
-            <p className="text-2xl font-bold text-gray-900">{totals.total}</p>
-            <p className="text-xs text-gray-500">Total Findings</p>
-          </div>
-          <div className="card text-center">
-            <p className="text-2xl font-bold text-red-600">{totals.red}</p>
-            <p className="text-xs text-gray-500">High Risk</p>
-          </div>
-          <div className="card text-center">
-            <p className="text-2xl font-bold text-green-600">{summary?.statusCounts.MITIGATED ?? 0}</p>
-            <p className="text-xs text-gray-500">Mitigated</p>
-          </div>
         </div>
       )}
 
       {/* AI Decisions Panel (dev-only) */}
       {process.env.NODE_ENV === "development" && pendingItems.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50">
+        <div className="rounded-xl border border-amber-200 bg-amber-50">
           <button
             onClick={() => setPendingOpen((o) => !o)}
             className="flex w-full items-center justify-between px-4 py-3 text-left"
@@ -996,15 +1250,9 @@ export default function HeatmapPage() {
               AI Decisions (Pending) &mdash; {pendingItems.length} item
               {pendingItems.length !== 1 ? "s" : ""}
             </span>
-            <svg
-              className={`h-4 w-4 text-amber-600 transition-transform ${pendingOpen ? "rotate-180" : ""}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={2}
-              stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-            </svg>
+            <IconChevron
+              className={`h-4 w-4 text-amber-600 transition-transform duration-200 ${pendingOpen ? "rotate-180" : ""}`}
+            />
           </button>
 
           {pendingOpen && (
@@ -1013,17 +1261,17 @@ export default function HeatmapPage() {
                 {pendingItems.slice(0, 10).map((item) => (
                   <div
                     key={item.id}
-                    className="flex flex-col gap-2 rounded-md border border-gray-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
+                    className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-gray-900">{item.summary}</p>
                       <div className="mt-1 flex flex-wrap gap-2 text-xs">
-                        <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">
+                        <span className="rounded-md bg-gray-100 px-1.5 py-0.5 text-gray-600">
                           {CATEGORY_LABELS[item.dataCategory] ?? item.dataCategory}
                         </span>
                         {item.aiSuggestedAction && (
                           <span
-                            className={`rounded px-1.5 py-0.5 font-medium ${
+                            className={`rounded-md px-1.5 py-0.5 font-medium ${
                               item.aiSuggestedAction === "DELETE"
                                 ? "bg-red-100 text-red-700"
                                 : "bg-yellow-100 text-yellow-700"
@@ -1033,12 +1281,12 @@ export default function HeatmapPage() {
                           </span>
                         )}
                         {item.aiRiskScore != null && (
-                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">
+                          <span className="rounded-md bg-gray-100 px-1.5 py-0.5 text-gray-600">
                             Risk: {item.aiRiskScore}
                           </span>
                         )}
                         {item.aiLegalReference && (
-                          <span className="rounded bg-purple-100 px-1.5 py-0.5 text-purple-700">
+                          <span className="rounded-md bg-purple-100 px-1.5 py-0.5 text-purple-700">
                             {item.aiLegalReference}
                           </span>
                         )}
@@ -1048,21 +1296,21 @@ export default function HeatmapPage() {
                       <button
                         onClick={() => submitDecision(item.id, "APPROVE_DELETE")}
                         disabled={decidingId === item.id}
-                        className="rounded bg-red-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                        className="rounded-lg bg-red-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
                       >
                         Approve Delete
                       </button>
                       <button
                         onClick={() => submitDecision(item.id, "REJECT_DELETE")}
                         disabled={decidingId === item.id}
-                        className="rounded bg-gray-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+                        className="rounded-lg bg-gray-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50 transition-colors"
                       >
                         Reject
                       </button>
                       <button
                         onClick={() => submitDecision(item.id, "NEEDS_LEGAL")}
                         disabled={decidingId === item.id}
-                        className="rounded bg-amber-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                        className="rounded-lg bg-amber-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50 transition-colors"
                       >
                         Needs Legal
                       </button>
@@ -1080,27 +1328,19 @@ export default function HeatmapPage() {
         </div>
       )}
 
-      {/* Filter + Sort Row */}
+      {/* ── Filter + Sort Row ──────────────────────────────────────────── */}
       {systems.length > 0 && (
-        <div className="card">
+        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
           <div className="flex flex-wrap items-center gap-3">
             {/* Search */}
             <div className="relative flex-1 min-w-[180px]">
-              <svg
-                className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-              </svg>
+              <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
                 placeholder="Search systems\u2026"
                 value={filters.search}
                 onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
-                className="w-full rounded-md border border-gray-300 bg-white py-1.5 pl-8 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                className="w-full rounded-lg border border-gray-300 bg-white py-1.5 pl-8 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 transition-colors"
               />
             </div>
 
@@ -1108,7 +1348,7 @@ export default function HeatmapPage() {
             <select
               value={filters.criticality}
               onChange={(e) => setFilters((f) => ({ ...f, criticality: e.target.value }))}
-              className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 transition-colors"
             >
               {criticalityOptions.map((opt) => (
                 <option key={opt} value={opt}>
@@ -1121,7 +1361,7 @@ export default function HeatmapPage() {
             <select
               value={filters.systemType}
               onChange={(e) => setFilters((f) => ({ ...f, systemType: e.target.value }))}
-              className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 transition-colors"
             >
               {systemTypeOptions.map((opt) => (
                 <option key={opt} value={opt}>
@@ -1131,23 +1371,23 @@ export default function HeatmapPage() {
             </select>
 
             {/* Special Categories toggle */}
-            <label className="flex cursor-pointer items-center gap-1.5 text-sm text-gray-700">
+            <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors has-[:checked]:border-red-300 has-[:checked]:bg-red-50 has-[:checked]:text-red-700">
               <input
                 type="checkbox"
                 checked={filters.onlySpecialCategories}
                 onChange={(e) => setFilters((f) => ({ ...f, onlySpecialCategories: e.target.checked }))}
-                className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                className="h-3.5 w-3.5 rounded border-gray-300 text-red-600 focus:ring-red-500"
               />
               Art. 9
             </label>
 
             {/* High Risk toggle */}
-            <label className="flex cursor-pointer items-center gap-1.5 text-sm text-gray-700">
+            <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors has-[:checked]:border-red-300 has-[:checked]:bg-red-50 has-[:checked]:text-red-700">
               <input
                 type="checkbox"
                 checked={filters.onlyHighRisk}
                 onChange={(e) => setFilters((f) => ({ ...f, onlyHighRisk: e.target.checked }))}
-                className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                className="h-3.5 w-3.5 rounded border-gray-300 text-red-600 focus:ring-red-500"
               />
               High Risk
             </label>
@@ -1156,7 +1396,7 @@ export default function HeatmapPage() {
             <select
               value={sortKey}
               onChange={(e) => setSortKey(e.target.value as HeatmapSortKey)}
-              className="ml-auto rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="ml-auto rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 transition-colors"
             >
               {SORT_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -1169,8 +1409,9 @@ export default function HeatmapPage() {
             {activeFilterCount > 0 && (
               <button
                 onClick={() => setFilters(DEFAULT_FILTERS)}
-                className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline"
+                className="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-200 transition-colors"
               >
+                <IconX className="h-3 w-3" />
                 Clear ({activeFilterCount})
               </button>
             )}
@@ -1178,95 +1419,11 @@ export default function HeatmapPage() {
         </div>
       )}
 
-      {/* Heatmap Grid: Systems x Data Categories */}
-      {systems.length > 0 && (() => {
-        const allCategories = Array.from(
-          new Set(systems.flatMap((s) => Object.keys(s.categoryBreakdown)))
-        ).sort();
-
-        return (
-          <div>
-            <h2 className="mb-4 text-lg font-semibold text-gray-900">
-              Systems &times; Data Categories
-            </h2>
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="min-w-full text-xs">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="sticky left-0 z-10 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-700">
-                      System
-                    </th>
-                    {allCategories.map((cat) => (
-                      <th key={cat} className="px-2 py-2 text-center font-medium text-gray-600">
-                        {CATEGORY_LABELS[cat] ?? cat}
-                      </th>
-                    ))}
-                    <th className="px-3 py-2 text-center font-semibold text-gray-700">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredSystems.map((sys) => (
-                    <tr key={sys.systemId} className="border-t border-gray-100 hover:bg-gray-50">
-                      <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium text-gray-900 whitespace-nowrap">
-                        <button
-                          onClick={() => setSelectedSystem(sys)}
-                          className="text-left hover:underline hover:text-brand-600"
-                        >
-                          {sys.systemName}
-                        </button>
-                      </td>
-                      {allCategories.map((cat) => {
-                        const cell = sys.categoryBreakdown[cat];
-                        if (!cell || cell.total === 0) {
-                          return (
-                            <td key={cat} className="px-2 py-2 text-center text-gray-300">
-                              &mdash;
-                            </td>
-                          );
-                        }
-                        const redRatio = cell.red / cell.total;
-                        const yellowRatio = cell.yellow / cell.total;
-                        const bg =
-                          redRatio >= 0.5
-                            ? "bg-red-100 text-red-800"
-                            : redRatio > 0 || yellowRatio >= 0.5
-                              ? "bg-yellow-50 text-yellow-800"
-                              : "bg-green-50 text-green-800";
-                        return (
-                          <td key={cat} className={`px-2 py-2 text-center font-medium ${bg}`}>
-                            {cell.total}
-                          </td>
-                        );
-                      })}
-                      <td className="px-3 py-2 text-center font-bold text-gray-900">
-                        {sys.counts.total}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* System Cards Grid */}
+      {/* ── System Cards Grid ──────────────────────────────────────────── */}
       {systems.length === 0 ? (
-        <div className="card text-center py-12">
-          <svg
-            className="mx-auto h-12 w-12 text-gray-300"
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth={1}
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375"
-            />
-          </svg>
-          <p className="mt-2 text-sm text-gray-500">
+        <div className="rounded-xl border border-dashed border-gray-300 bg-white py-16 text-center">
+          <IconDatabase className="mx-auto h-12 w-12 text-gray-300" />
+          <p className="mt-3 text-sm text-gray-500">
             No systems with findings yet. Run a Discovery Copilot scan to
             populate heatmap data.
           </p>
@@ -1281,132 +1438,115 @@ export default function HeatmapPage() {
           </div>
 
           {filteredSystems.length === 0 ? (
-            <div className="card py-8 text-center">
+            <div className="rounded-xl border border-dashed border-gray-300 bg-white py-10 text-center">
               <p className="text-sm text-gray-500">
                 No systems match the current filters.
               </p>
               <button
                 onClick={() => setFilters(DEFAULT_FILTERS)}
-                className="mt-2 text-sm font-medium text-brand-600 hover:text-brand-700 hover:underline"
+                className="mt-2 text-sm font-semibold text-brand-600 hover:text-brand-700 transition-colors"
               >
                 Clear filters
               </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {filteredSystems.map((tile) => (
-                <button
-                  key={tile.systemId}
-                  onClick={() => setSelectedSystem(tile)}
-                  className={`relative rounded-lg border-2 p-4 text-left transition-shadow hover:shadow-md ${riskBg(tile.riskScore)}`}
-                >
-                  {/* Risk Score Badge */}
-                  <div
-                    className={`absolute -right-2 -top-2 flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white ${riskBadgeBg(tile.riskScore)}`}
-                  >
-                    {tile.riskScore}
-                  </div>
-
-                  {/* System name + type */}
-                  <h3 className="pr-8 text-sm font-semibold text-gray-900">
-                    {tile.systemName}
-                  </h3>
-                  <div className="mt-0.5 flex items-center gap-2">
-                    {tile.systemType && tile.systemType !== "NONE" && (
-                      <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">
-                        {tile.systemType}
-                      </span>
-                    )}
-                    <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">
-                      {tile.criticality}
-                    </span>
-                  </div>
-
-                  {/* Risk band mini-bar */}
-                  <div className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-gray-200">
-                    {tile.counts.green > 0 && (
-                      <div
-                        className="bg-green-500"
-                        style={{ width: `${(tile.counts.green / tile.counts.total) * 100}%` }}
-                        title={`${tile.counts.green} green`}
-                      />
-                    )}
-                    {tile.counts.yellow > 0 && (
-                      <div
-                        className="bg-yellow-500"
-                        style={{ width: `${(tile.counts.yellow / tile.counts.total) * 100}%` }}
-                        title={`${tile.counts.yellow} yellow`}
-                      />
-                    )}
-                    {tile.counts.red > 0 && (
-                      <div
-                        className="bg-red-500"
-                        style={{ width: `${(tile.counts.red / tile.counts.total) * 100}%` }}
-                        title={`${tile.counts.red} red`}
-                      />
-                    )}
-                  </div>
-
-                  {/* Colored chips for green/yellow/red counts */}
-                  <div className="mt-2 flex items-center gap-3 text-[11px]">
-                    <span className="flex items-center gap-1">
-                      <span className="h-2 w-2 rounded-full bg-green-500" />
-                      {tile.counts.green}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="h-2 w-2 rounded-full bg-yellow-500" />
-                      {tile.counts.yellow}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="h-2 w-2 rounded-full bg-red-500" />
-                      {tile.counts.red}
-                    </span>
-                    <span className="ml-auto text-gray-500">
-                      {tile.counts.total} finding{tile.counts.total !== 1 ? "s" : ""}
-                    </span>
-                  </div>
-
-                  {/* Special category flag */}
-                  {tile.containsSpecialCategories && (
-                    <div className="mt-2 inline-flex rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">
-                      Art. 9 {tile.specialCategoryCount > 0 && `(${tile.specialCategoryCount})`}
-                    </div>
-                  )}
-
-                  {/* Status row */}
-                  <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-gray-500">
-                    {tile.statusCounts.OPEN > 0 && (
-                      <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-indigo-700">
-                        {tile.statusCounts.OPEN} open
-                      </span>
-                    )}
-                    {tile.statusCounts.MITIGATING > 0 && (
-                      <span className="rounded bg-blue-100 px-1.5 py-0.5 text-blue-700">
-                        {tile.statusCounts.MITIGATING} mitigating
-                      </span>
-                    )}
-                    {tile.statusCounts.ACCEPTED > 0 && (
-                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-700">
-                        {tile.statusCounts.ACCEPTED} accepted
-                      </span>
-                    )}
-                    {tile.statusCounts.MITIGATED > 0 && (
-                      <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">
-                        {tile.statusCounts.MITIGATED} mitigated
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Last scan timestamp */}
-                  <p className="mt-2 text-[10px] text-gray-400">
-                    Last scan: {tile.lastScanAt ? relativeTime(tile.lastScanAt) : "No scans"}
-                  </p>
-                </button>
+              {filteredSystems.map((sys) => (
+                <SystemCard
+                  key={sys.systemId}
+                  system={sys}
+                  onClick={() => setSelectedSystem(sys)}
+                />
               ))}
             </div>
           )}
         </div>
       )}
+
+      {/* ── Heatmap Grid Table (collapsible) ───────────────────────────── */}
+      {systems.length > 0 && (() => {
+        const allCategories = Array.from(
+          new Set(systems.flatMap((s) => Object.keys(s.categoryBreakdown)))
+        ).sort();
+
+        if (allCategories.length === 0) return null;
+
+        return (
+          <div className="rounded-xl border border-gray-200 bg-white">
+            <button
+              onClick={() => setGridOpen((o) => !o)}
+              className="flex w-full items-center justify-between px-5 py-3 text-left hover:bg-gray-50 transition-colors rounded-xl"
+            >
+              <span className="text-sm font-semibold text-gray-700">
+                Systems &times; Data Categories Grid
+              </span>
+              <IconChevron
+                className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${gridOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            {gridOpen && (
+              <div className="border-t border-gray-100 overflow-x-auto">
+                <table className="min-w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="sticky left-0 z-10 bg-gray-50 px-3 py-2.5 text-left font-bold text-gray-700">
+                        System
+                      </th>
+                      {allCategories.map((cat) => (
+                        <th key={cat} className="px-2 py-2.5 text-center font-medium text-gray-600 whitespace-nowrap">
+                          {CATEGORY_LABELS[cat] ?? cat}
+                        </th>
+                      ))}
+                      <th className="px-3 py-2.5 text-center font-bold text-gray-700">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredSystems.map((sys) => (
+                      <tr key={sys.systemId} className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
+                        <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium text-gray-900 whitespace-nowrap">
+                          <button
+                            onClick={() => setSelectedSystem(sys)}
+                            className="text-left hover:underline hover:text-brand-600 transition-colors"
+                          >
+                            {sys.systemName}
+                          </button>
+                        </td>
+                        {allCategories.map((cat) => {
+                          const cell = sys.categoryBreakdown[cat];
+                          if (!cell || cell.total === 0) {
+                            return (
+                              <td key={cat} className="px-2 py-2 text-center text-gray-300">
+                                &mdash;
+                              </td>
+                            );
+                          }
+                          const redRatio = cell.red / cell.total;
+                          const yellowRatio = cell.yellow / cell.total;
+                          const bg =
+                            redRatio >= 0.5
+                              ? "bg-red-100 text-red-800"
+                              : redRatio > 0 || yellowRatio >= 0.5
+                                ? "bg-yellow-50 text-yellow-800"
+                                : "bg-green-50 text-green-800";
+                          return (
+                            <td key={cat} className={`px-2 py-2 text-center font-medium ${bg}`}>
+                              {cell.total}
+                            </td>
+                          );
+                        })}
+                        <td className="px-3 py-2 text-center font-bold text-gray-900">
+                          {sys.counts.total}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
