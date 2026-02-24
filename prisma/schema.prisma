@@ -94,10 +94,10 @@ enum LegalReviewStatus {
 
 enum IntegrationProvider {
   // Phase 1 — Microsoft (all via Graph API)
-  M365              // Entra ID / User Directory
-  EXCHANGE_ONLINE   // Exchange Online mailbox search
-  SHAREPOINT        // SharePoint Online sites/drives
-  ONEDRIVE          // OneDrive for Business
+  M365 // Entra ID / User Directory
+  EXCHANGE_ONLINE // Exchange Online mailbox search
+  SHAREPOINT // SharePoint Online sites/drives
+  ONEDRIVE // OneDrive for Business
   // Phase 2 — High business value
   GOOGLE_WORKSPACE
   SALESFORCE
@@ -149,21 +149,34 @@ enum FindingStatus {
   MITIGATED
 }
 
+enum AiReviewStatus {
+  NOT_ANALYZED
+  ANALYZED
+  REVIEW_PENDING
+  REVIEWED
+}
+
+enum HumanDecision {
+  APPROVED
+  REJECTED
+  ACCEPTED_RISK
+}
+
 enum DataCategory {
-  IDENTIFICATION          // Name, DOB, photo, ID numbers
-  CONTACT                 // Email, phone, address
-  CONTRACT                // Account info, customer number
-  PAYMENT                 // IBAN, credit card, billing
-  COMMUNICATION           // Emails, messages, call logs
-  HR                      // Salary, evaluations, contracts
-  CREDITWORTHINESS        // Credit score, debts, transactions
-  ONLINE_TECHNICAL        // IP, cookies, device IDs, logs
-  HEALTH                  // Medical, disability, treatments (Art. 9)
-  RELIGION                // Religious beliefs (Art. 9)
-  UNION                   // Trade union membership (Art. 9)
-  POLITICAL_OPINION       // Political opinions (Art. 9)
-  OTHER_SPECIAL_CATEGORY  // Biometric, ethnic, sexual orientation, criminal (Art. 9)
-  OTHER                   // Unclassified
+  IDENTIFICATION // Name, DOB, photo, ID numbers
+  CONTACT // Email, phone, address
+  CONTRACT // Account info, customer number
+  PAYMENT // IBAN, credit card, billing
+  COMMUNICATION // Emails, messages, call logs
+  HR // Salary, evaluations, contracts
+  CREDITWORTHINESS // Credit score, debts, transactions
+  ONLINE_TECHNICAL // IP, cookies, device IDs, logs
+  HEALTH // Medical, disability, treatments (Art. 9)
+  RELIGION // Religious beliefs (Art. 9)
+  UNION // Trade union membership (Art. 9)
+  POLITICAL_OPINION // Political opinions (Art. 9)
+  OTHER_SPECIAL_CATEGORY // Biometric, ethnic, sexual orientation, criminal (Art. 9)
+  OTHER // Unclassified
 }
 
 enum LegalApprovalStatus {
@@ -360,166 +373,166 @@ enum ProcessorRole {
 // ─── Models ─────────────────────────────────────────────────────────────────
 
 model Tenant {
-  id              String   @id @default(uuid())
-  name            String
-  slaDefaultDays  Int      @default(30)
-  dueSoonDays     Int      @default(7)
-  retentionDays   Int      @default(365)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(uuid())
+  name           String
+  slaDefaultDays Int      @default(30)
+  dueSoonDays    Int      @default(7)
+  retentionDays  Int      @default(365)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  users              User[]
-  dataSubjects       DataSubject[]
-  cases              DSARCase[]
-  tasks              Task[]
-  documents          Document[]
-  comments           Comment[]
-  auditLogs          AuditLog[]
-  stateTransitions   DSARStateTransition[]
-  systems            System[]
-  communicationLogs  CommunicationLog[]
-  dataCollectionItems DataCollectionItem[]
-  legalReviews       LegalReview[]
-  integrations       Integration[]
-  copilotRuns        CopilotRun[]
-  copilotQueries     CopilotQuery[]
-  identityProfiles   IdentityProfile[]
-  evidenceItems      EvidenceItem[]
-  findings           Finding[]
-  detectorResults    DetectorResult[]
-  copilotSummaries   CopilotSummary[]
-  exportArtifacts    ExportArtifact[]
-  governanceSettings CopilotGovernanceSettings?
-  legalHolds         LegalHold[]
-  redactionSuggestions RedactionSuggestion[]
-  breakGlassEvents   BreakGlassEvent[]
-  exportApprovals    ExportApproval[]
-  caseTeamMembers    CaseTeamMember[]
-  systemDataCategories SystemDataCategory[]
-  systemProcessors     SystemProcessor[]
-  discoveryRules       DiscoveryRule[]
-  caseSystemLinks      CaseSystemLink[]
-  slaConfig            TenantSlaConfig?
-  holidays             Holiday[]
-  caseDeadlines        CaseDeadline[]
-  deadlineEvents       DeadlineEvent[]
-  caseMilestones       CaseMilestone[]
-  escalations          Escalation[]
-  notifications        Notification[]
-  idvRequests          IdvRequest[]
-  idvArtifacts         IdvArtifact[]
-  idvChecks            IdvCheck[]
-  idvDecisions         IdvDecision[]
-  idvRiskAssessments   IdvRiskAssessment[]
-  idvSettings          IdvSettings?
-  responseTemplates    ResponseTemplate[]
-  responseDocuments    ResponseDocument[]
-  responseApprovals    ResponseApproval[]
-  deliveryRecords      DeliveryRecord[]
-  redactionEntries     RedactionEntry[]
-  incidents            Incident[]
-  incidentSources      IncidentSource[]
-  incidentSystems      IncidentSystem[]
-  incidentContacts     IncidentContact[]
-  incidentTimelines    IncidentTimeline[]
-  incidentCommunications IncidentCommunication[]
-  incidentAssessments  IncidentAssessment[]
-  regulatorRecords     IncidentRegulatorRecord[]
-  dsarIncidents        DsarIncident[]
-  surgeGroups          SurgeGroup[]
-  surgeGroupMembers    SurgeGroupMember[]
-  authorityExportRuns  AuthorityExportRun[]
-  vendors              Vendor[]
-  vendorContacts       VendorContact[]
-  vendorDpas           VendorDpa[]
-  vendorRequestTemplates VendorRequestTemplate[]
-  vendorRequests       VendorRequest[]
-  vendorRequestItems   VendorRequestItem[]
-  vendorResponses      VendorResponse[]
+  users                   User[]
+  dataSubjects            DataSubject[]
+  cases                   DSARCase[]
+  tasks                   Task[]
+  documents               Document[]
+  comments                Comment[]
+  auditLogs               AuditLog[]
+  stateTransitions        DSARStateTransition[]
+  systems                 System[]
+  communicationLogs       CommunicationLog[]
+  dataCollectionItems     DataCollectionItem[]
+  legalReviews            LegalReview[]
+  integrations            Integration[]
+  copilotRuns             CopilotRun[]
+  copilotQueries          CopilotQuery[]
+  identityProfiles        IdentityProfile[]
+  evidenceItems           EvidenceItem[]
+  findings                Finding[]
+  detectorResults         DetectorResult[]
+  copilotSummaries        CopilotSummary[]
+  exportArtifacts         ExportArtifact[]
+  governanceSettings      CopilotGovernanceSettings?
+  legalHolds              LegalHold[]
+  redactionSuggestions    RedactionSuggestion[]
+  breakGlassEvents        BreakGlassEvent[]
+  exportApprovals         ExportApproval[]
+  caseTeamMembers         CaseTeamMember[]
+  systemDataCategories    SystemDataCategory[]
+  systemProcessors        SystemProcessor[]
+  discoveryRules          DiscoveryRule[]
+  caseSystemLinks         CaseSystemLink[]
+  slaConfig               TenantSlaConfig?
+  holidays                Holiday[]
+  caseDeadlines           CaseDeadline[]
+  deadlineEvents          DeadlineEvent[]
+  caseMilestones          CaseMilestone[]
+  escalations             Escalation[]
+  notifications           Notification[]
+  idvRequests             IdvRequest[]
+  idvArtifacts            IdvArtifact[]
+  idvChecks               IdvCheck[]
+  idvDecisions            IdvDecision[]
+  idvRiskAssessments      IdvRiskAssessment[]
+  idvSettings             IdvSettings?
+  responseTemplates       ResponseTemplate[]
+  responseDocuments       ResponseDocument[]
+  responseApprovals       ResponseApproval[]
+  deliveryRecords         DeliveryRecord[]
+  redactionEntries        RedactionEntry[]
+  incidents               Incident[]
+  incidentSources         IncidentSource[]
+  incidentSystems         IncidentSystem[]
+  incidentContacts        IncidentContact[]
+  incidentTimelines       IncidentTimeline[]
+  incidentCommunications  IncidentCommunication[]
+  incidentAssessments     IncidentAssessment[]
+  regulatorRecords        IncidentRegulatorRecord[]
+  dsarIncidents           DsarIncident[]
+  surgeGroups             SurgeGroup[]
+  surgeGroupMembers       SurgeGroupMember[]
+  authorityExportRuns     AuthorityExportRun[]
+  vendors                 Vendor[]
+  vendorContacts          VendorContact[]
+  vendorDpas              VendorDpa[]
+  vendorRequestTemplates  VendorRequestTemplate[]
+  vendorRequests          VendorRequest[]
+  vendorRequestItems      VendorRequestItem[]
+  vendorResponses         VendorResponse[]
   vendorResponseArtifacts VendorResponseArtifact[]
-  vendorSlaConfigs     VendorSlaConfig[]
-  vendorEscalations    VendorEscalation[]
-  kpiSnapshots         PrivacyKpiSnapshot[]
-  kpiConfigs           PrivacyKpiConfig[]
-  automationMetrics    AutomationMetric[]
-  executiveReports     ExecutiveReport[]
-  executiveReportRuns  ExecutiveReportRun[]
-  kpiThresholds        KpiThreshold[]
-  maturityScores       MaturityScore[]
-  boardExportRuns      BoardExportRun[]
-  forecastModels       ForecastModel[]
-  dsarCaseItems        DsarCaseItem[]
-  dsarAuditEvents      DsarAuditEvent[]
-  dataAssets           DataAsset[]
-  scanJobs             ScanJob[]
-  findingAuditEvents   FindingAuditEvent[]
-  connectors           Connector[]
-  connectorRuns        ConnectorRun[]
+  vendorSlaConfigs        VendorSlaConfig[]
+  vendorEscalations       VendorEscalation[]
+  kpiSnapshots            PrivacyKpiSnapshot[]
+  kpiConfigs              PrivacyKpiConfig[]
+  automationMetrics       AutomationMetric[]
+  executiveReports        ExecutiveReport[]
+  executiveReportRuns     ExecutiveReportRun[]
+  kpiThresholds           KpiThreshold[]
+  maturityScores          MaturityScore[]
+  boardExportRuns         BoardExportRun[]
+  forecastModels          ForecastModel[]
+  dsarCaseItems           DsarCaseItem[]
+  dsarAuditEvents         DsarAuditEvent[]
+  dataAssets              DataAsset[]
+  scanJobs                ScanJob[]
+  findingAuditEvents      FindingAuditEvent[]
+  connectors              Connector[]
+  connectorRuns           ConnectorRun[]
 
   @@map("tenants")
 }
 
 model User {
-  id            String    @id @default(uuid())
-  tenantId      String
-  email         String
-  name          String
-  passwordHash  String
-  role          UserRole  @default(READ_ONLY)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  lastLoginAt   DateTime?
+  id           String    @id @default(uuid())
+  tenantId     String
+  email        String
+  name         String
+  passwordHash String
+  role         UserRole  @default(READ_ONLY)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastLoginAt  DateTime?
 
-  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdCases       DSARCase[]          @relation("CaseCreatedBy")
-  assignedCases      DSARCase[]          @relation("CaseAssignedTo")
-  assignedTasks      Task[]
-  uploadedDocuments  Document[]
-  comments           Comment[]
-  auditLogs          AuditLog[]
-  stateTransitions   DSARStateTransition[]
-  legalReviews       LegalReview[]       @relation("LegalReviewReviewer")
-  ownedIntegrations  Integration[]       @relation("IntegrationOwner")
-  assignedCollections DataCollectionItem[] @relation("DataCollectionAssignee")
-  copilotRuns           CopilotRun[]        @relation("CopilotRunCreatedBy")
-  copilotRunApprovals   CopilotRun[]        @relation("CopilotRunLegalApprover")
-  copilotSummaries      CopilotSummary[]    @relation("CopilotSummaryCreatedBy")
-  exportArtifacts       ExportArtifact[]    @relation("ExportArtifactCreatedBy")
-  legalHoldsEnabled     LegalHold[]         @relation("LegalHoldEnabledBy")
-  legalHoldsDisabled    LegalHold[]         @relation("LegalHoldDisabledBy")
-  redactionReviews      RedactionSuggestion[] @relation("RedactionReviewedBy")
-  breakGlassEventsActor BreakGlassEvent[]   @relation("BreakGlassActor")
-  breakGlassEventsAck   BreakGlassEvent[]   @relation("BreakGlassAcknowledgedBy")
-  exportApprovals       ExportApproval[]    @relation("ExportApprovalApprover")
-  caseTeamMemberships   CaseTeamMember[]    @relation("CaseTeamMember")
-  ownedSystems          System[]            @relation("SystemOwner")
-  notifications         Notification[]      @relation("NotificationRecipient")
-  escalationsCreated    Escalation[]        @relation("EscalationCreatedBy")
-  deadlineEventsActor   DeadlineEvent[]     @relation("DeadlineEventActor")
-  idvDecisions          IdvDecision[]       @relation("IdvDecisionReviewer")
-  responseDocsCreated   ResponseDocument[]  @relation("ResponseDocCreatedBy")
-  responseDocsEdited    ResponseDocument[]  @relation("ResponseDocEditedBy")
-  responseDocsApproved  ResponseDocument[]  @relation("ResponseDocApprovedBy")
-  responseApprovals     ResponseApproval[]  @relation("ResponseApprovalReviewer")
-  deliveryRecords       DeliveryRecord[]    @relation("DeliveryRecordCreatedBy")
-  redactionEntries      RedactionEntry[]    @relation("RedactionEntryCreatedBy")
-  incidentsCreated      Incident[]          @relation("IncidentCreatedBy")
-  incidentTimelines     IncidentTimeline[]  @relation("IncidentTimelineCreatedBy")
-  incidentCommunications IncidentCommunication[] @relation("IncidentCommCreatedBy")
-  incidentAssessments   IncidentAssessment[] @relation("IncidentAssessmentCreatedBy")
-  dsarIncidentsLinked   DsarIncident[]      @relation("DsarIncidentLinkedBy")
-  surgeGroupsCreated    SurgeGroup[]        @relation("SurgeGroupCreatedBy")
-  authorityExportRuns   AuthorityExportRun[] @relation("AuthorityExportCreatedBy")
-  vendorRequestsCreated VendorRequest[]     @relation("VendorRequestCreatedBy")
-  vendorResponsesCreated VendorResponse[]   @relation("VendorResponseCreatedBy")
-  vendorEscalationsCreated VendorEscalation[] @relation("VendorEscalationCreatedBy")
-  executiveReportRunsCreated ExecutiveReportRun[] @relation("ExecReportRunCreatedBy")
-  boardExportRunsCreated     BoardExportRun[]     @relation("BoardExportCreatedBy")
+  tenant                     Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdCases               DSARCase[]              @relation("CaseCreatedBy")
+  assignedCases              DSARCase[]              @relation("CaseAssignedTo")
+  assignedTasks              Task[]
+  uploadedDocuments          Document[]
+  comments                   Comment[]
+  auditLogs                  AuditLog[]
+  stateTransitions           DSARStateTransition[]
+  legalReviews               LegalReview[]           @relation("LegalReviewReviewer")
+  ownedIntegrations          Integration[]           @relation("IntegrationOwner")
+  assignedCollections        DataCollectionItem[]    @relation("DataCollectionAssignee")
+  copilotRuns                CopilotRun[]            @relation("CopilotRunCreatedBy")
+  copilotRunApprovals        CopilotRun[]            @relation("CopilotRunLegalApprover")
+  copilotSummaries           CopilotSummary[]        @relation("CopilotSummaryCreatedBy")
+  exportArtifacts            ExportArtifact[]        @relation("ExportArtifactCreatedBy")
+  legalHoldsEnabled          LegalHold[]             @relation("LegalHoldEnabledBy")
+  legalHoldsDisabled         LegalHold[]             @relation("LegalHoldDisabledBy")
+  redactionReviews           RedactionSuggestion[]   @relation("RedactionReviewedBy")
+  breakGlassEventsActor      BreakGlassEvent[]       @relation("BreakGlassActor")
+  breakGlassEventsAck        BreakGlassEvent[]       @relation("BreakGlassAcknowledgedBy")
+  exportApprovals            ExportApproval[]        @relation("ExportApprovalApprover")
+  caseTeamMemberships        CaseTeamMember[]        @relation("CaseTeamMember")
+  ownedSystems               System[]                @relation("SystemOwner")
+  notifications              Notification[]          @relation("NotificationRecipient")
+  escalationsCreated         Escalation[]            @relation("EscalationCreatedBy")
+  deadlineEventsActor        DeadlineEvent[]         @relation("DeadlineEventActor")
+  idvDecisions               IdvDecision[]           @relation("IdvDecisionReviewer")
+  responseDocsCreated        ResponseDocument[]      @relation("ResponseDocCreatedBy")
+  responseDocsEdited         ResponseDocument[]      @relation("ResponseDocEditedBy")
+  responseDocsApproved       ResponseDocument[]      @relation("ResponseDocApprovedBy")
+  responseApprovals          ResponseApproval[]      @relation("ResponseApprovalReviewer")
+  deliveryRecords            DeliveryRecord[]        @relation("DeliveryRecordCreatedBy")
+  redactionEntries           RedactionEntry[]        @relation("RedactionEntryCreatedBy")
+  incidentsCreated           Incident[]              @relation("IncidentCreatedBy")
+  incidentTimelines          IncidentTimeline[]      @relation("IncidentTimelineCreatedBy")
+  incidentCommunications     IncidentCommunication[] @relation("IncidentCommCreatedBy")
+  incidentAssessments        IncidentAssessment[]    @relation("IncidentAssessmentCreatedBy")
+  dsarIncidentsLinked        DsarIncident[]          @relation("DsarIncidentLinkedBy")
+  surgeGroupsCreated         SurgeGroup[]            @relation("SurgeGroupCreatedBy")
+  authorityExportRuns        AuthorityExportRun[]    @relation("AuthorityExportCreatedBy")
+  vendorRequestsCreated      VendorRequest[]         @relation("VendorRequestCreatedBy")
+  vendorResponsesCreated     VendorResponse[]        @relation("VendorResponseCreatedBy")
+  vendorEscalationsCreated   VendorEscalation[]      @relation("VendorEscalationCreatedBy")
+  executiveReportRunsCreated ExecutiveReportRun[]    @relation("ExecReportRunCreatedBy")
+  boardExportRunsCreated     BoardExportRun[]        @relation("BoardExportCreatedBy")
   passwordResetTokens        PasswordResetToken[]
-  findingStatusChanges       Finding[]           @relation("FindingStatusChangedBy")
-  dsarCaseItemDecisions      DsarCaseItem[]      @relation("CaseItemDecidedBy")
-  dsarAuditEventsActed       DsarAuditEvent[]    @relation("DsarAuditActor")
-  findingAuditEventsActed    FindingAuditEvent[] @relation("FindingAuditActor")
+  findingStatusChanges       Finding[]               @relation("FindingStatusChangedBy")
+  dsarCaseItemDecisions      DsarCaseItem[]          @relation("CaseItemDecidedBy")
+  dsarAuditEventsActed       DsarAuditEvent[]        @relation("DsarAuditActor")
+  findingAuditEventsActed    FindingAuditEvent[]     @relation("FindingAuditActor")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -527,12 +540,12 @@ model User {
 }
 
 model PasswordResetToken {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   userId    String
-  token     String   @unique
+  token     String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -563,34 +576,34 @@ model DataSubject {
 }
 
 model DSARCase {
-  id                String       @id @default(uuid())
-  tenantId          String
-  caseNumber        String
-  type              DSARType
-  status            CaseStatus   @default(NEW)
-  priority          CasePriority @default(MEDIUM)
-  lawfulBasis       String?
-  receivedAt        DateTime     @default(now())
-  dueDate           DateTime
-  extendedDueDate   DateTime?
-  extensionReason   String?
-  channel           String?
-  requesterType     String?
-  description       String?
-  identityVerified  Boolean      @default(false)
-  tags              Json?
-  deletedAt         DateTime?
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  id               String       @id @default(uuid())
+  tenantId         String
+  caseNumber       String
+  type             DSARType
+  status           CaseStatus   @default(NEW)
+  priority         CasePriority @default(MEDIUM)
+  lawfulBasis      String?
+  receivedAt       DateTime     @default(now())
+  dueDate          DateTime
+  extendedDueDate  DateTime?
+  extensionReason  String?
+  channel          String?
+  requesterType    String?
+  description      String?
+  identityVerified Boolean      @default(false)
+  tags             Json?
+  deletedAt        DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   dataSubjectId    String
   createdByUserId  String
   assignedToUserId String?
 
-  tenant          Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  dataSubject     DataSubject  @relation(fields: [dataSubjectId], references: [id])
-  createdBy       User         @relation("CaseCreatedBy", fields: [createdByUserId], references: [id])
-  assignedTo      User?        @relation("CaseAssignedTo", fields: [assignedToUserId], references: [id])
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  dataSubject DataSubject @relation(fields: [dataSubjectId], references: [id])
+  createdBy   User        @relation("CaseCreatedBy", fields: [createdByUserId], references: [id])
+  assignedTo  User?       @relation("CaseAssignedTo", fields: [assignedToUserId], references: [id])
 
   stateTransitions    DSARStateTransition[]
   tasks               Task[]
@@ -624,15 +637,15 @@ model DSARCase {
 }
 
 model DSARStateTransition {
-  id             String     @id @default(uuid())
-  tenantId       String
-  caseId         String
-  fromStatus     CaseStatus
-  toStatus       CaseStatus
+  id              String     @id @default(uuid())
+  tenantId        String
+  caseId          String
+  fromStatus      CaseStatus
+  toStatus        CaseStatus
   changedByUserId String
-  changedAt      DateTime   @default(now())
-  reason         String
-  metadata       Json?
+  changedAt       DateTime   @default(now())
+  reason          String
+  metadata        Json?
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   case      DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
@@ -643,17 +656,17 @@ model DSARStateTransition {
 }
 
 model Task {
-  id             String     @id @default(uuid())
-  tenantId       String
-  caseId         String
-  title          String
-  description    String?
-  status         TaskStatus @default(OPEN)
-  dueDate        DateTime?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
-  systemId       String?
-  findingId      String?
+  id          String     @id @default(uuid())
+  tenantId    String
+  caseId      String
+  title       String
+  description String?
+  status      TaskStatus @default(OPEN)
+  dueDate     DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  systemId    String?
+  findingId   String?
 
   assigneeUserId String?
 
@@ -670,18 +683,18 @@ model Task {
 }
 
 model Document {
-  id              String                  @id @default(uuid())
-  tenantId        String
-  caseId          String
-  filename        String
-  contentType     String
-  storageKey      String
-  size            Int
-  hash            String
-  classification  DocumentClassification  @default(INTERNAL)
-  tags            Json?
-  deletedAt       DateTime?
-  uploadedAt      DateTime                @default(now())
+  id             String                 @id @default(uuid())
+  tenantId       String
+  caseId         String
+  filename       String
+  contentType    String
+  storageKey     String
+  size           Int
+  hash           String
+  classification DocumentClassification @default(INTERNAL)
+  tags           Json?
+  deletedAt      DateTime?
+  uploadedAt     DateTime               @default(now())
 
   uploadedByUserId String
 
@@ -744,26 +757,26 @@ model System {
 
   // Data Inventory fields
   ownerUserId               String?
-  criticality               SystemCriticality    @default(MEDIUM)
-  systemStatus              SystemStatus         @default(ACTIVE)
-  containsSpecialCategories Boolean              @default(false)
-  inScopeForDsar            Boolean              @default(true)
+  criticality               SystemCriticality @default(MEDIUM)
+  systemStatus              SystemStatus      @default(ACTIVE)
+  containsSpecialCategories Boolean           @default(false)
+  inScopeForDsar            Boolean           @default(true)
   notes                     String?
 
   // Automation / Connector profile
-  automationReadiness              AutomationReadiness @default(MANUAL)
-  connectorType                    ConnectorType       @default(NONE)
-  exportFormats                    String[]            @default([])
-  estimatedCollectionTimeMinutes   Int?
+  automationReadiness            AutomationReadiness @default(MANUAL)
+  connectorType                  ConnectorType       @default(NONE)
+  exportFormats                  String[]            @default([])
+  estimatedCollectionTimeMinutes Int?
 
   // Location
-  dataResidencyPrimary      String?
-  processingRegions         String[]  @default([])
-  thirdCountryTransfers     Boolean   @default(false)
+  dataResidencyPrimary        String?
+  processingRegions           String[] @default([])
+  thirdCountryTransfers       Boolean  @default(false)
   thirdCountryTransferDetails String?
 
   // Identifier types this system uses (email, phone, customerId, employeeId, etc.)
-  identifierTypes           String[]  @default([])
+  identifierTypes String[] @default([])
 
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   ownerUser           User?                @relation("SystemOwner", fields: [ownerUserId], references: [id])
@@ -774,10 +787,10 @@ model System {
   discoveryRules      DiscoveryRule[]
   caseSystemLinks     CaseSystemLink[]
   incidentSystems     IncidentSystem[]
-  vendorRequests      VendorRequest[]   @relation("VendorRequestSystem")
-  vendorRequestItems  VendorRequestItem[] @relation("VendorRequestItemSystem")
+  vendorRequests      VendorRequest[]      @relation("VendorRequestSystem")
+  vendorRequestItems  VendorRequestItem[]  @relation("VendorRequestItemSystem")
   findings            Finding[]
-  dsarCaseItems       DsarCaseItem[]     @relation("CaseItemSystem")
+  dsarCaseItems       DsarCaseItem[]       @relation("CaseItemSystem")
   dataAssets          DataAsset[]
   scanJobs            ScanJob[]
 
@@ -788,24 +801,24 @@ model System {
 // ─── Data Inventory Models ──────────────────────────────────────────────────
 
 model SystemDataCategory {
-  id                       String       @id @default(uuid())
-  tenantId                 String
-  systemId                 String
-  category                 DataCategory
-  customCategoryName       String?
-  processingPurpose        String?
-  lawfulBasis              LawfulBasis  @default(LEGITIMATE_INTERESTS)
-  retentionPeriod          String?
-  retentionDays            Int?
-  dsarRelevanceAccess      Boolean      @default(true)
-  dsarRelevanceErasure     Boolean      @default(true)
-  dsarRelevanceRectification Boolean    @default(false)
-  dsarRelevancePortability Boolean      @default(false)
-  dsarRelevanceRestriction Boolean      @default(false)
-  dsarRelevanceObjection   Boolean      @default(false)
-  notes                    String?
-  createdAt                DateTime     @default(now())
-  updatedAt                DateTime     @updatedAt
+  id                         String       @id @default(uuid())
+  tenantId                   String
+  systemId                   String
+  category                   DataCategory
+  customCategoryName         String?
+  processingPurpose          String?
+  lawfulBasis                LawfulBasis  @default(LEGITIMATE_INTERESTS)
+  retentionPeriod            String?
+  retentionDays              Int?
+  dsarRelevanceAccess        Boolean      @default(true)
+  dsarRelevanceErasure       Boolean      @default(true)
+  dsarRelevanceRectification Boolean      @default(false)
+  dsarRelevancePortability   Boolean      @default(false)
+  dsarRelevanceRestriction   Boolean      @default(false)
+  dsarRelevanceObjection     Boolean      @default(false)
+  notes                      String?
+  createdAt                  DateTime     @default(now())
+  updatedAt                  DateTime     @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   system System @relation(fields: [systemId], references: [id], onDelete: Cascade)
@@ -820,7 +833,7 @@ model SystemProcessor {
   tenantId          String
   systemId          String
   vendorName        String
-  vendorId          String?       // Normalized vendor reference
+  vendorId          String? // Normalized vendor reference
   role              ProcessorRole @default(PROCESSOR)
   contractReference String?
   dpaOnFile         Boolean       @default(false)
@@ -861,17 +874,17 @@ model DiscoveryRule {
 }
 
 model CaseSystemLink {
-  id                    String               @id @default(uuid())
-  tenantId              String
-  caseId                String
-  systemId              String
-  collectionStatus      DataCollectionStatus @default(PENDING)
-  suggestedByDiscovery  Boolean              @default(false)
-  discoveryScore        Float?
-  discoveryReason       String?
-  notes                 String?
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
+  id                   String               @id @default(uuid())
+  tenantId             String
+  caseId               String
+  systemId             String
+  collectionStatus     DataCollectionStatus @default(PENDING)
+  suggestedByDiscovery Boolean              @default(false)
+  discoveryScore       Float?
+  discoveryReason      String?
+  notes                String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
 
   tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   case   DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
@@ -905,22 +918,22 @@ model CommunicationLog {
 }
 
 model DataCollectionItem {
-  id                String               @id @default(uuid())
-  tenantId          String
-  caseId            String
-  systemId          String?
-  integrationId     String?
-  systemLabel       String?
-  querySpec         Json?
-  status            DataCollectionStatus @default(PENDING)
-  findingsSummary   String?
-  recordsFound      Int?
-  resultMetadata    Json?
-  assignedToUserId  String?
-  startedAt         DateTime?
-  completedAt       DateTime?
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
+  id               String               @id @default(uuid())
+  tenantId         String
+  caseId           String
+  systemId         String?
+  integrationId    String?
+  systemLabel      String?
+  querySpec        Json?
+  status           DataCollectionStatus @default(PENDING)
+  findingsSummary  String?
+  recordsFound     Int?
+  resultMetadata   Json?
+  assignedToUserId String?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   case        DSARCase     @relation(fields: [caseId], references: [id], onDelete: Cascade)
@@ -955,26 +968,26 @@ model LegalReview {
 }
 
 model Integration {
-  id                 String                  @id @default(uuid())
-  tenantId           String
-  provider           IntegrationProvider
-  name               String
-  status             IntegrationStatus       @default(DISABLED)
-  config             Json?
-  secretRef          String?
-  healthStatus       IntegrationHealthStatus @default(NOT_CONFIGURED)
-  lastHealthCheckAt  DateTime?
-  lastSuccessAt      DateTime?
-  lastError          String?
-  ownerUserId        String?
-  createdAt          DateTime                @default(now())
-  updatedAt          DateTime                @updatedAt
+  id                String                  @id @default(uuid())
+  tenantId          String
+  provider          IntegrationProvider
+  name              String
+  status            IntegrationStatus       @default(DISABLED)
+  config            Json?
+  secretRef         String?
+  healthStatus      IntegrationHealthStatus @default(NOT_CONFIGURED)
+  lastHealthCheckAt DateTime?
+  lastSuccessAt     DateTime?
+  lastError         String?
+  ownerUserId       String?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
 
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   owner               User?                @relation("IntegrationOwner", fields: [ownerUserId], references: [id])
   dataCollectionItems DataCollectionItem[]
   copilotQueries      CopilotQuery[]
-  evidenceItems       EvidenceItem[]      @relation("EvidenceIntegration")
+  evidenceItems       EvidenceItem[]       @relation("EvidenceIntegration")
   secrets             IntegrationSecret[]
 
   @@index([tenantId])
@@ -983,14 +996,14 @@ model Integration {
 }
 
 model IntegrationSecret {
-  id             String      @id @default(uuid())
-  integrationId  String
-  encryptedBlob  String      // base64(iv + ciphertext + authTag), AES-256-GCM
-  keyVersion     Int         @default(1)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  id            String   @id @default(uuid())
+  integrationId String
+  encryptedBlob String // base64(iv + ciphertext + authTag), AES-256-GCM
+  keyVersion    Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  integration    Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
 
   @@index([integrationId])
   @@map("integration_secrets")
@@ -1004,16 +1017,16 @@ model CopilotRun {
   caseId                  String
   createdByUserId         String
   status                  CopilotRunStatus    @default(DRAFT)
-  justification           String              // Mandatory reason (e.g. "DSAR Art. 15 request – …")
-  scopeSummary            String?             // Human-readable scope (e.g. "M365 Mailbox + SharePoint Finance Site")
-  providerSelection       Json?               // JSON array: which integrations/workloads are included
-  resultSummary           String?             // Short summary text (evidence-based, later LLM-assisted)
-  errorDetails            String?             // Error info if FAILED
+  justification           String // Mandatory reason (e.g. "DSAR Art. 15 request – …")
+  scopeSummary            String? // Human-readable scope (e.g. "M365 Mailbox + SharePoint Finance Site")
+  providerSelection       Json? // JSON array: which integrations/workloads are included
+  resultSummary           String? // Short summary text (evidence-based, later LLM-assisted)
+  errorDetails            String? // Error info if FAILED
   containsSpecialCategory Boolean             @default(false)
   legalApprovalStatus     LegalApprovalStatus @default(NOT_REQUIRED)
   legalApprovedByUserId   String?
   legalApprovedAt         DateTime?
-  retentionDeleteAt       DateTime?           // Auto-delete timestamp based on tenant settings
+  retentionDeleteAt       DateTime? // Auto-delete timestamp based on tenant settings
   totalFindings           Int                 @default(0)
   totalEvidenceItems      Int                 @default(0)
   startedAt               DateTime?
@@ -1022,16 +1035,16 @@ model CopilotRun {
   createdAt               DateTime            @default(now())
   updatedAt               DateTime            @updatedAt
 
-  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  case            DSARCase           @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  createdBy       User               @relation("CopilotRunCreatedBy", fields: [createdByUserId], references: [id])
-  legalApprovedBy User?              @relation("CopilotRunLegalApprover", fields: [legalApprovedByUserId], references: [id])
-  queries         CopilotQuery[]
-  evidenceItems   EvidenceItem[]
-  findings        Finding[]
-  summaries              CopilotSummary[]
-  exports                ExportArtifact[]
-  redactionSuggestions   RedactionSuggestion[]
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case                 DSARCase              @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  createdBy            User                  @relation("CopilotRunCreatedBy", fields: [createdByUserId], references: [id])
+  legalApprovedBy      User?                 @relation("CopilotRunLegalApprover", fields: [legalApprovedByUserId], references: [id])
+  queries              CopilotQuery[]
+  evidenceItems        EvidenceItem[]
+  findings             Finding[]
+  summaries            CopilotSummary[]
+  exports              ExportArtifact[]
+  redactionSuggestions RedactionSuggestion[]
 
   @@index([tenantId, caseId])
   @@index([tenantId, status])
@@ -1039,27 +1052,27 @@ model CopilotRun {
 }
 
 model CopilotQuery {
-  id                  String             @id @default(uuid())
-  tenantId            String
-  caseId              String
-  runId               String
-  createdByUserId     String
-  queryText           String             // Freetext query (e.g. "Which data exists for …")
-  queryIntent         QueryIntent        @default(DATA_LOCATION)
-  subjectIdentityId   String?            // Links to IdentityProfile
-  executionMode       ContentHandling    @default(METADATA_ONLY)
-  constraints         Json?              // Optional: timeRange, systems included/excluded
+  id                String             @id @default(uuid())
+  tenantId          String
+  caseId            String
+  runId             String
+  createdByUserId   String
+  queryText         String // Freetext query (e.g. "Which data exists for …")
+  queryIntent       QueryIntent        @default(DATA_LOCATION)
+  subjectIdentityId String? // Links to IdentityProfile
+  executionMode     ContentHandling    @default(METADATA_ONLY)
+  constraints       Json? // Optional: timeRange, systems included/excluded
   // Execution fields (per-integration query)
-  integrationId       String?
-  provider            String?
-  querySpec           Json?              // Full QuerySpec for connector execution
-  status              CopilotQueryStatus @default(PENDING)
-  recordsFound        Int?
-  errorMessage        String?
-  executionMs         Int?
-  startedAt           DateTime?
-  completedAt         DateTime?
-  createdAt           DateTime           @default(now())
+  integrationId     String?
+  provider          String?
+  querySpec         Json? // Full QuerySpec for connector execution
+  status            CopilotQueryStatus @default(PENDING)
+  recordsFound      Int?
+  errorMessage      String?
+  executionMs       Int?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime           @default(now())
 
   tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   run             CopilotRun       @relation(fields: [runId], references: [id], onDelete: Cascade)
@@ -1072,52 +1085,52 @@ model CopilotQuery {
 }
 
 model IdentityProfile {
-  id                      String               @id @default(uuid())
-  tenantId                String
-  caseId                  String
-  displayName             String               // e.g. "Max Mustermann"
-  primaryIdentifierType   PrimaryIdentifierType @default(EMAIL)
-  primaryIdentifierValue  String               // e.g. "max@acme.com"
-  alternateIdentifiers    Json                 // Array of { type, value, confidence, source }
-  confidenceScore         Int                  @default(0) // 0..100
-  createdByUserId         String?
-  createdAt               DateTime             @default(now())
-  updatedAt               DateTime             @updatedAt
+  id                     String                @id @default(uuid())
+  tenantId               String
+  caseId                 String
+  displayName            String // e.g. "Max Mustermann"
+  primaryIdentifierType  PrimaryIdentifierType @default(EMAIL)
+  primaryIdentifierValue String // e.g. "max@acme.com"
+  alternateIdentifiers   Json // Array of { type, value, confidence, source }
+  confidenceScore        Int                   @default(0) // 0..100
+  createdByUserId        String?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
 
-  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  case     DSARCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  queries  CopilotQuery[]
+  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case    DSARCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  queries CopilotQuery[]
 
   @@unique([tenantId, caseId])
   @@map("identity_profiles")
 }
 
 model EvidenceItem {
-  id                String          @id @default(uuid())
-  tenantId          String
-  caseId            String
-  runId             String
-  queryId           String?
-  integrationId     String?
-  provider          String          // e.g. "M365", "EXCHANGE_ONLINE"
-  workload          String?         // e.g. "EXCHANGE", "SHAREPOINT"
-  itemType          EvidenceItemType @default(OTHER)
-  externalRef       String?         // External system ID (Graph item id, etc.)
-  location          String          // e.g. "Mailbox:user@acme.com/Inbox"
-  title             String          // e.g. email subject or filename
-  createdAtSource   DateTime?
-  modifiedAtSource  DateTime?
-  owners            Json?           // { createdBy, modifiedBy, sender, etc. }
-  metadata          Json?           // Structured metadata (NO full content by default)
-  contentHandling   ContentHandling @default(METADATA_ONLY)
-  linkedDocumentId  String?         // Optional: if exported/stored as Document
-  sensitivityScore  Int?            // 0..100
-  createdAt         DateTime        @default(now())
+  id               String           @id @default(uuid())
+  tenantId         String
+  caseId           String
+  runId            String
+  queryId          String?
+  integrationId    String?
+  provider         String // e.g. "M365", "EXCHANGE_ONLINE"
+  workload         String? // e.g. "EXCHANGE", "SHAREPOINT"
+  itemType         EvidenceItemType @default(OTHER)
+  externalRef      String? // External system ID (Graph item id, etc.)
+  location         String // e.g. "Mailbox:user@acme.com/Inbox"
+  title            String // e.g. email subject or filename
+  createdAtSource  DateTime?
+  modifiedAtSource DateTime?
+  owners           Json? // { createdBy, modifiedBy, sender, etc. }
+  metadata         Json? // Structured metadata (NO full content by default)
+  contentHandling  ContentHandling  @default(METADATA_ONLY)
+  linkedDocumentId String? // Optional: if exported/stored as Document
+  sensitivityScore Int? // 0..100
+  createdAt        DateTime         @default(now())
 
-  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  run         CopilotRun       @relation(fields: [runId], references: [id], onDelete: Cascade)
-  query       CopilotQuery?    @relation(fields: [queryId], references: [id])
-  integration Integration?     @relation("EvidenceIntegration", fields: [integrationId], references: [id])
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  run             CopilotRun       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  query           CopilotQuery?    @relation(fields: [queryId], references: [id])
+  integration     Integration?     @relation("EvidenceIntegration", fields: [integrationId], references: [id])
   detectorResults DetectorResult[]
   dsarCaseItems   DsarCaseItem[]   @relation("CaseItemEvidence")
 
@@ -1132,9 +1145,9 @@ model DetectorResult {
   caseId                           String
   runId                            String
   evidenceItemId                   String
-  detectorType                     String   // "REGEX", "PDF_METADATA", "OCR", "IMAGE_MODEL", "LLM_CLASSIFIER"
-  detectedElements                 Json     // Array of { elementType, confidence, snippetPreview, offsets? }
-  detectedCategories               Json     // Array of { category: DataCategory, confidence }
+  detectorType                     String // "REGEX", "PDF_METADATA", "OCR", "IMAGE_MODEL", "LLM_CLASSIFIER"
+  detectedElements                 Json // Array of { elementType, confidence, snippetPreview, offsets? }
+  detectedCategories               Json // Array of { category: DataCategory, confidence }
   containsSpecialCategorySuspected Boolean  @default(false)
   createdAt                        DateTime @default(now())
 
@@ -1153,8 +1166,8 @@ model Finding {
   dataCategory                    DataCategory
   severity                        FindingSeverity @default(INFO)
   confidence                      Float           @default(0)
-  summary                         String          // Short text; references evidence, no LLM hallucination
-  evidenceItemIds                 String[]        // References to EvidenceItem IDs
+  summary                         String // Short text; references evidence, no LLM hallucination
+  evidenceItemIds                 String[] // References to EvidenceItem IDs
   containsSpecialCategory         Boolean         @default(false)
   containsThirdPartyDataSuspected Boolean         @default(false)
   requiresLegalReview             Boolean         @default(false)
@@ -1162,27 +1175,38 @@ model Finding {
 
   // ─── Heatmap / DPO fields ────────────────────────────────────────────
   systemId              String?
-  riskScore             Int             @default(0)   // 0–100
-  status                FindingStatus   @default(OPEN)
+  riskScore             Int           @default(0) // 0–100
+  status                FindingStatus @default(OPEN)
   statusComment         String?
   statusChangedByUserId String?
   statusChangedAt       DateTime?
-  dataAssetLocation     String?                        // e.g. "SharePoint > Finance > payroll.xlsx"
-  sampleRedacted        String?                        // Redacted data sample for DPO review
+  dataAssetLocation     String? // e.g. "SharePoint > Finance > payroll.xlsx"
+  sampleRedacted        String? // Redacted data sample for DPO review
   mitigationDueDate     DateTime?
 
   // ─── Bulk-seed / PII enrichment fields ──────────────────────────────
-  sensitivityScore      Int             @default(0)   // 0–100
-  piiCategory           String?                        // e.g. "EMAIL", "PHONE", "IBAN"
-  piiCount              Int             @default(0)
-  snippetPreview        String?                        // Redacted preview snippet
-  dataAssetId           String?
+  sensitivityScore Int     @default(0) // 0–100
+  piiCategory      String? // e.g. "EMAIL", "PHONE", "IBAN"
+  piiCount         Int     @default(0)
+  snippetPreview   String? // Redacted preview snippet
+  dataAssetId      String?
 
-  tenant          Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  run             CopilotRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-  system          System?    @relation(fields: [systemId], references: [id])
-  dataAsset       DataAsset? @relation(fields: [dataAssetId], references: [id])
-  statusChangedBy User?      @relation("FindingStatusChangedBy", fields: [statusChangedByUserId], references: [id])
+  // ─── AI Assist + Human Decision fields ─────────────────────────────
+  aiRiskScore       Int? // AI-computed risk score
+  aiConfidence      Float? // AI confidence (0–1)
+  aiSuggestedAction String? // AI-suggested action text
+  aiLegalReference  String? // Relevant GDPR article / legal ref
+  aiRationale       String? // AI explanation of its suggestion
+  aiReviewStatus    AiReviewStatus? // Current AI review lifecycle status
+  humanDecision     HumanDecision? // DPO final decision
+  humanDecisionBy   String? // User ID of the decision-maker
+  humanDecisionAt   DateTime? // When the decision was made
+
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  run                CopilotRun          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  system             System?             @relation(fields: [systemId], references: [id])
+  dataAsset          DataAsset?          @relation(fields: [dataAssetId], references: [id])
+  statusChangedBy    User?               @relation("FindingStatusChangedBy", fields: [statusChangedByUserId], references: [id])
   mitigationTasks    Task[]              @relation("FindingMitigationTasks")
   dsarCaseItems      DsarCaseItem[]      @relation("CaseItemFinding")
   findingAuditEvents FindingAuditEvent[] @relation("FindingAuditEvents")
@@ -1199,9 +1223,9 @@ model FindingAuditEvent {
   tenantId    String
   findingId   String
   actorUserId String
-  action      String   // FINDING_ACCEPT_RISK, FINDING_CREATE_MITIGATION, FINDING_MARK_MITIGATED
-  beforeJson  Json?    // snapshot of finding before action
-  afterJson   Json?    // snapshot of finding after action
+  action      String // FINDING_ACCEPT_RISK, FINDING_CREATE_MITIGATION, FINDING_MARK_MITIGATED
+  beforeJson  Json? // snapshot of finding before action
+  afterJson   Json? // snapshot of finding after action
   comment     String?
   ip          String?
   userAgent   String?
@@ -1216,16 +1240,16 @@ model FindingAuditEvent {
 }
 
 model CopilotSummary {
-  id                    String             @id @default(uuid())
-  tenantId              String
-  caseId                String
-  runId                 String
-  createdByUserId       String
-  summaryType           CopilotSummaryType
-  content               String             // Generated text
-  evidenceSnapshotHash  String             // Hash to verify summary matches evidence state
-  disclaimerIncluded    Boolean            @default(true)
-  createdAt             DateTime           @default(now())
+  id                   String             @id @default(uuid())
+  tenantId             String
+  caseId               String
+  runId                String
+  createdByUserId      String
+  summaryType          CopilotSummaryType
+  content              String // Generated text
+  evidenceSnapshotHash String // Hash to verify summary matches evidence state
+  disclaimerIncluded   Boolean            @default(true)
+  createdAt            DateTime           @default(now())
 
   tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   run       CopilotRun @relation(fields: [runId], references: [id], onDelete: Cascade)
@@ -1240,16 +1264,16 @@ model ExportArtifact {
   tenantId        String
   caseId          String
   runId           String
-  documentId      String?               // Reference to stored Document
+  documentId      String? // Reference to stored Document
   exportType      ExportType            @default(JSON)
   status          String                @default("PENDING") // PENDING, GENERATING, COMPLETED, FAILED
   legalGateStatus ExportLegalGateStatus @default(ALLOWED)
   createdByUserId String
   createdAt       DateTime              @default(now())
 
-  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  run       CopilotRun      @relation(fields: [runId], references: [id], onDelete: Cascade)
-  createdBy User            @relation("ExportArtifactCreatedBy", fields: [createdByUserId], references: [id])
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  run       CopilotRun       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  createdBy User             @relation("ExportArtifactCreatedBy", fields: [createdByUserId], references: [id])
   approvals ExportApproval[]
 
   @@index([tenantId, runId])
@@ -1273,26 +1297,26 @@ enum BreakGlassEventType {
 }
 
 model CopilotGovernanceSettings {
-  id                          String   @id @default(uuid())
-  tenantId                    String   @unique
-  copilotEnabled              Boolean  @default(true)
-  allowedProviderPhases       Json     @default("[1]")      // Array of phases [1,2,3,4]
-  defaultExecutionMode        String   @default("METADATA_ONLY")
-  allowContentScanning        Boolean  @default(false)
-  allowOcr                    Boolean  @default(false)
-  allowLlmSummaries           Boolean  @default(false)
-  maxRunsPerDayTenant         Int      @default(100)
-  maxRunsPerDayUser           Int      @default(20)
-  maxEvidenceItemsPerRun      Int      @default(10000)
-  maxContentScanBytes         Int      @default(512000)
-  maxConcurrentRuns           Int      @default(3)
-  dueSoonWindowDays           Int      @default(7)
-  artifactRetentionDays       Int      @default(90)
-  twoPersonApprovalForExport  Boolean  @default(false)
-  requireJustification        Boolean  @default(true)
-  requireConfirmation         Boolean  @default(true)
-  createdAt                   DateTime @default(now())
-  updatedAt                   DateTime @updatedAt
+  id                         String   @id @default(uuid())
+  tenantId                   String   @unique
+  copilotEnabled             Boolean  @default(true)
+  allowedProviderPhases      Json     @default("[1]") // Array of phases [1,2,3,4]
+  defaultExecutionMode       String   @default("METADATA_ONLY")
+  allowContentScanning       Boolean  @default(false)
+  allowOcr                   Boolean  @default(false)
+  allowLlmSummaries          Boolean  @default(false)
+  maxRunsPerDayTenant        Int      @default(100)
+  maxRunsPerDayUser          Int      @default(20)
+  maxEvidenceItemsPerRun     Int      @default(10000)
+  maxContentScanBytes        Int      @default(512000)
+  maxConcurrentRuns          Int      @default(3)
+  dueSoonWindowDays          Int      @default(7)
+  artifactRetentionDays      Int      @default(90)
+  twoPersonApprovalForExport Boolean  @default(false)
+  requireJustification       Boolean  @default(true)
+  requireConfirmation        Boolean  @default(true)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1300,43 +1324,43 @@ model CopilotGovernanceSettings {
 }
 
 model LegalHold {
-  id            String    @id @default(uuid())
-  tenantId      String
-  caseId        String
-  enabled       Boolean   @default(true)
-  reason        String
+  id               String    @id @default(uuid())
+  tenantId         String
+  caseId           String
+  enabled          Boolean   @default(true)
+  reason           String
   enabledByUserId  String
-  enabledAt     DateTime  @default(now())
+  enabledAt        DateTime  @default(now())
   disabledByUserId String?
-  disabledAt    DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  disabledAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  case      DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  enabledBy User     @relation("LegalHoldEnabledBy", fields: [enabledByUserId], references: [id])
-  disabledBy User?   @relation("LegalHoldDisabledBy", fields: [disabledByUserId], references: [id])
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case       DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  enabledBy  User     @relation("LegalHoldEnabledBy", fields: [enabledByUserId], references: [id])
+  disabledBy User?    @relation("LegalHoldDisabledBy", fields: [disabledByUserId], references: [id])
 
   @@index([tenantId, caseId])
   @@map("legal_holds")
 }
 
 model RedactionSuggestion {
-  id                String           @id @default(uuid())
-  tenantId          String
-  caseId            String
-  runId             String
-  evidenceItemId    String?
-  elementType       String           // e.g. "EMAIL_ADDRESS", "NAME_FULL"
-  originalSnippet   String           // Masked version of the PII found
-  suggestedRedaction String          // Proposed redaction text
-  reason            String?          // Why this redaction is suggested
-  status            RedactionStatus  @default(SUGGESTED)
-  reviewedByUserId  String?
-  reviewedAt        DateTime?
-  reviewNote        String?
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  id                 String          @id @default(uuid())
+  tenantId           String
+  caseId             String
+  runId              String
+  evidenceItemId     String?
+  elementType        String // e.g. "EMAIL_ADDRESS", "NAME_FULL"
+  originalSnippet    String // Masked version of the PII found
+  suggestedRedaction String // Proposed redaction text
+  reason             String? // Why this redaction is suggested
+  status             RedactionStatus @default(SUGGESTED)
+  reviewedByUserId   String?
+  reviewedAt         DateTime?
+  reviewNote         String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
 
   tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   run        CopilotRun @relation(fields: [runId], references: [id], onDelete: Cascade)
@@ -1348,21 +1372,21 @@ model RedactionSuggestion {
 }
 
 model BreakGlassEvent {
-  id            String                @id @default(uuid())
-  tenantId      String
-  actorUserId   String?
-  eventType     BreakGlassEventType
-  description   String
-  metadata      Json?
-  caseId        String?
-  acknowledged  Boolean               @default(false)
+  id                   String              @id @default(uuid())
+  tenantId             String
+  actorUserId          String?
+  eventType            BreakGlassEventType
+  description          String
+  metadata             Json?
+  caseId               String?
+  acknowledged         Boolean             @default(false)
   acknowledgedByUserId String?
-  acknowledgedAt DateTime?
-  createdAt     DateTime              @default(now())
+  acknowledgedAt       DateTime?
+  createdAt            DateTime            @default(now())
 
-  tenant        Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  actor         User?  @relation("BreakGlassActor", fields: [actorUserId], references: [id])
-  acknowledgedBy User? @relation("BreakGlassAcknowledgedBy", fields: [acknowledgedByUserId], references: [id])
+  tenant         Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actor          User?  @relation("BreakGlassActor", fields: [actorUserId], references: [id])
+  acknowledgedBy User?  @relation("BreakGlassAcknowledgedBy", fields: [acknowledgedByUserId], references: [id])
 
   @@index([tenantId])
   @@index([tenantId, eventType])
@@ -1370,17 +1394,17 @@ model BreakGlassEvent {
 }
 
 model ExportApproval {
-  id                String    @id @default(uuid())
-  tenantId          String
-  exportArtifactId  String
-  approverUserId    String
-  approved          Boolean
-  note              String?
-  createdAt         DateTime  @default(now())
+  id               String   @id @default(uuid())
+  tenantId         String
+  exportArtifactId String
+  approverUserId   String
+  approved         Boolean
+  note             String?
+  createdAt        DateTime @default(now())
 
-  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  export    ExportArtifact @relation(fields: [exportArtifactId], references: [id], onDelete: Cascade)
-  approver  User           @relation("ExportApprovalApprover", fields: [approverUserId], references: [id])
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  export   ExportArtifact @relation(fields: [exportArtifactId], references: [id], onDelete: Cascade)
+  approver User           @relation("ExportApprovalApprover", fields: [approverUserId], references: [id])
 
   @@index([tenantId, exportArtifactId])
   @@map("export_approvals")
@@ -1389,11 +1413,11 @@ model ExportApproval {
 // ─── Case Team Members ──────────────────────────────────────────────────────
 
 model CaseTeamMember {
-  id        String   @id @default(uuid())
-  tenantId  String
-  caseId    String
-  userId    String
-  addedAt   DateTime @default(now())
+  id       String   @id @default(uuid())
+  tenantId String
+  caseId   String
+  userId   String
+  addedAt  DateTime @default(now())
 
   tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   case   DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
@@ -1408,23 +1432,23 @@ model CaseTeamMember {
 // ─── Deadline & Risk Engine ─────────────────────────────────────────────────
 
 model TenantSlaConfig {
-  id                     String   @id @default(uuid())
-  tenantId               String   @unique
-  initialDeadlineDays    Int      @default(30)
-  extensionMaxDays       Int      @default(60)
-  useBusinessDays        Boolean  @default(false)
-  timezone               String   @default("Europe/Berlin")
-  yellowThresholdDays    Int      @default(14)
-  redThresholdDays       Int      @default(7)
-  milestoneIdvDays       Int      @default(7)
-  milestoneCollectionDays Int     @default(14)
-  milestoneDraftDays     Int      @default(21)
-  milestoneLegalDays     Int      @default(25)
-  escalationYellowRoles  String[] @default(["DPO", "CASE_MANAGER"])
-  escalationRedRoles     String[] @default(["TENANT_ADMIN", "DPO"])
-  escalationOverdueRoles String[] @default(["TENANT_ADMIN", "DPO"])
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  id                      String   @id @default(uuid())
+  tenantId                String   @unique
+  initialDeadlineDays     Int      @default(30)
+  extensionMaxDays        Int      @default(60)
+  useBusinessDays         Boolean  @default(false)
+  timezone                String   @default("Europe/Berlin")
+  yellowThresholdDays     Int      @default(14)
+  redThresholdDays        Int      @default(7)
+  milestoneIdvDays        Int      @default(7)
+  milestoneCollectionDays Int      @default(14)
+  milestoneDraftDays      Int      @default(21)
+  milestoneLegalDays      Int      @default(25)
+  escalationYellowRoles   String[] @default(["DPO", "CASE_MANAGER"])
+  escalationRedRoles      String[] @default(["TENANT_ADMIN", "DPO"])
+  escalationOverdueRoles  String[] @default(["TENANT_ADMIN", "DPO"])
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1447,27 +1471,27 @@ model Holiday {
 }
 
 model CaseDeadline {
-  id                          String    @id @default(uuid())
-  tenantId                    String
-  caseId                      String    @unique
-  receivedAt                  DateTime
-  legalDueAt                  DateTime
-  extendedDueAt               DateTime?
-  effectiveDueAt              DateTime
-  extensionAppliedAt          DateTime?
-  extensionDays               Int?
-  extensionReason             String?
-  extensionNotificationRequired Boolean @default(true)
-  extensionNotificationSentAt DateTime?
-  pausedAt                    DateTime?
-  pauseReason                 String?
-  pauseApprovedBy             String?
-  totalPausedDays             Int       @default(0)
-  currentRisk                 RiskLevel @default(GREEN)
-  riskReasons                 String[]  @default([])
-  daysRemaining               Int       @default(30)
-  createdAt                   DateTime  @default(now())
-  updatedAt                   DateTime  @updatedAt
+  id                            String    @id @default(uuid())
+  tenantId                      String
+  caseId                        String    @unique
+  receivedAt                    DateTime
+  legalDueAt                    DateTime
+  extendedDueAt                 DateTime?
+  effectiveDueAt                DateTime
+  extensionAppliedAt            DateTime?
+  extensionDays                 Int?
+  extensionReason               String?
+  extensionNotificationRequired Boolean   @default(true)
+  extensionNotificationSentAt   DateTime?
+  pausedAt                      DateTime?
+  pauseReason                   String?
+  pauseApprovedBy               String?
+  totalPausedDays               Int       @default(0)
+  currentRisk                   RiskLevel @default(GREEN)
+  riskReasons                   String[]  @default([])
+  daysRemaining                 Int       @default(30)
+  createdAt                     DateTime  @default(now())
+  updatedAt                     DateTime  @updatedAt
 
   tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   case   DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
@@ -1488,9 +1512,9 @@ model DeadlineEvent {
   metadata    Json?
   createdAt   DateTime          @default(now())
 
-  tenant Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  case   DSARCase  @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  actor  User?     @relation("DeadlineEventActor", fields: [actorUserId], references: [id])
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case   DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  actor  User?    @relation("DeadlineEventActor", fields: [actorUserId], references: [id])
 
   @@index([tenantId, caseId])
   @@map("deadline_events")
@@ -1575,8 +1599,8 @@ model IdvRequest {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
-  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  case        DSARCase         @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case        DSARCase            @relation(fields: [caseId], references: [id], onDelete: Cascade)
   artifacts   IdvArtifact[]
   checks      IdvCheck[]
   decisions   IdvDecision[]
@@ -1588,20 +1612,20 @@ model IdvRequest {
 }
 
 model IdvArtifact {
-  id             String          @id @default(uuid())
-  tenantId       String
-  requestId      String
-  artifactType   IdvArtifactType
-  filename       String
-  mimeType       String
-  sizeBytes      Int
-  sha256Hash     String
-  storageKey     String
-  uploadedBy     String?         // null if uploaded by data subject via portal
-  consentGiven   Boolean         @default(false)
-  retainUntil    DateTime?
-  deletedAt      DateTime?
-  createdAt      DateTime        @default(now())
+  id           String          @id @default(uuid())
+  tenantId     String
+  requestId    String
+  artifactType IdvArtifactType
+  filename     String
+  mimeType     String
+  sizeBytes    Int
+  sha256Hash   String
+  storageKey   String
+  uploadedBy   String? // null if uploaded by data subject via portal
+  consentGiven Boolean         @default(false)
+  retainUntil  DateTime?
+  deletedAt    DateTime?
+  createdAt    DateTime        @default(now())
 
   tenant  Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   request IdvRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
@@ -1617,7 +1641,7 @@ model IdvCheck {
   requestId   String
   method      IdvMethod
   passed      Boolean?
-  details     Json?     // method-specific: OTP attempts, KB answers, etc.
+  details     Json? // method-specific: OTP attempts, KB answers, etc.
   performedAt DateTime  @default(now())
 
   tenant  Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1648,11 +1672,11 @@ model IdvRiskAssessment {
   id              String   @id @default(uuid())
   tenantId        String
   requestId       String
-  riskScore       Int      // 0–100, higher = more risky
-  flags           Json     // array of { flag, severity, detail }
-  extractedFields Json?    // { name, dob, address, documentNumber, expiryDate }
-  mismatches      Json?    // { field, expected, extracted, severity }
-  rawOutput       Json?    // full AI/provider response
+  riskScore       Int // 0–100, higher = more risky
+  flags           Json // array of { flag, severity, detail }
+  extractedFields Json? // { name, dob, address, documentNumber, expiryDate }
+  mismatches      Json? // { field, expected, extracted, severity }
+  rawOutput       Json? // full AI/provider response
   provider        String   @default("mock") // "mock", "copilot", or external provider
   createdAt       DateTime @default(now())
 
@@ -1664,22 +1688,22 @@ model IdvRiskAssessment {
 }
 
 model IdvSettings {
-  id                        String    @id @default(uuid())
-  tenantId                  String    @unique
-  allowedMethods            IdvMethod[] @default([DOC_UPLOAD])
-  selfieEnabled             Boolean   @default(false)
-  knowledgeBasedEnabled     Boolean   @default(false)
-  emailOtpEnabled           Boolean   @default(true)
-  retentionDays             Int       @default(90)
-  portalTokenExpiryDays     Int       @default(7)
-  maxSubmissionsPerToken    Int       @default(3)
-  bypassForSsoEmail         Boolean   @default(false)
-  bypassForRepeatRequester  Boolean   @default(false)
-  repeatRequesterMonths     Int       @default(6)
-  autoTransitionOnApproval  Boolean   @default(false)
-  storeDob                  Boolean   @default(true)
-  createdAt                 DateTime  @default(now())
-  updatedAt                 DateTime  @updatedAt
+  id                       String      @id @default(uuid())
+  tenantId                 String      @unique
+  allowedMethods           IdvMethod[] @default([DOC_UPLOAD])
+  selfieEnabled            Boolean     @default(false)
+  knowledgeBasedEnabled    Boolean     @default(false)
+  emailOtpEnabled          Boolean     @default(true)
+  retentionDays            Int         @default(90)
+  portalTokenExpiryDays    Int         @default(7)
+  maxSubmissionsPerToken   Int         @default(3)
+  bypassForSsoEmail        Boolean     @default(false)
+  bypassForRepeatRequester Boolean     @default(false)
+  repeatRequesterMonths    Int         @default(6)
+  autoTransitionOnApproval Boolean     @default(false)
+  storeDob                 Boolean     @default(true)
+  createdAt                DateTime    @default(now())
+  updatedAt                DateTime    @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1760,25 +1784,25 @@ enum DeliveryMethod {
 // ─── Response Generator Models ──────────────────────────────────────────────
 
 model ResponseTemplate {
-  id                String     @id @default(uuid())
-  tenantId          String?    // null = system default (read-only baseline)
-  name              String
-  language          String     @default("en")
-  jurisdiction      String     @default("GDPR")
-  dsarTypes         DSARType[]
-  subjectTypes      String[]   @default([])
-  sections          Json       // Array of { key, title, body (HTML with placeholders) }
-  placeholders      Json?      // Array of { key, label, description }
-  conditionals      Json?      // Array of { condition, sectionKey, show }
-  disclaimerText    String?
-  isBaseline        Boolean    @default(false) // true = system-provided read-only
-  clonedFromId      String?
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  id             String     @id @default(uuid())
+  tenantId       String? // null = system default (read-only baseline)
+  name           String
+  language       String     @default("en")
+  jurisdiction   String     @default("GDPR")
+  dsarTypes      DSARType[]
+  subjectTypes   String[]   @default([])
+  sections       Json // Array of { key, title, body (HTML with placeholders) }
+  placeholders   Json? // Array of { key, label, description }
+  conditionals   Json? // Array of { condition, sectionKey, show }
+  disclaimerText String?
+  isBaseline     Boolean    @default(false) // true = system-provided read-only
+  clonedFromId   String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
-  tenant            Tenant?    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  clonedFrom        ResponseTemplate?  @relation("TemplateClones", fields: [clonedFromId], references: [id])
-  clones            ResponseTemplate[] @relation("TemplateClones")
+  tenant            Tenant?                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clonedFrom        ResponseTemplate?         @relation("TemplateClones", fields: [clonedFromId], references: [id])
+  clones            ResponseTemplate[]        @relation("TemplateClones")
   versions          ResponseTemplateVersion[]
   responseDocuments ResponseDocument[]
 
@@ -1788,13 +1812,13 @@ model ResponseTemplate {
 }
 
 model ResponseTemplateVersion {
-  id          String   @id @default(uuid())
-  templateId  String
-  version     Int
-  sections    Json     // Snapshot of sections at this version
-  changedBy   String?
-  changeNote  String?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(uuid())
+  templateId String
+  version    Int
+  sections   Json // Snapshot of sections at this version
+  changedBy  String?
+  changeNote String?
+  createdAt  DateTime @default(now())
 
   template ResponseTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
 
@@ -1804,36 +1828,36 @@ model ResponseTemplateVersion {
 }
 
 model ResponseDocument {
-  id              String          @id @default(uuid())
-  tenantId        String
-  caseId          String
-  templateId      String?
-  version         Int             @default(1)
-  status          ResponseDocStatus @default(DRAFT)
-  language        String          @default("en")
-  sections        Json            // Array of { key, title, renderedHtml }
-  fullHtml        String          // Rendered full document HTML
-  factPackSnapshot Json?          // Snapshot of data used for generation
-  aiAssisted      Boolean         @default(false)
-  aiModelUsed     String?
-  aiWarnings      String[]        @default([])
-  storageKeyPdf   String?
-  storageKeyDocx  String?
-  createdByUserId String
-  editedByUserId  String?
-  editedAt        DateTime?
+  id               String            @id @default(uuid())
+  tenantId         String
+  caseId           String
+  templateId       String?
+  version          Int               @default(1)
+  status           ResponseDocStatus @default(DRAFT)
+  language         String            @default("en")
+  sections         Json // Array of { key, title, renderedHtml }
+  fullHtml         String // Rendered full document HTML
+  factPackSnapshot Json? // Snapshot of data used for generation
+  aiAssisted       Boolean           @default(false)
+  aiModelUsed      String?
+  aiWarnings       String[]          @default([])
+  storageKeyPdf    String?
+  storageKeyDocx   String?
+  createdByUserId  String
+  editedByUserId   String?
+  editedAt         DateTime?
   approvedByUserId String?
-  approvedAt      DateTime?
-  sentAt          DateTime?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  approvedAt       DateTime?
+  sentAt           DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
-  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  case       DSARCase          @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  template   ResponseTemplate? @relation(fields: [templateId], references: [id])
-  createdBy  User              @relation("ResponseDocCreatedBy", fields: [createdByUserId], references: [id])
-  editedBy   User?             @relation("ResponseDocEditedBy", fields: [editedByUserId], references: [id])
-  approvedBy User?             @relation("ResponseDocApprovedBy", fields: [approvedByUserId], references: [id])
+  tenant     Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case       DSARCase           @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  template   ResponseTemplate?  @relation(fields: [templateId], references: [id])
+  createdBy  User               @relation("ResponseDocCreatedBy", fields: [createdByUserId], references: [id])
+  editedBy   User?              @relation("ResponseDocEditedBy", fields: [editedByUserId], references: [id])
+  approvedBy User?              @relation("ResponseDocApprovedBy", fields: [approvedByUserId], references: [id])
   approvals  ResponseApproval[]
   deliveries DeliveryRecord[]
   redactions RedactionEntry[]
@@ -1844,17 +1868,17 @@ model ResponseDocument {
 }
 
 model ResponseApproval {
-  id                String   @id @default(uuid())
-  tenantId          String
-  responseDocId     String
-  reviewerUserId    String
-  action            String   // "approve", "request_changes", "reject"
-  comments          String?
-  createdAt         DateTime @default(now())
+  id             String   @id @default(uuid())
+  tenantId       String
+  responseDocId  String
+  reviewerUserId String
+  action         String // "approve", "request_changes", "reject"
+  comments       String?
+  createdAt      DateTime @default(now())
 
-  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  responseDoc  ResponseDocument @relation(fields: [responseDocId], references: [id], onDelete: Cascade)
-  reviewer     User             @relation("ResponseApprovalReviewer", fields: [reviewerUserId], references: [id])
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  responseDoc ResponseDocument @relation(fields: [responseDocId], references: [id], onDelete: Cascade)
+  reviewer    User             @relation("ResponseApprovalReviewer", fields: [reviewerUserId], references: [id])
 
   @@index([tenantId, responseDocId])
   @@map("response_approvals")
@@ -1865,8 +1889,8 @@ model DeliveryRecord {
   tenantId        String
   responseDocId   String
   method          DeliveryMethod
-  recipientRef    String?        // email address, postal ref, etc.
-  proofStorageKey String?        // pointer to uploaded proof file
+  recipientRef    String? // email address, postal ref, etc.
+  proofStorageKey String? // pointer to uploaded proof file
   sentAt          DateTime       @default(now())
   notes           String?
   createdByUserId String
@@ -1886,8 +1910,8 @@ model RedactionEntry {
   responseDocId   String
   caseId          String
   sectionKey      String?
-  documentRef     String?  // reference to external doc/attachment
-  redactedContent String?  // description of what was redacted
+  documentRef     String? // reference to external doc/attachment
+  redactedContent String? // description of what was redacted
   reason          String
   createdByUserId String
   createdAt       DateTime @default(now())
@@ -1923,8 +1947,8 @@ model Incident {
   createdAt                     DateTime         @default(now())
   updatedAt                     DateTime         @updatedAt
 
-  tenant              Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy           User                  @relation("IncidentCreatedBy", fields: [createdByUserId], references: [id])
+  tenant              Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy           User                      @relation("IncidentCreatedBy", fields: [createdByUserId], references: [id])
   sources             IncidentSource[]
   incidentSystems     IncidentSystem[]
   contacts            IncidentContact[]
@@ -1943,16 +1967,16 @@ model Incident {
 }
 
 model IncidentSource {
-  id           String             @id @default(uuid())
-  tenantId     String
-  incidentId   String
-  sourceType   IncidentSourceType @default(MANUAL)
-  externalId   String?
-  externalUrl  String?
-  systemName   String?
-  importedAt   DateTime?
-  rawPayload   Json?
-  createdAt    DateTime           @default(now())
+  id          String             @id @default(uuid())
+  tenantId    String
+  incidentId  String
+  sourceType  IncidentSourceType @default(MANUAL)
+  externalId  String?
+  externalUrl String?
+  systemName  String?
+  importedAt  DateTime?
+  rawPayload  Json?
+  createdAt   DateTime           @default(now())
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
@@ -1962,12 +1986,12 @@ model IncidentSource {
 }
 
 model IncidentSystem {
-  id          String   @id @default(uuid())
-  tenantId    String
-  incidentId  String
-  systemId    String
-  notes       String?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(uuid())
+  tenantId   String
+  incidentId String
+  systemId   String
+  notes      String?
+  createdAt  DateTime @default(now())
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
@@ -1979,15 +2003,15 @@ model IncidentSystem {
 }
 
 model IncidentContact {
-  id          String   @id @default(uuid())
-  tenantId    String
-  incidentId  String
-  role        String   // DPO, CISO, Legal, Comms, etc.
-  name        String
-  email       String?
-  phone       String?
-  notes       String?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(uuid())
+  tenantId   String
+  incidentId String
+  role       String // DPO, CISO, Legal, Comms, etc.
+  name       String
+  email      String?
+  phone      String?
+  notes      String?
+  createdAt  DateTime @default(now())
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
@@ -2006,61 +2030,61 @@ model IncidentTimeline {
   createdByUserId String
   createdAt       DateTime                  @default(now())
 
-  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
-  createdBy User    @relation("IncidentTimelineCreatedBy", fields: [createdByUserId], references: [id])
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident  Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("IncidentTimelineCreatedBy", fields: [createdByUserId], references: [id])
 
   @@index([tenantId, incidentId])
   @@map("incident_timelines")
 }
 
 model IncidentCommunication {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   tenantId        String
   incidentId      String
-  direction       String   // INBOUND, OUTBOUND
-  channel         String   // EMAIL, LETTER, PHONE, PORTAL
+  direction       String // INBOUND, OUTBOUND
+  channel         String // EMAIL, LETTER, PHONE, PORTAL
   recipient       String?
   subject         String?
   body            String?
-  documentRef     String?  // reference to a Document or storageKey
+  documentRef     String? // reference to a Document or storageKey
   sentAt          DateTime?
   createdByUserId String
-  createdAt       DateTime @default(now())
+  createdAt       DateTime  @default(now())
 
-  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
-  createdBy User    @relation("IncidentCommCreatedBy", fields: [createdByUserId], references: [id])
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident  Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("IncidentCommCreatedBy", fields: [createdByUserId], references: [id])
 
   @@index([tenantId, incidentId])
   @@map("incident_communications")
 }
 
 model IncidentAssessment {
-  id                                  String   @id @default(uuid())
-  tenantId                            String
-  incidentId                          String
-  natureOfBreach                      String?
-  categoriesAndApproxSubjects         String?
-  categoriesAndApproxRecords          String?
-  likelyConsequences                  String?
-  measuresTakenOrProposed             String?
-  dpoContactDetails                   String?
-  additionalNotes                     String?
-  version                             Int      @default(1)
-  createdByUserId                     String
-  createdAt                           DateTime @default(now())
+  id                          String   @id @default(uuid())
+  tenantId                    String
+  incidentId                  String
+  natureOfBreach              String?
+  categoriesAndApproxSubjects String?
+  categoriesAndApproxRecords  String?
+  likelyConsequences          String?
+  measuresTakenOrProposed     String?
+  dpoContactDetails           String?
+  additionalNotes             String?
+  version                     Int      @default(1)
+  createdByUserId             String
+  createdAt                   DateTime @default(now())
 
-  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
-  createdBy User    @relation("IncidentAssessmentCreatedBy", fields: [createdByUserId], references: [id])
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident  Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("IncidentAssessmentCreatedBy", fields: [createdByUserId], references: [id])
 
   @@index([tenantId, incidentId])
   @@map("incident_assessments")
 }
 
 model IncidentRegulatorRecord {
-  id              String               @id @default(uuid())
+  id              String                @id @default(uuid())
   tenantId        String
   incidentId      String
   authorityName   String
@@ -2068,10 +2092,10 @@ model IncidentRegulatorRecord {
   referenceNumber String?
   status          RegulatorRecordStatus @default(DRAFT)
   notes           String?
-  documentRefs    Json?                // array of document/storageKey references
+  documentRefs    Json? // array of document/storageKey references
   submittedAt     DateTime?
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
@@ -2081,14 +2105,14 @@ model IncidentRegulatorRecord {
 }
 
 model DsarIncident {
-  id              String                    @id @default(uuid())
-  tenantId        String
-  caseId          String
-  incidentId      String
-  linkReason      String?
-  subjectInScope  DsarIncidentSubjectStatus @default(UNKNOWN)
-  linkedByUserId  String
-  createdAt       DateTime                  @default(now())
+  id             String                    @id @default(uuid())
+  tenantId       String
+  caseId         String
+  incidentId     String
+  linkReason     String?
+  subjectInScope DsarIncidentSubjectStatus @default(UNKNOWN)
+  linkedByUserId String
+  createdAt      DateTime                  @default(now())
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   case     DSARCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
@@ -2102,21 +2126,21 @@ model DsarIncident {
 }
 
 model SurgeGroup {
-  id              String   @id @default(uuid())
-  tenantId        String
-  incidentId      String
-  name            String
-  description     String?
-  suggestedSystems  Json?  // array of systemId suggestions
+  id                String   @id @default(uuid())
+  tenantId          String
+  incidentId        String
+  name              String
+  description       String?
+  suggestedSystems  Json? // array of systemId suggestions
   suggestedTemplate String? // templateId suggestion
-  createdByUserId String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdByUserId   String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  tenant   Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  incident Incident           @relation(fields: [incidentId], references: [id], onDelete: Cascade)
-  createdBy User              @relation("SurgeGroupCreatedBy", fields: [createdByUserId], references: [id])
-  members  SurgeGroupMember[]
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident  Incident           @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  createdBy User               @relation("SurgeGroupCreatedBy", fields: [createdByUserId], references: [id])
+  members   SurgeGroupMember[]
 
   @@index([tenantId, incidentId])
   @@map("surge_groups")
@@ -2129,9 +2153,9 @@ model SurgeGroupMember {
   caseId       String
   addedAt      DateTime @default(now())
 
-  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  surgeGroup SurgeGroup   @relation(fields: [surgeGroupId], references: [id], onDelete: Cascade)
-  case       DSARCase     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  surgeGroup SurgeGroup @relation(fields: [surgeGroupId], references: [id], onDelete: Cascade)
+  case       DSARCase   @relation(fields: [caseId], references: [id], onDelete: Cascade)
 
   @@unique([surgeGroupId, caseId])
   @@index([tenantId, surgeGroupId])
@@ -2139,26 +2163,26 @@ model SurgeGroupMember {
 }
 
 model AuthorityExportRun {
-  id              String                @id @default(uuid())
-  tenantId        String
-  incidentId      String
-  status          AuthorityExportStatus @default(PENDING)
-  includeTimeline Boolean               @default(true)
-  includeDsarList Boolean               @default(true)
-  includeEvidence Boolean               @default(false)
-  includeResponses Boolean              @default(false)
-  pdfStorageKey   String?
-  zipStorageKey   String?
-  fileChecksum    String?
-  fileSize        Int?
-  errorMessage    String?
-  createdByUserId String
-  createdAt       DateTime              @default(now())
-  completedAt     DateTime?
+  id               String                @id @default(uuid())
+  tenantId         String
+  incidentId       String
+  status           AuthorityExportStatus @default(PENDING)
+  includeTimeline  Boolean               @default(true)
+  includeDsarList  Boolean               @default(true)
+  includeEvidence  Boolean               @default(false)
+  includeResponses Boolean               @default(false)
+  pdfStorageKey    String?
+  zipStorageKey    String?
+  fileChecksum     String?
+  fileSize         Int?
+  errorMessage     String?
+  createdByUserId  String
+  createdAt        DateTime              @default(now())
+  completedAt      DateTime?
 
-  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
-  createdBy User    @relation("AuthorityExportCreatedBy", fields: [createdByUserId], references: [id])
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  incident  Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("AuthorityExportCreatedBy", fields: [createdByUserId], references: [id])
 
   @@index([tenantId, incidentId])
   @@map("authority_export_runs")
@@ -2208,29 +2232,29 @@ enum VendorEscalationSeverity {
 // ─── Vendor / Processor Tracking Models ─────────────────────────────────────
 
 model Vendor {
-  id                String       @id @default(uuid())
-  tenantId          String
-  name              String
-  shortCode         String?      // e.g. "SF", "WD", "MX"
-  status            VendorStatus @default(ACTIVE)
-  website           String?
+  id                  String       @id @default(uuid())
+  tenantId            String
+  name                String
+  shortCode           String? // e.g. "SF", "WD", "MX"
+  status              VendorStatus @default(ACTIVE)
+  website             String?
   headquartersCountry String?
-  dpaOnFile         Boolean      @default(false)
-  dpaExpiresAt      DateTime?
-  contractReference String?
-  notes             String?
-  tags              Json?
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  dpaOnFile           Boolean      @default(false)
+  dpaExpiresAt        DateTime?
+  contractReference   String?
+  notes               String?
+  tags                Json?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
 
-  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  contacts        VendorContact[]
-  dpas            VendorDpa[]
-  systemProcessors SystemProcessor[]   @relation("VendorProcessors")
-  requests        VendorRequest[]
-  slaConfig       VendorSlaConfig?
-  escalations     VendorEscalation[]
-  templates       VendorRequestTemplate[]
+  tenant           Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contacts         VendorContact[]
+  dpas             VendorDpa[]
+  systemProcessors SystemProcessor[]       @relation("VendorProcessors")
+  requests         VendorRequest[]
+  slaConfig        VendorSlaConfig?
+  escalations      VendorEscalation[]
+  templates        VendorRequestTemplate[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -2245,7 +2269,7 @@ model VendorContact {
   name      String
   email     String
   phone     String?
-  role      String?  // e.g. "DPO", "Privacy Lead", "Account Manager"
+  role      String? // e.g. "DPO", "Privacy Lead", "Account Manager"
   isPrimary Boolean  @default(false)
   notes     String?
   createdAt DateTime @default(now())
@@ -2259,18 +2283,18 @@ model VendorContact {
 }
 
 model VendorDpa {
-  id                String    @id @default(uuid())
-  tenantId          String
-  vendorId          String
-  title             String
-  signedAt          DateTime?
-  expiresAt         DateTime?
-  storageKey        String?   // link to uploaded DPA document
-  sccsIncluded      Boolean   @default(false)  // Standard Contractual Clauses
+  id                  String    @id @default(uuid())
+  tenantId            String
+  vendorId            String
+  title               String
+  signedAt            DateTime?
+  expiresAt           DateTime?
+  storageKey          String? // link to uploaded DPA document
+  sccsIncluded        Boolean   @default(false) // Standard Contractual Clauses
   subprocessorListUrl String?
-  notes             String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  notes               String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
@@ -2280,21 +2304,21 @@ model VendorDpa {
 }
 
 model VendorRequestTemplate {
-  id           String    @id @default(uuid())
+  id           String     @id @default(uuid())
   tenantId     String
-  vendorId     String?   // null = generic template
+  vendorId     String? // null = generic template
   name         String
-  language     String    @default("en")
+  language     String     @default("en")
   dsarTypes    DSARType[]
-  subject      String    // email subject template
-  bodyHtml     String    // HTML body template with {{placeholders}}
-  placeholders Json?     // array of { key, label, description }
-  isDefault    Boolean   @default(false)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  subject      String // email subject template
+  bodyHtml     String // HTML body template with {{placeholders}}
+  placeholders Json? // array of { key, label, description }
+  isDefault    Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
-  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vendor  Vendor? @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor Vendor? @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([tenantId, vendorId])
@@ -2302,31 +2326,31 @@ model VendorRequestTemplate {
 }
 
 model VendorRequest {
-  id                 String              @id @default(uuid())
-  tenantId           String
-  caseId             String
-  vendorId           String
-  systemId           String?             // which system triggered this
-  status             VendorRequestStatus @default(DRAFT)
-  templateId         String?
-  subject            String
-  bodyHtml           String
-  sentAt             DateTime?
-  acknowledgedAt     DateTime?
-  dueAt              DateTime?
-  closedAt           DateTime?
-  closedReason       String?
-  reminderCount      Int                 @default(0)
-  lastReminderAt     DateTime?
-  createdByUserId    String
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  id              String              @id @default(uuid())
+  tenantId        String
+  caseId          String
+  vendorId        String
+  systemId        String? // which system triggered this
+  status          VendorRequestStatus @default(DRAFT)
+  templateId      String?
+  subject         String
+  bodyHtml        String
+  sentAt          DateTime?
+  acknowledgedAt  DateTime?
+  dueAt           DateTime?
+  closedAt        DateTime?
+  closedReason    String?
+  reminderCount   Int                 @default(0)
+  lastReminderAt  DateTime?
+  createdByUserId String
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
-  tenant    Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  case      DSARCase                @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  vendor    Vendor                  @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  system    System?                 @relation("VendorRequestSystem", fields: [systemId], references: [id])
-  createdBy User                    @relation("VendorRequestCreatedBy", fields: [createdByUserId], references: [id])
+  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  case      DSARCase            @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  vendor    Vendor              @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  system    System?             @relation("VendorRequestSystem", fields: [systemId], references: [id])
+  createdBy User                @relation("VendorRequestCreatedBy", fields: [createdByUserId], references: [id])
   items     VendorRequestItem[]
   responses VendorResponse[]
 
@@ -2396,16 +2420,16 @@ model VendorResponseArtifact {
 }
 
 model VendorSlaConfig {
-  id                    String   @id @default(uuid())
-  tenantId              String
-  vendorId              String   @unique
-  defaultDueDays        Int      @default(14)
-  reminderAfterDays     Int      @default(7)
-  escalationAfterDays   Int      @default(14)
-  maxReminders          Int      @default(3)
-  autoEscalate          Boolean  @default(true)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                  String   @id @default(uuid())
+  tenantId            String
+  vendorId            String   @unique
+  defaultDueDays      Int      @default(14)
+  reminderAfterDays   Int      @default(7)
+  escalationAfterDays Int      @default(14)
+  maxReminders        Int      @default(3)
+  autoEscalate        Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
@@ -2427,9 +2451,9 @@ model VendorEscalation {
   createdByUserId String?
   createdAt       DateTime                 @default(now())
 
-  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vendor    Vendor         @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  createdBy User?          @relation("VendorEscalationCreatedBy", fields: [createdByUserId], references: [id])
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor    Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  createdBy User?  @relation("VendorEscalationCreatedBy", fields: [createdByUserId], references: [id])
 
   @@index([tenantId, vendorId])
   @@index([tenantId, severity])
@@ -2471,39 +2495,39 @@ enum MaturityDomain {
 // ─── Executive KPI & Board Reporting Models ─────────────────────────────────
 
 model PrivacyKpiSnapshot {
-  id              String            @id @default(uuid())
-  tenantId        String
-  period          KpiSnapshotPeriod @default(MONTHLY)
-  snapshotDate    DateTime
-  totalDsars      Int               @default(0)
-  openDsars       Int               @default(0)
-  closedDsars     Int               @default(0)
-  avgTimeToCloseDays  Float?
-  medianTimeToCloseDays Float?
-  extensionRatePct    Float?
-  overdueRatePct      Float?
-  dsarsByType         Json?         // { ACCESS: 10, ERASURE: 5, ... }
-  dsarsBySubjectType  Json?
-  dsarsLinkedToIncidentPct Float?
-  riskDistribution    Json?         // { green: 30, yellow: 10, red: 5 }
-  highRiskCasesCount  Int           @default(0)
-  incidentLinkedHighRiskCount Int   @default(0)
-  vendorOverdueCount  Int           @default(0)
-  autoSuggestedSystemsPct Float?
-  vendorAutoGeneratedPct  Float?
-  templateResponsePct     Float?
-  idvAutomationPct        Float?
-  apiReadySystemsPct      Float?
-  dpaOnFilePct            Float?
-  systemsCompleteMetaPct  Float?
-  retentionDefinedPct     Float?
-  thirdCountryTransferRatio Float?
-  estimatedCostPerDsar    Float?
-  estimatedTimeSavedPerDsar Float?
-  totalTimeSavedMonthly   Float?
-  maturityScore           Float?    // 0-100 composite
-  rawData                 Json?     // full detailed data blob
-  createdAt               DateTime  @default(now())
+  id                          String            @id @default(uuid())
+  tenantId                    String
+  period                      KpiSnapshotPeriod @default(MONTHLY)
+  snapshotDate                DateTime
+  totalDsars                  Int               @default(0)
+  openDsars                   Int               @default(0)
+  closedDsars                 Int               @default(0)
+  avgTimeToCloseDays          Float?
+  medianTimeToCloseDays       Float?
+  extensionRatePct            Float?
+  overdueRatePct              Float?
+  dsarsByType                 Json? // { ACCESS: 10, ERASURE: 5, ... }
+  dsarsBySubjectType          Json?
+  dsarsLinkedToIncidentPct    Float?
+  riskDistribution            Json? // { green: 30, yellow: 10, red: 5 }
+  highRiskCasesCount          Int               @default(0)
+  incidentLinkedHighRiskCount Int               @default(0)
+  vendorOverdueCount          Int               @default(0)
+  autoSuggestedSystemsPct     Float?
+  vendorAutoGeneratedPct      Float?
+  templateResponsePct         Float?
+  idvAutomationPct            Float?
+  apiReadySystemsPct          Float?
+  dpaOnFilePct                Float?
+  systemsCompleteMetaPct      Float?
+  retentionDefinedPct         Float?
+  thirdCountryTransferRatio   Float?
+  estimatedCostPerDsar        Float?
+  estimatedTimeSavedPerDsar   Float?
+  totalTimeSavedMonthly       Float?
+  maturityScore               Float? // 0-100 composite
+  rawData                     Json? // full detailed data blob
+  createdAt                   DateTime          @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -2514,15 +2538,15 @@ model PrivacyKpiSnapshot {
 }
 
 model PrivacyKpiConfig {
-  id                    String   @id @default(uuid())
-  tenantId              String
-  estimatedCostPerDsar  Float    @default(150.0)  // EUR
-  estimatedMinutesManual Float   @default(480.0)  // 8h manual
-  estimatedMinutesAutomated Float @default(120.0) // 2h automated
-  maturityWeights       Json?    // { documentation: 0.2, automation: 0.3, ... }
-  snapshotCron          String   @default("0 2 * * *") // daily at 2am
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                        String   @id @default(uuid())
+  tenantId                  String
+  estimatedCostPerDsar      Float    @default(150.0) // EUR
+  estimatedMinutesManual    Float    @default(480.0) // 8h manual
+  estimatedMinutesAutomated Float    @default(120.0) // 2h automated
+  maturityWeights           Json? // { documentation: 0.2, automation: 0.3, ... }
+  snapshotCron              String   @default("0 2 * * *") // daily at 2am
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -2531,19 +2555,19 @@ model PrivacyKpiConfig {
 }
 
 model AutomationMetric {
-  id                    String   @id @default(uuid())
-  tenantId              String
-  month                 DateTime // first day of month
-  totalCases            Int      @default(0)
-  casesWithAutoSystems  Int      @default(0)
-  vendorRequestsTotal   Int      @default(0)
-  vendorRequestsAuto    Int      @default(0)
-  responsesTotal        Int      @default(0)
-  responsesViaTemplate  Int      @default(0)
-  idvRequestsTotal      Int      @default(0)
-  idvRequestsAutomated  Int      @default(0)
-  avgProcessingMinutes  Float?
-  createdAt             DateTime @default(now())
+  id                   String   @id @default(uuid())
+  tenantId             String
+  month                DateTime // first day of month
+  totalCases           Int      @default(0)
+  casesWithAutoSystems Int      @default(0)
+  vendorRequestsTotal  Int      @default(0)
+  vendorRequestsAuto   Int      @default(0)
+  responsesTotal       Int      @default(0)
+  responsesViaTemplate Int      @default(0)
+  idvRequestsTotal     Int      @default(0)
+  idvRequestsAutomated Int      @default(0)
+  avgProcessingMinutes Float?
+  createdAt            DateTime @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -2557,13 +2581,13 @@ model ExecutiveReport {
   tenantId    String
   name        String
   description String?
-  sections    Json?    // configurable sections
-  schedule    String?  // cron expression
+  sections    Json? // configurable sections
+  schedule    String? // cron expression
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   runs   ExecutiveReportRun[]
 
   @@index([tenantId])
@@ -2595,14 +2619,14 @@ model ExecutiveReportRun {
 }
 
 model KpiThreshold {
-  id          String   @id @default(uuid())
-  tenantId    String
-  kpiKey      String   // e.g. "overdueRatePct", "maturityScore"
-  greenMax    Float?   // <= greenMax = green
-  yellowMax   Float?   // <= yellowMax = yellow, else red
-  direction   String   @default("lower_is_better") // "lower_is_better" | "higher_is_better"
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid())
+  tenantId  String
+  kpiKey    String // e.g. "overdueRatePct", "maturityScore"
+  greenMax  Float? // <= greenMax = green
+  yellowMax Float? // <= yellowMax = yellow, else red
+  direction String   @default("lower_is_better") // "lower_is_better" | "higher_is_better"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -2612,13 +2636,13 @@ model KpiThreshold {
 }
 
 model MaturityScore {
-  id                    String         @id @default(uuid())
-  tenantId              String
-  domain                MaturityDomain
-  month                 DateTime       // first day of month
-  score                 Float          // 0-100
-  details               Json?          // breakdown details
-  createdAt             DateTime       @default(now())
+  id        String         @id @default(uuid())
+  tenantId  String
+  domain    MaturityDomain
+  month     DateTime // first day of month
+  score     Float // 0-100
+  details   Json? // breakdown details
+  createdAt DateTime       @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -2630,7 +2654,7 @@ model MaturityScore {
 model BoardExportRun {
   id              String       @id @default(uuid())
   tenantId        String
-  exportType      String       // "board_report" | "audit_pack" | "quarterly_kpi"
+  exportType      String // "board_report" | "audit_pack" | "quarterly_kpi"
   format          ReportFormat @default(PDF)
   status          ReportStatus @default(PENDING)
   dateRangeStart  DateTime
@@ -2651,13 +2675,13 @@ model BoardExportRun {
 }
 
 model ForecastModel {
-  id              String   @id @default(uuid())
-  tenantId        String
-  modelType       String   // "dsar_volume" | "sla_breach" | "incident_surge"
-  parameters      Json?    // { slope, intercept, r_squared, ... }
-  lastTrainedAt   DateTime @default(now())
-  forecastData    Json?    // { predictions: [...] }
-  createdAt       DateTime @default(now())
+  id            String   @id @default(uuid())
+  tenantId      String
+  modelType     String // "dsar_volume" | "sla_breach" | "incident_surge"
+  parameters    Json? // { slope, intercept, r_squared, ... }
+  lastTrainedAt DateTime @default(now())
+  forecastData  Json? // { predictions: [...] }
+  createdAt     DateTime @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -2681,7 +2705,7 @@ model DsarCaseItem {
   findingId       String?
   evidenceId      String?
   systemId        String?
-  assetType       String           // "finding" | "evidence"
+  assetType       String // "finding" | "evidence"
   title           String
   location        String?
   dataCategory    String?
@@ -2690,8 +2714,8 @@ model DsarCaseItem {
   decisionReason  String?
   decidedByUserId String?
   decidedAt       DateTime?
-  matchScore      Float?           // Relevance to data subject identifiers
-  matchDetails    Json?            // Which identifiers matched
+  matchScore      Float? // Relevance to data subject identifiers
+  matchDetails    Json? // Which identifiers matched
   createdAt       DateTime         @default(now())
 
   tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -2753,19 +2777,19 @@ enum ConnectorRunStatus {
 }
 
 model DataAsset {
-  id              String   @id @default(uuid())
-  tenantId        String
-  systemId        String
-  name            String
-  path            String           // e.g. "\\\\fs01\\HR\\payroll.xlsx" or "https://acme.sharepoint.com/sites/Finance"
-  dataCategory    DataCategory     @default(OTHER)
-  sensitivityScore Int             @default(0)   // 0–100
-  personalData    Boolean          @default(false)
-  specialCategory Boolean          @default(false)
-  lastScannedAt   DateTime?
-  metadata        Json?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  id               String       @id @default(uuid())
+  tenantId         String
+  systemId         String
+  name             String
+  path             String // e.g. "\\\\fs01\\HR\\payroll.xlsx" or "https://acme.sharepoint.com/sites/Finance"
+  dataCategory     DataCategory @default(OTHER)
+  sensitivityScore Int          @default(0) // 0–100
+  personalData     Boolean      @default(false)
+  specialCategory  Boolean      @default(false)
+  lastScannedAt    DateTime?
+  metadata         Json?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   system   System    @relation(fields: [systemId], references: [id], onDelete: Cascade)
@@ -2777,17 +2801,17 @@ model DataAsset {
 }
 
 model ScanJob {
-  id              String         @id @default(uuid())
-  tenantId        String
-  systemId        String
-  status          ScanJobStatus  @default(PENDING)
-  assetsScanned   Int            @default(0)
-  findingsCount   Int            @default(0)
-  errorMessage    String?
-  startedAt       DateTime?
-  completedAt     DateTime?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id            String        @id @default(uuid())
+  tenantId      String
+  systemId      String
+  status        ScanJobStatus @default(PENDING)
+  assetsScanned Int           @default(0)
+  findingsCount Int           @default(0)
+  errorMessage  String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   system System @relation(fields: [systemId], references: [id], onDelete: Cascade)
@@ -2806,13 +2830,13 @@ model Connector {
   description String?
   category    ConnectorCategory
   enabled     Boolean           @default(true)
-  config      Json?             // non-secret connector config (e.g. server path, domain)
+  config      Json? // non-secret connector config (e.g. server path, domain)
   lastRunAt   DateTime?
   lastError   String?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
-  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   runs        ConnectorRun[]
   credentials ConnectorCredential[]
 
@@ -2830,7 +2854,7 @@ model ConnectorRun {
   assetsFound   Int                @default(0)
   findingsCount Int                @default(0)
   errorMessage  String?
-  stats         Json?              // { filesScanned, emailsScanned, recordsScanned, ... }
+  stats         Json? // { filesScanned, emailsScanned, recordsScanned, ... }
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 
@@ -2846,7 +2870,7 @@ model ConnectorCredential {
   id            String   @id @default(uuid())
   connectorId   String
   label         String   @default("default")
-  encryptedBlob String   // AES-256-GCM encrypted JSON blob (base64)
+  encryptedBlob String // AES-256-GCM encrypted JSON blob (base64)
   keyVersion    Int      @default(1)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
