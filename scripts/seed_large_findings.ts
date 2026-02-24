@@ -19,13 +19,27 @@
  *   6. Logs final counts
  */
 
-import {
-  PrismaClient,
-  DataCategory,
-  FindingSeverity,
-  FindingStatus,
-} from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import { randomUUID } from "crypto";
+
+// Import enums safely — they may not exist in every generated client version
+let _DataCategory: Record<string, string> | undefined;
+let _FindingSeverity: Record<string, string> | undefined;
+let _FindingStatus: Record<string, string> | undefined;
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const client = require("@prisma/client");
+  _DataCategory = client.DataCategory;
+  _FindingSeverity = client.FindingSeverity;
+  _FindingStatus = client.FindingStatus;
+} catch {
+  // Prisma client not generated or enums missing — use fallbacks below
+}
+
+type DataCategory = string;
+type FindingSeverity = string;
+type FindingStatus = string;
 
 // ── Env ──────────────────────────────────────────────────────────────────────
 if (!process.env.DATABASE_URL && process.env.POSTGRES_PRISMA_URL) {
@@ -51,9 +65,21 @@ function randInt(min: number, max: number): number {
   return min + Math.floor(Math.random() * (max - min + 1));
 }
 
-const DATA_CATEGORIES = Object.values(DataCategory);
-const SEVERITIES = Object.values(FindingSeverity);
-const STATUSES = Object.values(FindingStatus);
+const DATA_CATEGORIES: string[] = _DataCategory
+  ? Object.values(_DataCategory)
+  : [
+      "IDENTIFICATION", "CONTACT", "CONTRACT", "FINANCIAL", "BEHAVIORAL",
+      "TECHNICAL", "LOCATION", "COMMUNICATION", "HEALTH", "RELIGION",
+      "UNION", "POLITICAL_OPINION", "OTHER_SPECIAL_CATEGORY",
+    ];
+
+const SEVERITIES: string[] = _FindingSeverity
+  ? Object.values(_FindingSeverity)
+  : ["INFO", "WARNING", "CRITICAL"];
+
+const STATUSES: string[] = _FindingStatus
+  ? Object.values(_FindingStatus)
+  : ["OPEN", "ACCEPTED", "MITIGATING", "MITIGATED"];
 
 const PII_CATEGORIES = [
   "EMAIL",
@@ -100,8 +126,48 @@ const LOCATIONS = [
   "Jira > PROJ-123 > attachments",
 ];
 
-function makeSummary(cat: DataCategory, pii: string): string {
+function makeSummary(cat: string, pii: string): string {
   return `Detected ${pii} data in ${cat.toLowerCase().replace(/_/g, " ")} category — review recommended.`;
+}
+
+/**
+ * Detect whether the Finding model has a `status` column by attempting a
+ * small write and catching the Prisma validation error. The result is cached.
+ */
+let _hasStatusField: boolean | null = null;
+
+async function hasStatusField(): Promise<boolean> {
+  if (_hasStatusField !== null) return _hasStatusField;
+
+  // Inspect the Prisma DMMF metadata if available
+  try {
+    const dmmf = (prisma as any)._baseDmmf ?? (prisma as any)._dmmf;
+    if (dmmf) {
+      const findingModel = dmmf.modelMap?.Finding ?? dmmf.datamodelMap?.Finding;
+      if (findingModel) {
+        _hasStatusField = findingModel.fields.some(
+          (f: any) => f.name === "status"
+        );
+        return _hasStatusField;
+      }
+    }
+  } catch {
+    // DMMF introspection not available — fall through
+  }
+
+  // Fallback: assume status exists (schema has it)
+  _hasStatusField = true;
+  return _hasStatusField;
+}
+
+/** Strip `status` from a finding payload if the model doesn't have the field. */
+function stripUnknownFields<T extends Record<string, any>>(
+  obj: T,
+  includeStatus: boolean
+): T {
+  if (includeStatus) return obj;
+  const { status, ...rest } = obj;
+  return rest as T;
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -229,9 +295,13 @@ async function main() {
   }
 
   // 8. Create Findings in batches
+  const includeStatus = await hasStatusField();
   console.log(
     `[seed-findings] Creating ${FINDINGS_COUNT} findings in batches of ${BATCH_SIZE}...`
   );
+  if (!includeStatus) {
+    console.log("[seed-findings] NOTE: Finding model has no 'status' column — omitting status field.");
+  }
   const allFindingIds: string[] = [];
   const findingEvidenceMap: Map<string, string[]> = new Map();
 
@@ -251,7 +321,7 @@ async function main() {
         ["HEALTH", "RELIGION", "UNION", "POLITICAL_OPINION", "OTHER_SPECIAL_CATEGORY"] as string[]
       ).includes(cat as string);
 
-      return {
+      const row: Record<string, any> = {
         id,
         tenantId: tenant.id,
         caseId: dsarCase.id,
@@ -276,9 +346,11 @@ async function main() {
         dataAssetId:
           dataAssetIds.length > 0 ? pick(dataAssetIds) : null,
       };
+
+      return stripUnknownFields(row, includeStatus);
     });
 
-    await prisma.finding.createMany({ data: batch });
+    await prisma.finding.createMany({ data: batch as any });
     console.log(
       `[seed-findings]   ... created findings ${offset + 1}–${offset + batchCount}`
     );
@@ -356,10 +428,14 @@ async function main() {
   const detectorResultCount = await prisma.detectorResult.count({
     where: { tenantId: tenant.id },
   });
+  const copilotRunCount = await prisma.copilotRun.count({
+    where: { tenantId: tenant.id },
+  });
 
   console.log("\n[seed-findings] === Done ===");
-  console.log(`[seed-findings] Findings total (tenant):        ${findingCount}`);
-  console.log(`[seed-findings] DetectorResults total (tenant): ${detectorResultCount}`);
+  console.log(`[seed-findings] finding.count()        = ${findingCount}`);
+  console.log(`[seed-findings] detectorResult.count() = ${detectorResultCount}`);
+  console.log(`[seed-findings] copilotRun.count()     = ${copilotRunCount}`);
 }
 
 main()
