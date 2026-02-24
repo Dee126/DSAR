@@ -25,6 +25,10 @@ export async function GET(request: NextRequest) {
       throw new ApiError(400, "id query parameter is required");
     }
 
+    console.log(
+      `[heatmap/finding] tenantId=${user.tenantId} findingId=${id}`
+    );
+
     const finding = await prisma.finding.findFirst({
       where: { id, tenantId: user.tenantId },
       include: {

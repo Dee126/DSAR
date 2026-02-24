@@ -6,6 +6,7 @@ import { checkPermission } from "@/lib/rbac";
 import { handleApiError, ApiError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { resolveHeatmapScope } from "@/lib/resolve-heatmap-scope";
 
 /**
  * GET /api/heatmap/system?systemId=...&limit=50&offset=0&minScore=&category=&status=&color=&sort=score|lastSeen&dir=desc|asc
@@ -47,11 +48,24 @@ export async function GET(request: NextRequest) {
       throw new ApiError(404, "System not found");
     }
 
-    // Build where clause with filters
+    // Resolve optional caseId / runId with fallback to newest
+    const { caseId, runId } = await resolveHeatmapScope(
+      user.tenantId,
+      searchParams.get("caseId"),
+      searchParams.get("runId")
+    );
+
+    // Build where clause with filters (no run.status filter!)
     const where: Prisma.FindingWhereInput = {
       tenantId: user.tenantId,
       systemId,
+      ...(caseId ? { caseId } : {}),
+      ...(runId ? { runId } : {}),
     };
+
+    console.log(
+      `[heatmap/system] tenantId=${user.tenantId} systemId=${systemId} caseId=${caseId ?? "(auto-none)"} runId=${runId ?? "(auto-none)"} where=${JSON.stringify(where)}`
+    );
 
     // Color filter → sensitivityScore bands
     const color = searchParams.get("color");
@@ -151,9 +165,14 @@ export async function GET(request: NextRequest) {
       prisma.finding.count({ where }),
     ]);
 
-    // Compute counts across ALL findings for this system (unfiltered)
+    // Compute counts across ALL findings for this system (unfiltered by color/status/category, but scoped to case/run)
     const allFindings = await prisma.finding.findMany({
-      where: { tenantId: user.tenantId, systemId },
+      where: {
+        tenantId: user.tenantId,
+        systemId,
+        ...(caseId ? { caseId } : {}),
+        ...(runId ? { runId } : {}),
+      },
       select: { sensitivityScore: true },
     });
 

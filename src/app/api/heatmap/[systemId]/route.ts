@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth";
 import { checkPermission } from "@/lib/rbac";
 import { handleApiError, ApiError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
+import { resolveHeatmapScope } from "@/lib/resolve-heatmap-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -44,10 +45,23 @@ export async function GET(
       throw new ApiError(404, "System not found");
     }
 
+    // Resolve optional caseId / runId with fallback to newest
+    const { caseId, runId } = await resolveHeatmapScope(
+      user.tenantId,
+      url.searchParams.get("caseId"),
+      url.searchParams.get("runId")
+    );
+
     const where: Record<string, unknown> = {
       tenantId: user.tenantId,
       systemId,
+      ...(caseId ? { caseId } : {}),
+      ...(runId ? { runId } : {}),
     };
+
+    console.log(
+      `[heatmap/${systemId}] tenantId=${user.tenantId} caseId=${caseId ?? "(auto-none)"} runId=${runId ?? "(auto-none)"} where=${JSON.stringify(where)}`
+    );
 
     if (color === "green") {
       where.sensitivityScore = { lt: 40 };

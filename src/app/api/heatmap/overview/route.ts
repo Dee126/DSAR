@@ -1,13 +1,15 @@
 export const dynamic = "force-dynamic";
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { checkPermission } from "@/lib/rbac";
 import { handleApiError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
+import { resolveHeatmapScope } from "@/lib/resolve-heatmap-scope";
 
 /**
- * GET /api/heatmap/overview
+ * GET /api/heatmap/overview?caseId=...&runId=...
  *
  * Returns per-system risk overview based on finding sensitivityScore bands:
  *   green:  sensitivityScore < 40
@@ -16,13 +18,56 @@ import { prisma } from "@/lib/prisma";
  *
  * riskScore = weighted average: (red*100 + yellow*60 + green*20) / total
  * lastScanAt = latest finding.createdAt for that system (null if none)
+ *
+ * Queries findings directly (not through system.findings relation) so that
+ * findings without a systemId are still included in totals.
+ *
+ * Optional params:
+ *   caseId — scope to a specific DSAR case (fallback: newest case)
+ *   runId  — scope to a specific copilot run (fallback: newest run for case)
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth();
     checkPermission(user.role, "data_inventory", "read");
 
-    // Fetch all in-scope systems with their findings
+    const { searchParams } = new URL(request.url);
+
+    // ── Resolve caseId / runId with fallback ─────────────────────────
+    const { caseId, runId } = await resolveHeatmapScope(
+      user.tenantId,
+      searchParams.get("caseId"),
+      searchParams.get("runId")
+    );
+
+    // ── Build finding where filter (no run.status filter!) ───────────
+    const findingWhere: Prisma.FindingWhereInput = {
+      tenantId: user.tenantId,
+      ...(caseId ? { caseId } : {}),
+      ...(runId ? { runId } : {}),
+    };
+
+    console.log(
+      `[heatmap/overview] tenantId=${user.tenantId} caseId=${caseId ?? "(auto-none)"} runId=${runId ?? "(auto-none)"} where=${JSON.stringify(findingWhere)}`
+    );
+
+    // ── Query findings directly ──────────────────────────────────────
+    const allFindings = await prisma.finding.findMany({
+      where: findingWhere,
+      select: {
+        id: true,
+        systemId: true,
+        sensitivityScore: true,
+        riskScore: true,
+        severity: true,
+        status: true,
+        dataCategory: true,
+        containsSpecialCategory: true,
+        createdAt: true,
+      },
+    });
+
+    // ── Load in-scope systems for metadata ───────────────────────────
     const systems = await prisma.system.findMany({
       where: { tenantId: user.tenantId, inScopeForDsar: true },
       select: {
@@ -32,40 +77,41 @@ export async function GET() {
         description: true,
         criticality: true,
         containsSpecialCategories: true,
-        findings: {
-          select: {
-            id: true,
-            sensitivityScore: true,
-            riskScore: true,
-            severity: true,
-            status: true,
-            dataCategory: true,
-            containsSpecialCategory: true,
-            createdAt: true,
-          },
-        },
       },
       orderBy: { name: "asc" },
     });
+    const systemMap = new Map(systems.map((s) => [s.id, s]));
 
-    // Build per-system response
-    const systemTiles = systems.map((sys) => {
-      const findings = sys.findings;
+    // ── Group findings by systemId ───────────────────────────────────
+    type FindingRow = (typeof allFindings)[number];
+    const grouped = new Map<string | null, FindingRow[]>();
+    for (const f of allFindings) {
+      const key = f.systemId;
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key)!.push(f);
+    }
+
+    // ── Helper: build a tile from a list of findings ─────────────────
+    const buildTile = (
+      sysId: string,
+      sysName: string,
+      sysType: string | null,
+      description: string | null,
+      criticality: string | null,
+      containsSpecialCategories: boolean,
+      findings: FindingRow[]
+    ) => {
       const total = findings.length;
-
       const green = findings.filter((f) => f.sensitivityScore < 40).length;
       const yellow = findings.filter(
         (f) => f.sensitivityScore >= 40 && f.sensitivityScore < 70
       ).length;
       const red = findings.filter((f) => f.sensitivityScore >= 70).length;
-
-      // Weighted risk score
       const riskScore =
         total > 0
           ? Math.round((red * 100 + yellow * 60 + green * 20) / total)
           : 0;
 
-      // lastScanAt = latest finding.createdAt for this system
       const lastScanAt =
         findings.length > 0
           ? findings.reduce(
@@ -75,29 +121,29 @@ export async function GET() {
             )
           : null;
 
-      // Status counts (kept for rich UI)
       const statusCounts = {
         OPEN: findings.filter((f) => f.status === "OPEN").length,
         ACCEPTED: findings.filter((f) => f.status === "ACCEPTED").length,
         MITIGATING: findings.filter((f) => f.status === "MITIGATING").length,
         MITIGATED: findings.filter((f) => f.status === "MITIGATED").length,
       };
-
       const severityCounts = {
         INFO: findings.filter((f) => f.severity === "INFO").length,
         WARNING: findings.filter((f) => f.severity === "WARNING").length,
         CRITICAL: findings.filter((f) => f.severity === "CRITICAL").length,
       };
-
       const specialCategoryCount = findings.filter(
         (f) => f.containsSpecialCategory
       ).length;
 
-      // Per-category breakdown for the heatmap grid
-      const categoryBreakdown: Record<string, { green: number; yellow: number; red: number; total: number }> = {};
+      const categoryBreakdown: Record<
+        string,
+        { green: number; yellow: number; red: number; total: number }
+      > = {};
       for (const f of findings) {
         const cat = f.dataCategory as string;
-        if (!categoryBreakdown[cat]) categoryBreakdown[cat] = { green: 0, yellow: 0, red: 0, total: 0 };
+        if (!categoryBreakdown[cat])
+          categoryBreakdown[cat] = { green: 0, yellow: 0, red: 0, total: 0 };
         categoryBreakdown[cat].total++;
         if (f.sensitivityScore >= 70) categoryBreakdown[cat].red++;
         else if (f.sensitivityScore >= 40) categoryBreakdown[cat].yellow++;
@@ -105,25 +151,72 @@ export async function GET() {
       }
 
       return {
-        systemId: sys.id,
-        systemName: sys.name,
-        systemType: sys.connectorType,
+        systemId: sysId,
+        systemName: sysName,
+        systemType: sysType,
         lastScanAt: lastScanAt ? lastScanAt.toISOString() : null,
         counts: { green, yellow, red, total },
         riskScore,
-        // Extra fields for rich UI
-        description: sys.description,
-        criticality: sys.criticality,
-        containsSpecialCategories: sys.containsSpecialCategories,
+        description,
+        criticality,
+        containsSpecialCategories,
         statusCounts,
         severityCounts,
         specialCategoryCount,
         categoryBreakdown,
       };
-    });
+    };
 
-    // Global totals
-    const allFindings = systems.flatMap((s) => s.findings);
+    // ── Build tiles ──────────────────────────────────────────────────
+    const systemTiles: ReturnType<typeof buildTile>[] = [];
+
+    for (const [sysId, findings] of grouped) {
+      if (sysId && systemMap.has(sysId)) {
+        const sys = systemMap.get(sysId)!;
+        systemTiles.push(
+          buildTile(
+            sys.id,
+            sys.name,
+            sys.connectorType,
+            sys.description,
+            sys.criticality,
+            sys.containsSpecialCategories,
+            findings
+          )
+        );
+      } else if (sysId) {
+        // System not in-scope or deleted — still surface its findings
+        systemTiles.push(
+          buildTile(sysId, `System ${sysId.slice(0, 8)}…`, null, null, null, false, findings)
+        );
+      } else {
+        // Findings without systemId
+        systemTiles.push(
+          buildTile("__unassigned__", "(Unassigned)", null, null, null, false, findings)
+        );
+      }
+    }
+
+    // Add empty tiles for in-scope systems that have zero findings
+    for (const sys of systems) {
+      if (!grouped.has(sys.id)) {
+        systemTiles.push(
+          buildTile(
+            sys.id,
+            sys.name,
+            sys.connectorType,
+            sys.description,
+            sys.criticality,
+            sys.containsSpecialCategories,
+            []
+          )
+        );
+      }
+    }
+
+    systemTiles.sort((a, b) => a.systemName.localeCompare(b.systemName));
+
+    // ── Global totals ────────────────────────────────────────────────
     const totals = {
       green: allFindings.filter((f) => f.sensitivityScore < 40).length,
       yellow: allFindings.filter(
@@ -133,7 +226,6 @@ export async function GET() {
       total: allFindings.length,
     };
 
-    // Additional summary data for charts
     const categoryCounts = Object.fromEntries(
       Object.entries(
         allFindings.reduce(
@@ -146,7 +238,6 @@ export async function GET() {
       ).sort(([, a], [, b]) => b - a)
     );
 
-    // Surface warnings (e.g. Supabase not configured)
     const _warnings: string[] = [];
     if (!process.env.DATABASE_URL && !process.env.POSTGRES_PRISMA_URL) {
       _warnings.push("No DATABASE_URL configured — using Prisma fallback");
@@ -155,7 +246,6 @@ export async function GET() {
     return NextResponse.json({
       systems: systemTiles,
       totals,
-      // Extra summary for dashboard charts
       summary: {
         totalSystems: systems.length,
         totalFindings: allFindings.length,

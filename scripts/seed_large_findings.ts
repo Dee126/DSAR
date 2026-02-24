@@ -538,6 +538,7 @@ async function main() {
         tenantId: tenant.id,
         caseId: dsarCase.id,
         runId: copilotRunId,
+        ...(systemIds.length > 0 ? { systemId: pick(systemIds) } : {}),
         dataCategory: cat,
         severity: sev,
         confidence: Math.round(Math.random() * 100) / 100,
