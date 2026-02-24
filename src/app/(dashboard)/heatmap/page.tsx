@@ -201,6 +201,8 @@ export default function HeatmapPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [demoStatus, setDemoStatus] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const { toasts, addToast } = useToast();
@@ -297,10 +299,12 @@ export default function HeatmapPage() {
   const seedDemoData = async () => {
     setSeeding(true);
     setMenuOpen(false);
+    setDemoStatus(null);
     try {
       const res = await fetch("/api/demo/seed-heatmap", { method: "POST", credentials: "include" });
-      if (!res.ok) throw new Error(`Seed failed: HTTP ${res.status}`);
       const data = await res.json();
+      setDemoStatus(JSON.stringify(data, null, 2));
+      if (!res.ok) throw new Error(data.error || `Seed failed: HTTP ${res.status}`);
       await fetchHeatmap();
       addToast(
         "success",
@@ -311,6 +315,27 @@ export default function HeatmapPage() {
       addToast("error", `Failed to seed demo data: ${msg}`);
     } finally {
       setSeeding(false);
+    }
+  };
+
+  const resetDemoData = async () => {
+    setResetting(true);
+    setDemoStatus(null);
+    try {
+      const res = await fetch("/api/demo/reset-heatmap", { method: "POST", credentials: "include" });
+      const data = await res.json();
+      setDemoStatus(JSON.stringify(data, null, 2));
+      if (!res.ok) throw new Error(data.error || `Reset failed: HTTP ${res.status}`);
+      await fetchHeatmap();
+      addToast(
+        "success",
+        `Demo data reset: ${data.removedSystems} systems, ${data.removedFindings} findings removed`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      addToast("error", `Failed to reset demo data: ${msg}`);
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -351,6 +376,41 @@ export default function HeatmapPage() {
   return (
     <div className="space-y-8">
       <ToastContainer toasts={toasts} />
+
+      {/* Dev-only: Demo Controls Card */}
+      {process.env.NODE_ENV === "development" && (
+        <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-indigo-700">
+              Demo Mode: DEMO_TENANT_ID{" "}
+              {process.env.NEXT_PUBLIC_DEMO_TENANT_ID
+                ? process.env.NEXT_PUBLIC_DEMO_TENANT_ID.slice(0, 8) + "\u2026"
+                : "(set in .env)"}
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={seedDemoData}
+                disabled={seeding || resetting}
+                className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {seeding ? "Seeding\u2026" : "Seed Demo Data"}
+              </button>
+              <button
+                onClick={resetDemoData}
+                disabled={seeding || resetting}
+                className="rounded bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {resetting ? "Resetting\u2026" : "Reset Demo Data"}
+              </button>
+            </div>
+          </div>
+          {demoStatus && (
+            <pre className="mt-2 max-h-40 overflow-auto rounded bg-gray-900 p-2 text-[11px] text-green-300">
+              {demoStatus}
+            </pre>
+          )}
+        </div>
+      )}
 
       {/* Warnings Banner */}
       {warnings.length > 0 && (
@@ -400,7 +460,7 @@ export default function HeatmapPage() {
                 </div>
                 <button
                   onClick={seedDemoData}
-                  disabled={seeding}
+                  disabled={seeding || resetting}
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                 >
                   <svg
@@ -417,6 +477,26 @@ export default function HeatmapPage() {
                     />
                   </svg>
                   {seeding ? "Seeding\u2026" : "Seed Demo Data"}
+                </button>
+                <button
+                  onClick={resetDemoData}
+                  disabled={seeding || resetting}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+                >
+                  <svg
+                    className="h-4 w-4 text-red-500"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                    />
+                  </svg>
+                  {resetting ? "Resetting\u2026" : "Reset Demo Data"}
                 </button>
               </div>
             )}
