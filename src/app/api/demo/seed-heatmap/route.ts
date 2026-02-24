@@ -9,6 +9,7 @@ import {
   ConnectorType,
   SystemCriticality,
 } from "@prisma/client";
+import { scoreFinding } from "@/lib/ai/aiScoringService";
 
 export const dynamic = "force-dynamic";
 
@@ -343,6 +344,40 @@ export async function POST(request: NextRequest) {
       await prisma.finding.createMany({ data: findings });
       totalFindings += findings.length;
     }
+
+    // ── 5. AI-score every finding ──────────────────────────────────────
+    console.log("[seed-heatmap] Step 5: Scoring findings with AI service");
+    const allFindings = await prisma.finding.findMany({
+      where: { tenantId, runId: copilotRun.id },
+      select: {
+        id: true,
+        sensitivityScore: true,
+        containsSpecialCategory: true,
+        dataCategory: true,
+      },
+    });
+
+    const aiUpdates = allFindings.map((f) => {
+      const result = scoreFinding({
+        sensitivityScore: f.sensitivityScore,
+        containsSpecialCategory: f.containsSpecialCategory,
+        dataCategory: f.dataCategory,
+      });
+      return prisma.finding.update({
+        where: { id: f.id },
+        data: {
+          aiRiskScore: result.aiRiskScore,
+          aiConfidence: result.aiConfidence,
+          aiSuggestedAction: result.aiSuggestedAction,
+          aiLegalReference: result.aiLegalReference,
+          aiRationale: result.aiRationale,
+          aiReviewStatus: "ANALYZED",
+        },
+      });
+    });
+
+    await Promise.all(aiUpdates);
+    console.log("[seed-heatmap] AI scoring complete for", allFindings.length, "findings");
 
     // Update run totals
     console.log("[seed-heatmap] Updating CopilotRun totalFindings:", totalFindings);

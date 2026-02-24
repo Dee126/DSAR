@@ -162,6 +162,20 @@ export async function GET(request: NextRequest) {
         globalCategoryCounts[f.dataCategory] = (globalCategoryCounts[f.dataCategory] ?? 0) + 1;
       }
 
+      // ── AI summary counts ──────────────────────────────────────────────
+      const analyzedFindings = findings.filter(
+        (f) => f.aiReviewStatus === "ANALYZED",
+      ).length;
+      const pendingHumanDecisions = findings.filter(
+        (f) =>
+          (f.aiSuggestedAction === "DELETE" ||
+            f.aiSuggestedAction === "REVIEW_REQUIRED") &&
+          f.humanDecision === null,
+      ).length;
+      const highRiskRecommendations = findings.filter(
+        (f) => f.aiSuggestedAction === "DELETE",
+      ).length;
+
       return {
         systemId: sys.id,
         systemName: sys.name,
@@ -176,6 +190,11 @@ export async function GET(request: NextRequest) {
         severityCounts,
         specialCategoryCount,
         categoryBreakdown,
+        ai: {
+          analyzedFindings,
+          pendingHumanDecisions,
+          highRiskRecommendations,
+        },
       };
     });
 
