@@ -12,11 +12,12 @@
  *
  * The script:
  *   1. Connects to the DB via PrismaClient
- *   2. Finds the "Acme Corp" tenant and the newest DSAR case
- *   3. Reuses (or creates) a CopilotRun + EvidenceItems to satisfy FK constraints
- *   4. Creates FINDINGS_COUNT Findings in batches of 200
- *   5. Creates 1-3 DetectorResults per Finding in batches of 200
- *   6. Logs final counts
+ *   2. Resolves Prisma delegate names (handles naming variations across client versions)
+ *   3. Finds the "Acme Corp" tenant and the newest DSAR case
+ *   4. Reuses (or creates) a CopilotRun + EvidenceItems to satisfy FK constraints
+ *   5. Creates FINDINGS_COUNT Findings in batches of 200
+ *   6. Creates 1-3 DetectorResults per Finding in batches of 200 (if delegate available)
+ *   7. Logs final counts
  */
 
 import { PrismaClient } from "@prisma/client";
@@ -54,6 +55,63 @@ const FINDINGS_COUNT = parseInt(process.env.FINDINGS_COUNT || "800", 10);
 const BATCH_SIZE = 200;
 
 const prisma = new PrismaClient();
+
+// ── Delegate Resolution ─────────────────────────────────────────────────────
+
+/**
+ * Resolve a Prisma delegate by trying multiple candidate names.
+ * Returns the delegate (the model accessor on the PrismaClient) or null if none found.
+ */
+function getDelegate(nameCandidates: string[]): any | null {
+  for (const n of nameCandidates) {
+    if ((prisma as any)[n]) return (prisma as any)[n];
+  }
+  return null;
+}
+
+// Resolve all delegates with candidate lists to handle naming variations
+const findingDelegate = getDelegate(["finding", "Finding"]);
+const detectorDelegate = getDelegate([
+  "detectorResult",
+  "DetectorResult",
+  "findingDetectorResult",
+  "DetectorResults",
+]);
+const copilotRunDelegate = getDelegate([
+  "copilotRun",
+  "CopilotRun",
+  "aICopilotRun",
+  "copilot_run",
+]);
+const evidenceDelegate = getDelegate([
+  "evidenceItem",
+  "EvidenceItem",
+  "copilotEvidenceItem",
+  "evidence",
+]);
+const systemDelegate = getDelegate(["system", "System"]);
+const dataAssetDelegate = getDelegate([
+  "dataAsset",
+  "DataAsset",
+  "data_asset",
+]);
+
+function printDelegateResolution() {
+  const delegates = [
+    { name: "finding", resolved: findingDelegate },
+    { name: "detectorResult", resolved: detectorDelegate },
+    { name: "copilotRun", resolved: copilotRunDelegate },
+    { name: "evidenceItem", resolved: evidenceDelegate },
+    { name: "system", resolved: systemDelegate },
+    { name: "dataAsset", resolved: dataAssetDelegate },
+  ];
+
+  console.log("[seed-findings] Delegate resolution:");
+  for (const d of delegates) {
+    const status = d.resolved ? "OK" : "NOT FOUND (will skip)";
+    console.log(`[seed-findings]   ${d.name.padEnd(20)} → ${status}`);
+  }
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -175,6 +233,18 @@ function stripUnknownFields<T extends Record<string, any>>(
 async function main() {
   console.log(`[seed-findings] Starting — target: ${FINDINGS_COUNT} findings`);
 
+  // Print resolved delegate names at start
+  printDelegateResolution();
+
+  // Validate that the finding delegate exists — it's required
+  if (!findingDelegate) {
+    console.error(
+      "[seed-findings] ERROR: Could not resolve 'finding' delegate on PrismaClient. " +
+      "Tried candidates: finding, Finding. Cannot proceed."
+    );
+    process.exit(1);
+  }
+
   // 1. Find the default tenant ("Acme Corp"), fallback to first tenant
   let tenant = await prisma.tenant.findFirst({
     where: { name: "Acme Corp" },
@@ -227,39 +297,92 @@ async function main() {
   }
 
   // 4. Find existing systems for the tenant (optional, for systemId on findings)
-  const systems = await prisma.system.findMany({
-    where: { tenantId: tenant.id },
-    select: { id: true },
-  });
-  const systemIds = systems.map((s: { id: string }) => s.id);
+  let systemIds: string[] = [];
+  if (systemDelegate) {
+    try {
+      const systems = await systemDelegate.findMany({
+        where: { tenantId: tenant.id },
+        select: { id: true },
+      });
+      systemIds = systems.map((s: { id: string }) => s.id);
+    } catch (err) {
+      console.warn("[seed-findings] WARN: Failed to query systems — skipping systemId population.", err);
+    }
+  } else {
+    console.warn("[seed-findings] WARN: system delegate not found — skipping systemId population.");
+  }
 
   // 5. Find existing data assets (optional, for dataAssetId on findings)
-  const dataAssets = await prisma.dataAsset.findMany({
-    where: { tenantId: tenant.id },
-    select: { id: true },
-  });
-  const dataAssetIds = dataAssets.map((a: { id: string }) => a.id);
-
-  // 6. Reuse or create a CopilotRun
-  let copilotRun = await prisma.copilotRun.findFirst({
-    where: { tenantId: tenant.id, caseId: dsarCase.id },
-    orderBy: { createdAt: "desc" },
-  });
-  if (!copilotRun) {
-    copilotRun = await prisma.copilotRun.create({
-      data: {
-        tenantId: tenant.id,
-        caseId: dsarCase.id,
-        createdByUserId: adminUser.id,
-        status: "COMPLETED",
-        justification:
-          "Bulk-seed run for findings heatmap testing",
-        scopeSummary: "All integrated systems",
-      },
-    });
-    console.log(`[seed-findings] Created CopilotRun: ${copilotRun.id}`);
+  let dataAssetIds: string[] = [];
+  if (dataAssetDelegate) {
+    try {
+      const dataAssets = await dataAssetDelegate.findMany({
+        where: { tenantId: tenant.id },
+        select: { id: true },
+      });
+      dataAssetIds = dataAssets.map((a: { id: string }) => a.id);
+    } catch (err) {
+      console.warn("[seed-findings] WARN: Failed to query dataAssets — skipping dataAssetId population.", err);
+    }
   } else {
-    console.log(`[seed-findings] Reusing CopilotRun: ${copilotRun.id}`);
+    console.warn("[seed-findings] WARN: dataAsset delegate not found — skipping dataAssetId population.");
+  }
+
+  // 6. Reuse or create a CopilotRun (required FK for findings)
+  let copilotRunId: string | null = null;
+  if (copilotRunDelegate) {
+    try {
+      let copilotRun = await copilotRunDelegate.findFirst({
+        where: { tenantId: tenant.id, caseId: dsarCase.id },
+        orderBy: { createdAt: "desc" },
+      });
+      if (!copilotRun) {
+        copilotRun = await copilotRunDelegate.create({
+          data: {
+            tenantId: tenant.id,
+            caseId: dsarCase.id,
+            createdByUserId: adminUser.id,
+            status: "COMPLETED",
+            justification:
+              "Bulk-seed run for findings heatmap testing",
+            scopeSummary: "All integrated systems",
+          },
+        });
+        console.log(`[seed-findings] Created CopilotRun: ${copilotRun.id}`);
+      } else {
+        console.log(`[seed-findings] Reusing CopilotRun: ${copilotRun.id}`);
+      }
+      copilotRunId = copilotRun.id;
+    } catch (err) {
+      console.warn("[seed-findings] WARN: Failed to find/create CopilotRun via delegate.", err);
+    }
+  } else {
+    console.warn("[seed-findings] WARN: copilotRun delegate not found — will attempt raw query fallback.");
+  }
+
+  // Fallback: try to find an existing copilot run via raw SQL if delegate failed
+  if (!copilotRunId) {
+    try {
+      const rows: any[] = await prisma.$queryRawUnsafe(
+        `SELECT id FROM copilot_runs WHERE "tenantId" = $1 AND "caseId" = $2 ORDER BY "createdAt" DESC LIMIT 1`,
+        tenant.id,
+        dsarCase.id
+      );
+      if (rows.length > 0) {
+        copilotRunId = rows[0].id;
+        console.log(`[seed-findings] Found CopilotRun via raw query: ${copilotRunId}`);
+      }
+    } catch {
+      // raw query also failed — fall through
+    }
+  }
+
+  if (!copilotRunId) {
+    console.error(
+      "[seed-findings] ERROR: Could not find or create a CopilotRun. " +
+      "Findings require a runId FK. Run the main seed first or ensure copilotRun delegate is available."
+    );
+    process.exit(1);
   }
 
   // 7. Create a pool of EvidenceItems (DetectorResult needs evidenceItemId)
@@ -267,31 +390,42 @@ async function main() {
   const EVIDENCE_POOL_SIZE = Math.min(50, FINDINGS_COUNT);
   const evidencePool: string[] = [];
 
-  const existingEvidence = await prisma.evidenceItem.findMany({
-    where: { tenantId: tenant.id, runId: copilotRun.id },
-    select: { id: true },
-    take: EVIDENCE_POOL_SIZE,
-  });
-  evidencePool.push(...existingEvidence.map((e: { id: string }) => e.id));
+  if (evidenceDelegate) {
+    try {
+      const existingEvidence = await evidenceDelegate.findMany({
+        where: { tenantId: tenant.id, runId: copilotRunId },
+        select: { id: true },
+        take: EVIDENCE_POOL_SIZE,
+      });
+      evidencePool.push(...existingEvidence.map((e: { id: string }) => e.id));
 
-  if (evidencePool.length < EVIDENCE_POOL_SIZE) {
-    const needed = EVIDENCE_POOL_SIZE - evidencePool.length;
-    const evidenceData = Array.from({ length: needed }, () => ({
-      id: randomUUID(),
-      tenantId: tenant.id,
-      caseId: dsarCase.id,
-      runId: copilotRun.id,
-      provider: "M365",
-      workload: pick(["EXCHANGE", "SHAREPOINT", "ONEDRIVE"]),
-      itemType: pick(["EMAIL", "FILE", "RECORD"] as const),
-      location: pick(LOCATIONS),
-      title: `Evidence-${randomUUID().slice(0, 8)}`,
-      contentHandling: "METADATA_ONLY" as const,
-    }));
+      if (evidencePool.length < EVIDENCE_POOL_SIZE) {
+        const needed = EVIDENCE_POOL_SIZE - evidencePool.length;
+        const evidenceData = Array.from({ length: needed }, () => ({
+          id: randomUUID(),
+          tenantId: tenant.id,
+          caseId: dsarCase.id,
+          runId: copilotRunId,
+          provider: "M365",
+          workload: pick(["EXCHANGE", "SHAREPOINT", "ONEDRIVE"]),
+          itemType: pick(["EMAIL", "FILE", "RECORD"] as const),
+          location: pick(LOCATIONS),
+          title: `Evidence-${randomUUID().slice(0, 8)}`,
+          contentHandling: "METADATA_ONLY" as const,
+        }));
 
-    await prisma.evidenceItem.createMany({ data: evidenceData });
-    evidencePool.push(...evidenceData.map((e) => e.id));
-    console.log(`[seed-findings] Created ${needed} EvidenceItems`);
+        await evidenceDelegate.createMany({ data: evidenceData });
+        evidencePool.push(...evidenceData.map((e: { id: string }) => e.id));
+        console.log(`[seed-findings] Created ${needed} EvidenceItems`);
+      }
+    } catch (err) {
+      console.warn("[seed-findings] WARN: Failed to query/create EvidenceItems.", err);
+    }
+  } else {
+    console.warn(
+      "[seed-findings] WARN: evidenceItem delegate not found — " +
+      "creating findings without evidence links and skipping DetectorResults."
+    );
   }
 
   // 8. Create Findings in batches
@@ -312,7 +446,7 @@ async function main() {
       const cat = pick(DATA_CATEGORIES);
       const sev = pick(SEVERITIES);
       const pii = pick(PII_CATEGORIES);
-      const evidenceIds = [pick(evidencePool)];
+      const evidenceIds = evidencePool.length > 0 ? [pick(evidencePool)] : [];
 
       allFindingIds.push(id);
       findingEvidenceMap.set(id, evidenceIds);
@@ -325,7 +459,7 @@ async function main() {
         id,
         tenantId: tenant.id,
         caseId: dsarCase.id,
-        runId: copilotRun.id,
+        runId: copilotRunId,
         dataCategory: cat,
         severity: sev,
         confidence: Math.round(Math.random() * 100) / 100,
@@ -350,87 +484,112 @@ async function main() {
       return stripUnknownFields(row, includeStatus);
     });
 
-    await prisma.finding.createMany({ data: batch as any });
+    await findingDelegate.createMany({ data: batch as any });
     console.log(
       `[seed-findings]   ... created findings ${offset + 1}–${offset + batchCount}`
     );
   }
 
-  // 9. Create DetectorResults (1-3 per Finding) in batches
-  console.log("[seed-findings] Creating DetectorResults (1-3 per finding)...");
-  let detectorBatch: Array<{
-    id: string;
-    tenantId: string;
-    caseId: string;
-    runId: string;
-    evidenceItemId: string;
-    detectorType: string;
-    detectedElements: { elementType: string; confidence: number; snippetPreview: string }[];
-    detectedCategories: { category: string; confidence: number }[];
-    containsSpecialCategorySuspected: boolean;
-  }> = [];
-  let totalDetectorResults = 0;
+  // 9. Create DetectorResults (1-3 per Finding) in batches — skip if delegate or evidence pool missing
+  if (detectorDelegate && evidencePool.length > 0) {
+    console.log("[seed-findings] Creating DetectorResults (1-3 per finding)...");
+    let detectorBatch: Array<{
+      id: string;
+      tenantId: string;
+      caseId: string;
+      runId: string;
+      evidenceItemId: string;
+      detectorType: string;
+      detectedElements: { elementType: string; confidence: number; snippetPreview: string }[];
+      detectedCategories: { category: string; confidence: number }[];
+      containsSpecialCategorySuspected: boolean;
+    }> = [];
+    let totalDetectorResults = 0;
 
-  for (const findingId of allFindingIds) {
-    const count = randInt(1, 3);
-    const evidenceIds = findingEvidenceMap.get(findingId) || [
-      pick(evidencePool),
-    ];
+    for (const findingId of allFindingIds) {
+      const count = randInt(1, 3);
+      const evidenceIds = findingEvidenceMap.get(findingId) || [
+        pick(evidencePool),
+      ];
 
-    for (let i = 0; i < count; i++) {
-      const cat = pick(DATA_CATEGORIES);
-      const confidence = Math.round(Math.random() * 100) / 100;
+      for (let i = 0; i < count; i++) {
+        const cat = pick(DATA_CATEGORIES);
+        const confidence = Math.round(Math.random() * 100) / 100;
 
-      detectorBatch.push({
-        id: randomUUID(),
-        tenantId: tenant.id,
-        caseId: dsarCase.id,
-        runId: copilotRun.id,
-        evidenceItemId: pick(evidenceIds.length > 0 ? evidenceIds : evidencePool),
-        detectorType: pick(DETECTOR_TYPES),
-        detectedElements: [
-          {
-            elementType: pick(PII_CATEGORIES),
-            confidence,
-            snippetPreview: `[redacted ${pick(PII_CATEGORIES).toLowerCase()}]`,
-          },
-        ],
-        detectedCategories: [{ category: cat, confidence }],
-        containsSpecialCategorySuspected: (
-          ["HEALTH", "RELIGION", "UNION", "POLITICAL_OPINION", "OTHER_SPECIAL_CATEGORY"] as string[]
-        ).includes(cat as string),
-      });
+        detectorBatch.push({
+          id: randomUUID(),
+          tenantId: tenant.id,
+          caseId: dsarCase.id,
+          runId: copilotRunId!,
+          evidenceItemId: pick(evidenceIds.length > 0 ? evidenceIds : evidencePool),
+          detectorType: pick(DETECTOR_TYPES),
+          detectedElements: [
+            {
+              elementType: pick(PII_CATEGORIES),
+              confidence,
+              snippetPreview: `[redacted ${pick(PII_CATEGORIES).toLowerCase()}]`,
+            },
+          ],
+          detectedCategories: [{ category: cat, confidence }],
+          containsSpecialCategorySuspected: (
+            ["HEALTH", "RELIGION", "UNION", "POLITICAL_OPINION", "OTHER_SPECIAL_CATEGORY"] as string[]
+          ).includes(cat as string),
+        });
 
-      totalDetectorResults++;
+        totalDetectorResults++;
 
-      if (detectorBatch.length >= BATCH_SIZE) {
-        await prisma.detectorResult.createMany({ data: detectorBatch });
-        console.log(
-          `[seed-findings]   ... flushed ${detectorBatch.length} detector results (total: ${totalDetectorResults})`
-        );
-        detectorBatch = [];
+        if (detectorBatch.length >= BATCH_SIZE) {
+          await detectorDelegate.createMany({ data: detectorBatch });
+          console.log(
+            `[seed-findings]   ... flushed ${detectorBatch.length} detector results (total: ${totalDetectorResults})`
+          );
+          detectorBatch = [];
+        }
       }
+    }
+
+    // Flush remaining
+    if (detectorBatch.length > 0) {
+      await detectorDelegate.createMany({ data: detectorBatch });
+      console.log(
+        `[seed-findings]   ... flushed ${detectorBatch.length} detector results (total: ${totalDetectorResults})`
+      );
+    }
+  } else {
+    if (!detectorDelegate) {
+      console.warn("[seed-findings] WARN: detectorResult delegate not found — skipping DetectorResult creation.");
+    }
+    if (evidencePool.length === 0) {
+      console.warn("[seed-findings] WARN: No evidence pool available — skipping DetectorResult creation.");
     }
   }
 
-  // Flush remaining
-  if (detectorBatch.length > 0) {
-    await prisma.detectorResult.createMany({ data: detectorBatch });
-    console.log(
-      `[seed-findings]   ... flushed ${detectorBatch.length} detector results (total: ${totalDetectorResults})`
-    );
+  // 10. Log final counts
+  const findingCount = await findingDelegate.count({
+    where: { tenantId: tenant.id },
+  });
+
+  let detectorResultCount = 0;
+  if (detectorDelegate) {
+    try {
+      detectorResultCount = await detectorDelegate.count({
+        where: { tenantId: tenant.id },
+      });
+    } catch {
+      console.warn("[seed-findings] WARN: Could not count detectorResults.");
+    }
   }
 
-  // 10. Log final counts
-  const findingCount = await prisma.finding.count({
-    where: { tenantId: tenant.id },
-  });
-  const detectorResultCount = await prisma.detectorResult.count({
-    where: { tenantId: tenant.id },
-  });
-  const copilotRunCount = await prisma.copilotRun.count({
-    where: { tenantId: tenant.id },
-  });
+  let copilotRunCount = 0;
+  if (copilotRunDelegate) {
+    try {
+      copilotRunCount = await copilotRunDelegate.count({
+        where: { tenantId: tenant.id },
+      });
+    } catch {
+      console.warn("[seed-findings] WARN: Could not count copilotRuns.");
+    }
+  }
 
   console.log("\n[seed-findings] === Done ===");
   console.log(`[seed-findings] finding.count()        = ${findingCount}`);
