@@ -265,7 +265,7 @@ function stripUnknownFindingFields<T extends Record<string, any>>(row: T): Parti
 function printAllowedFields(modelName: string, fields: Set<string> | null) {
   if (fields) {
     console.log(
-      `[seed-findings] ${modelName} allowed fields (${fields.size}): ${[...fields].join(", ")}`
+      `[seed-findings] ${modelName} allowed fields (${fields.size}): ${Array.from(fields).join(", ")}`
     );
   } else {
     console.log(
@@ -657,13 +657,6 @@ async function main() {
         piiCount: randInt(1, 50),
         snippetPreview: `...${pii.toLowerCase()} value detected in document...`,
         // dataAssetId intentionally omitted — not all schemas include the DataAsset model
-        // --- optional PII fields (will be stripped if schema doesn't support them) ---
-        piiCategory: pii,
-        piiCount: randInt(1, 50),
-        snippetPreview: `...${pii.toLowerCase()} value detected in document...`,
-        sampleRedacted: `[REDACTED] Sample ${pii} data snippet for review`,
-        dataAssetLocation: pick(LOCATIONS),
-        sensitivityScore: randInt(0, 100),
       };
 
       const sanitized = stripUnknownFindingFields(row);

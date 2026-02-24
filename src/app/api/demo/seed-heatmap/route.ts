@@ -136,7 +136,7 @@ const FINDINGS_PER_SYSTEM = 20;
  * Returns a hint directing callers to POST.
  */
 export async function GET() {
-  return NextResponse.json({ ok: true, hint: "POST to seed" });
+  return NextResponse.json({ ok: true, method: "GET", hint: "POST to seed" });
 }
 
 /**
