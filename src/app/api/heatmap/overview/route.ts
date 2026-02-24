@@ -26,15 +26,26 @@ export async function GET(request: NextRequest) {
     const caseId = sp.get("caseId") || undefined;
     const runId = sp.get("runId") || undefined;
 
-    if (process.env.NODE_ENV === "development") {
-      console.log("[heatmap/overview] tenant=%s caseId=%s runId=%s", user.tenantId, caseId ?? "(all)", runId ?? "(all)");
-    }
-
     // Build an optional where-clause for findings so we can scope to a
     // specific case / run when the caller provides those params.
     const findingsWhere: Record<string, unknown> = {};
     if (caseId) findingsWhere.caseId = caseId;
     if (runId) findingsWhere.runId = runId;
+
+    // ── Dev-only debug: confirm tenant scoping ──────────────────────────
+    let debug: Record<string, unknown> | undefined;
+    if (process.env.NODE_ENV === "development") {
+      const totalSystemsForTenant = await prisma.system.count({
+        where: { tenantId: user.tenantId },
+      });
+      const totalSystemsAllTenants = await prisma.system.count();
+      debug = {
+        userTenantId: user.tenantId,
+        totalSystemsForTenant,
+        totalSystemsAllTenants,
+      };
+      console.log("[heatmap/overview] debug %o", debug);
+    }
 
     const systemRows = await prisma.system.findMany({
       where: { tenantId: user.tenantId },
@@ -156,6 +167,7 @@ export async function GET(request: NextRequest) {
       systemsCount: systems.length,
       totals,
       summary,
+      ...(debug ? { debug } : {}),
     });
   } catch (err) {
     return handleApiError(err);
