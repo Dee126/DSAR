@@ -5,7 +5,7 @@
  * Usage:
  *   npx tsx scripts/seed_large_findings.ts
  *   FINDINGS_COUNT=2000 npx tsx scripts/seed_large_findings.ts
- *   TENANT_ID=xxx CASE_ID=yyy npx tsx scripts/seed_large_findings.ts
+ *   TENANT_ID=xxx CASE_ID=yyy RUN_ID=zzz npx tsx scripts/seed_large_findings.ts
  *   TEST_EMAIL=user@example.com npx tsx scripts/seed_large_findings.ts
  *
  * Environment:
@@ -14,13 +14,18 @@
  *   TENANT_ID          — Use this tenant (by ID). Takes highest priority.
  *   TENANT_NAME        — Use this tenant (by name). Second priority.
  *   TEST_EMAIL         — Find tenant via this user's email (default: daniel.schormann@gmail.com)
- *   CASE_ID            — Use this specific case. If unset: newest case for tenant, then first case.
+ *   CASE_ID            — Use this specific case (must belong to tenant). If unset: newest case for tenant, then first case.
+ *   RUN_ID             — Use this specific CopilotRun (must belong to tenant). If unset: newest run for case, or create one.
  *
  * Tenant resolution order:
  *   1. TENANT_ID env var (exact match by ID)
  *   2. TENANT_NAME env var (exact match by name)
  *   3. TEST_EMAIL env var → look up user → use their tenantId
  *   4. Fallback: "Acme Corp" tenant → first tenant in DB
+ *
+ * When TENANT_ID, CASE_ID, or RUN_ID are provided, the script validates that
+ * they exist and that CASE_ID/RUN_ID belong to the resolved tenant. If validation
+ * fails, the script throws with a clear error message.
  *
  * The script:
  *   1. Connects to the DB via PrismaClient
@@ -70,8 +75,87 @@ const ENV_TENANT_ID = process.env.TENANT_ID || undefined;
 const ENV_TENANT_NAME = process.env.TENANT_NAME || undefined;
 const ENV_TEST_EMAIL = process.env.TEST_EMAIL || "daniel.schormann@gmail.com";
 const ENV_CASE_ID = process.env.CASE_ID || undefined;
+const ENV_RUN_ID = process.env.RUN_ID || undefined;
 
 const prisma = new PrismaClient();
+
+// ── ID Validation Helper ────────────────────────────────────────────────────
+
+/**
+ * Validate that explicitly provided IDs (TENANT_ID, CASE_ID, RUN_ID) exist in
+ * the database. For CASE_ID and RUN_ID, also verify they belong to the resolved
+ * tenant. Throws with a clear message if any validation fails.
+ *
+ * Call this AFTER tenant resolution so we have the tenantId to check ownership.
+ */
+async function validateProvidedIds(resolvedTenantId: string): Promise<void> {
+  // TENANT_ID: already validated during tenant resolution (if it didn't match,
+  // tenant resolution would have fallen through). But we do a hard check here
+  // if the env var was set — the tenant we resolved MUST match it.
+  if (ENV_TENANT_ID && resolvedTenantId !== ENV_TENANT_ID) {
+    throw new Error(
+      `[seed-findings] TENANT_ID="${ENV_TENANT_ID}" was provided but the resolved tenant ` +
+      `has id="${resolvedTenantId}". This should not happen — please check your TENANT_ID value.`
+    );
+  }
+
+  // CASE_ID: must exist and belong to the resolved tenant
+  if (ENV_CASE_ID) {
+    const caseRow = await prisma.dSARCase.findUnique({
+      where: { id: ENV_CASE_ID },
+      select: { id: true, tenantId: true },
+    });
+    if (!caseRow) {
+      throw new Error(
+        `[seed-findings] CASE_ID="${ENV_CASE_ID}" does not exist in the database. ` +
+        `Please provide a valid case ID.`
+      );
+    }
+    if (caseRow.tenantId !== resolvedTenantId) {
+      throw new Error(
+        `[seed-findings] CASE_ID="${ENV_CASE_ID}" exists but belongs to tenant ` +
+        `"${caseRow.tenantId}", not the resolved tenant "${resolvedTenantId}". ` +
+        `The case must belong to the selected tenant.`
+      );
+    }
+  }
+
+  // RUN_ID: must exist and belong to the resolved tenant
+  if (ENV_RUN_ID && copilotRunDelegate) {
+    let runRow: { id: string; tenantId: string } | null = null;
+    try {
+      runRow = await copilotRunDelegate.findUnique({
+        where: { id: ENV_RUN_ID },
+        select: { id: true, tenantId: true },
+      });
+    } catch {
+      // findUnique may not be available; try findFirst
+      const rows = await copilotRunDelegate.findFirst({
+        where: { id: ENV_RUN_ID },
+        select: { id: true, tenantId: true },
+      });
+      runRow = rows;
+    }
+    if (!runRow) {
+      throw new Error(
+        `[seed-findings] RUN_ID="${ENV_RUN_ID}" does not exist in the database. ` +
+        `Please provide a valid CopilotRun ID.`
+      );
+    }
+    if (runRow.tenantId !== resolvedTenantId) {
+      throw new Error(
+        `[seed-findings] RUN_ID="${ENV_RUN_ID}" exists but belongs to tenant ` +
+        `"${runRow.tenantId}", not the resolved tenant "${resolvedTenantId}". ` +
+        `The run must belong to the selected tenant.`
+      );
+    }
+  } else if (ENV_RUN_ID && !copilotRunDelegate) {
+    console.warn(
+      `[seed-findings] WARN: RUN_ID="${ENV_RUN_ID}" was provided but copilotRun delegate ` +
+      `is not available — cannot validate. Will attempt to use it anyway.`
+    );
+  }
+}
 
 // ── Delegate Resolution ─────────────────────────────────────────────────────
 
@@ -269,7 +353,7 @@ function makeSummary(cat: string, pii: string): string {
 
 async function main() {
   console.log(`[seed-findings] Starting — target: ${FINDINGS_COUNT} findings`);
-  console.log(`[seed-findings] Config: TENANT_ID=${ENV_TENANT_ID ?? "(unset)"}, TENANT_NAME=${ENV_TENANT_NAME ?? "(unset)"}, TEST_EMAIL=${ENV_TEST_EMAIL}, CASE_ID=${ENV_CASE_ID ?? "(unset)"}`);
+  console.log(`[seed-findings] Config: TENANT_ID=${ENV_TENANT_ID ?? "(unset)"}, TENANT_NAME=${ENV_TENANT_NAME ?? "(unset)"}, TEST_EMAIL=${ENV_TEST_EMAIL}, CASE_ID=${ENV_CASE_ID ?? "(unset)"}, RUN_ID=${ENV_RUN_ID ?? "(unset)"}`);
 
   // Print resolved delegate names and allowed fields at start
   printDelegateResolution();
@@ -342,17 +426,17 @@ async function main() {
 
   console.log(`[seed-findings] Tenant: ${tenant.name} (${tenant.id}) — resolved via ${tenantSource}`);
 
+  // Validate all explicitly provided IDs before proceeding
+  await validateProvidedIds(tenant.id);
+
   // 2. Resolve DSAR case — priority: CASE_ID > newest case for tenant > first case in DB
   let dsarCase: Awaited<ReturnType<typeof prisma.dSARCase.findFirst>> = null;
   let caseSource = "";
 
   if (ENV_CASE_ID) {
+    // validateProvidedIds already confirmed this exists and belongs to tenant
     dsarCase = await prisma.dSARCase.findUnique({ where: { id: ENV_CASE_ID } });
-    if (dsarCase) {
-      caseSource = "CASE_ID env";
-    } else {
-      console.warn(`[seed-findings] WARN: CASE_ID="${ENV_CASE_ID}" not found — falling back to newest case.`);
-    }
+    caseSource = "CASE_ID env";
   }
 
   if (!dsarCase) {
@@ -408,10 +492,19 @@ async function main() {
     console.warn("[seed-findings] WARN: system delegate not found — skipping systemId population.");
   }
 
-  // 5. Reuse or create a CopilotRun (required FK for findings)
+  // 5. Resolve CopilotRun — priority: RUN_ID env > existing run for case > create new
   //    (Step 6 — dataAsset query — intentionally removed; not all schemas include DataAsset)
   let copilotRunId: string | null = null;
-  if (copilotRunDelegate) {
+  let runSource = "";
+
+  // 5a. If RUN_ID is explicitly provided, use it (already validated by validateProvidedIds)
+  if (ENV_RUN_ID) {
+    copilotRunId = ENV_RUN_ID;
+    runSource = "RUN_ID env";
+  }
+
+  // 5b. Otherwise, find or create via delegate
+  if (!copilotRunId && copilotRunDelegate) {
     try {
       let copilotRun = await copilotRunDelegate.findFirst({
         where: { tenantId: tenant.id, caseId: dsarCase.id },
@@ -429,19 +522,19 @@ async function main() {
             scopeSummary: "All integrated systems",
           },
         });
-        console.log(`[seed-findings] Created CopilotRun: ${copilotRun.id}`);
+        runSource = "created new";
       } else {
-        console.log(`[seed-findings] Reusing CopilotRun: ${copilotRun.id}`);
+        runSource = "newest run for case";
       }
       copilotRunId = copilotRun.id;
     } catch (err) {
       console.warn("[seed-findings] WARN: Failed to find/create CopilotRun via delegate.", err);
     }
-  } else {
+  } else if (!copilotRunId) {
     console.warn("[seed-findings] WARN: copilotRun delegate not found — will attempt raw query fallback.");
   }
 
-  // Fallback: try to find an existing copilot run via raw SQL if delegate failed
+  // 5c. Fallback: try to find an existing copilot run via raw SQL if delegate failed
   if (!copilotRunId) {
     try {
       const rows: any[] = await prisma.$queryRawUnsafe(
@@ -451,7 +544,7 @@ async function main() {
       );
       if (rows.length > 0) {
         copilotRunId = rows[0].id;
-        console.log(`[seed-findings] Found CopilotRun via raw query: ${copilotRunId}`);
+        runSource = "raw query fallback";
       }
     } catch {
       // raw query also failed — fall through
@@ -465,6 +558,15 @@ async function main() {
     );
     process.exit(1);
   }
+
+  console.log(`[seed-findings] CopilotRun: ${copilotRunId} — resolved via ${runSource}`);
+
+  // Summary of resolved IDs for reproducibility
+  console.log(`[seed-findings] ── Selection Summary ──`);
+  console.log(`[seed-findings]   Tenant:     ${tenant.name} (${tenant.id})`);
+  console.log(`[seed-findings]   Case:       ${dsarCase.caseNumber} (${dsarCase.id})`);
+  console.log(`[seed-findings]   CopilotRun: ${copilotRunId}`);
+  console.log(`[seed-findings] ──────────────────────`);
 
   // 7. Create a pool of EvidenceItems (DetectorResult needs evidenceItemId)
   //    We'll create one per batch-group so there's variety but not 1:1
