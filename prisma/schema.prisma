@@ -157,9 +157,10 @@ enum AiReviewStatus {
 }
 
 enum HumanDecision {
-  APPROVED
-  REJECTED
-  ACCEPTED_RISK
+  APPROVE_DELETE
+  REJECT_DELETE
+  NEEDS_LEGAL
+  APPROVE_RETAIN
 }
 
 enum DataCategory {
@@ -1198,9 +1199,10 @@ model Finding {
   aiLegalReference  String? // Relevant GDPR article / legal ref
   aiRationale       String? // AI explanation of its suggestion
   aiReviewStatus    AiReviewStatus? // Current AI review lifecycle status
-  humanDecision     HumanDecision? // DPO final decision
-  humanDecisionBy   String? // User ID of the decision-maker
-  humanDecisionAt   DateTime? // When the decision was made
+  humanDecision       HumanDecision? // DPO final decision
+  humanDecisionReason String? // Reason for decision
+  humanDecisionBy     String? // User ID of the decision-maker
+  humanDecisionAt     DateTime? // When the decision was made
 
   tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   run                CopilotRun          @relation(fields: [runId], references: [id], onDelete: Cascade)

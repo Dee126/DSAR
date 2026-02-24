@@ -175,6 +175,22 @@ function DonutChart({
   );
 }
 
+/* ── Pending Decision Item ─────────────────────────────────────────── */
+
+interface PendingItem {
+  id: string;
+  systemId: string | null;
+  dataCategory: string;
+  summary: string;
+  aiRiskScore: number | null;
+  aiSuggestedAction: string | null;
+  aiConfidence: number | null;
+  aiLegalReference: string | null;
+  sensitivityScore: number;
+  containsSpecialCategory: boolean;
+  createdAt: string;
+}
+
 /* ── Page ────────────────────────────────────────────────────────────── */
 
 export default function HeatmapPage() {
@@ -188,6 +204,11 @@ export default function HeatmapPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const { toasts, addToast } = useToast();
+
+  // AI Decisions panel state (dev-only)
+  const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
+  const [pendingOpen, setPendingOpen] = useState(false);
+  const [decidingId, setDecidingId] = useState<string | null>(null);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -218,9 +239,60 @@ export default function HeatmapPage() {
     }
   }, []);
 
+  const fetchPending = useCallback(async () => {
+    try {
+      const res = await fetch("/api/findings/pending-decisions", {
+        credentials: "include",
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setPendingItems(data.items ?? []);
+    } catch {
+      // silently fail — panel is dev-only
+    }
+  }, []);
+
   useEffect(() => {
     fetchHeatmap();
-  }, [fetchHeatmap]);
+    if (process.env.NODE_ENV === "development") {
+      fetchPending();
+    }
+  }, [fetchHeatmap, fetchPending]);
+
+  const submitDecision = async (
+    findingId: string,
+    decision: string,
+  ) => {
+    const reason = window.prompt(
+      `Reason for "${decision}" (min 5 chars):`,
+    );
+    if (!reason || reason.trim().length < 5) {
+      addToast("error", "Decision cancelled — reason must be at least 5 characters.");
+      return;
+    }
+    setDecidingId(findingId);
+    try {
+      const res = await fetch(`/api/findings/${findingId}/decision`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, reason: reason.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      addToast("success", `Decision "${decision}" saved.`);
+      await Promise.all([fetchPending(), fetchHeatmap()]);
+    } catch (err) {
+      addToast(
+        "error",
+        `Decision failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      setDecidingId(null);
+    }
+  };
 
   const seedDemoData = async () => {
     setSeeding(true);
@@ -488,6 +560,116 @@ export default function HeatmapPage() {
             </p>
             <p className="text-xs text-gray-500">Mitigated</p>
           </div>
+        </div>
+      )}
+
+      {/* AI Decisions Panel (dev-only) */}
+      {process.env.NODE_ENV === "development" && pendingItems.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50">
+          <button
+            onClick={() => setPendingOpen((o) => !o)}
+            className="flex w-full items-center justify-between px-4 py-3 text-left"
+          >
+            <span className="text-sm font-semibold text-amber-800">
+              AI Decisions (Pending) &mdash; {pendingItems.length} item
+              {pendingItems.length !== 1 ? "s" : ""}
+            </span>
+            <svg
+              className={`h-4 w-4 text-amber-600 transition-transform ${
+                pendingOpen ? "rotate-180" : ""
+              }`}
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="m19.5 8.25-7.5 7.5-7.5-7.5"
+              />
+            </svg>
+          </button>
+
+          {pendingOpen && (
+            <div className="border-t border-amber-200 px-4 pb-4 pt-2">
+              <div className="space-y-3">
+                {pendingItems.slice(0, 10).map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex flex-col gap-2 rounded-md border border-gray-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-gray-900">
+                        {item.summary}
+                      </p>
+                      <div className="mt-1 flex flex-wrap gap-2 text-xs">
+                        <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">
+                          {CATEGORY_LABELS[item.dataCategory] ??
+                            item.dataCategory}
+                        </span>
+                        {item.aiSuggestedAction && (
+                          <span
+                            className={`rounded px-1.5 py-0.5 font-medium ${
+                              item.aiSuggestedAction === "DELETE"
+                                ? "bg-red-100 text-red-700"
+                                : "bg-yellow-100 text-yellow-700"
+                            }`}
+                          >
+                            AI: {item.aiSuggestedAction}
+                          </span>
+                        )}
+                        {item.aiRiskScore != null && (
+                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">
+                            Risk: {item.aiRiskScore}
+                          </span>
+                        )}
+                        {item.aiLegalReference && (
+                          <span className="rounded bg-purple-100 px-1.5 py-0.5 text-purple-700">
+                            {item.aiLegalReference}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 gap-1.5">
+                      <button
+                        onClick={() =>
+                          submitDecision(item.id, "APPROVE_DELETE")
+                        }
+                        disabled={decidingId === item.id}
+                        className="rounded bg-red-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                      >
+                        Approve Delete
+                      </button>
+                      <button
+                        onClick={() =>
+                          submitDecision(item.id, "REJECT_DELETE")
+                        }
+                        disabled={decidingId === item.id}
+                        className="rounded bg-gray-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+                      >
+                        Reject
+                      </button>
+                      <button
+                        onClick={() =>
+                          submitDecision(item.id, "NEEDS_LEGAL")
+                        }
+                        disabled={decidingId === item.id}
+                        className="rounded bg-amber-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        Needs Legal
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {pendingItems.length > 10 && (
+                  <p className="text-xs text-gray-500">
+                    Showing 10 of {pendingItems.length} pending items.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
