@@ -4,6 +4,7 @@ import { hash } from "bcryptjs";
 // ── Deterministic PRNG (mulberry32) ─────────────────────────────────────────
 // Use SEED env var for reproducible demos: SEED=42 npm run db:seed
 const SEED = parseInt(process.env.SEED || "42", 10);
+const FINDINGS_COUNT = Number(process.env.SEED_FINDINGS_COUNT ?? 800);
 
 function mulberry32(seed: number) {
   let s = seed | 0;
@@ -3607,7 +3608,7 @@ async function main() {
       status: CopilotRunStatus.COMPLETED,
       justification: "Enterprise discovery scan — full data inventory analysis",
       scopeSummary: "All systems — M365, Exchange, SharePoint, Fileserver",
-      totalFindings: 500,
+      totalFindings: FINDINGS_COUNT,
       totalEvidenceItems: 0,
       startedAt: daysAgo(5),
       completedAt: daysAgo(5),
@@ -3620,11 +3621,10 @@ async function main() {
   ];
 
   // Pre-build finding data, then createMany in batches
-  const TOTAL_FINDINGS = 500;
   // Guarantee at least 3 red findings per system
   const guaranteedRedPerSystem = 3;
   const guaranteedRedTotal = mvpSystems.length * guaranteedRedPerSystem;
-  const remainingCount = TOTAL_FINDINGS - guaranteedRedTotal;
+  const remainingCount = FINDINGS_COUNT - guaranteedRedTotal;
 
   interface FindingRecord {
     tenantId: string; caseId: string; runId: string;
@@ -3761,6 +3761,65 @@ async function main() {
   const redCount = mvpFindings.filter(f => f.riskScore >= 70).length;
   console.log(`Created ${mvpFindings.length} findings (green=${greenCount}, yellow=${yellowCount}, red=${redCount})`);
 
+  // ── Evidence Items pool for detector results ──────────────────────────────
+  const EVIDENCE_POOL_SIZE = Math.min(50, FINDINGS_COUNT);
+  const evidencePoolData = Array.from({ length: EVIDENCE_POOL_SIZE }, (_, i) => ({
+    tenantId: tenant.id,
+    caseId: allCases[i % allCases.length].id,
+    runId: mvpCopilotRun.id,
+    provider: pick(["M365", "EXCHANGE_ONLINE", "SHAREPOINT"]),
+    workload: pick(["EXCHANGE", "SHAREPOINT", "ONEDRIVE"]),
+    itemType: pick([EvidenceItemType.EMAIL, EvidenceItemType.FILE, EvidenceItemType.RECORD]),
+    location: pick(assetDefs).path,
+    title: `Discovery evidence item ${i + 1}`,
+    contentHandling: ContentHandling.METADATA_ONLY,
+  }));
+
+  for (let i = 0; i < evidencePoolData.length; i += BATCH_SIZE) {
+    await prisma.evidenceItem.createMany({ data: evidencePoolData.slice(i, i + BATCH_SIZE) });
+  }
+
+  const evidencePool = await prisma.evidenceItem.findMany({
+    where: { tenantId: tenant.id, runId: mvpCopilotRun.id },
+    select: { id: true },
+  });
+  const evidencePoolIds = evidencePool.map(e => e.id);
+  console.log(`Created ${evidencePoolData.length} evidence items for detector results`);
+
+  // ── Detector Results (1-2 per finding) for heatmap aggregation ────────────
+  const detectorTypes = ["REGEX", "PDF_METADATA", "OCR", "IMAGE_MODEL", "LLM_CLASSIFIER"];
+  const detectorRecords: Array<{
+    tenantId: string; caseId: string; runId: string;
+    evidenceItemId: string; detectorType: string;
+    detectedElements: { elementType: string; confidence: number; snippetPreview: string }[];
+    detectedCategories: { category: string; confidence: number }[];
+    containsSpecialCategorySuspected: boolean;
+  }> = [];
+
+  for (const f of mvpFindings) {
+    const drCount = randInt(1, 2);
+    for (let d = 0; d < drCount; d++) {
+      const conf = parseFloat((0.5 + rng() * 0.5).toFixed(3));
+      const piiCats = piiCategoryMap[f.dataCategory as string] || ["EMAIL"];
+      const piiCat = pick(piiCats);
+      detectorRecords.push({
+        tenantId: tenant.id,
+        caseId: f.caseId,
+        runId: mvpCopilotRun.id,
+        evidenceItemId: pick(evidencePoolIds),
+        detectorType: pick(detectorTypes),
+        detectedElements: [{ elementType: piiCat, confidence: conf, snippetPreview: `[redacted ${piiCat.toLowerCase()}]` }],
+        detectedCategories: [{ category: f.dataCategory, confidence: conf }],
+        containsSpecialCategorySuspected: specialCategories.includes(f.dataCategory as DataCategory),
+      });
+    }
+  }
+
+  for (let i = 0; i < detectorRecords.length; i += BATCH_SIZE) {
+    await prisma.detectorResult.createMany({ data: detectorRecords.slice(i, i + BATCH_SIZE) });
+  }
+  console.log(`Created ${detectorRecords.length} detector results for ${mvpFindings.length} findings`);
+
   // ── DSAR Case Items (link cases to findings) ─────────────────────────────
   let caseItemCount = 0;
   const caseItemRecords = [];
@@ -3825,9 +3884,11 @@ async function main() {
   // ── DB-verified counts ──────────────────────────────────────────────────────
   const assetCount = await prisma.dataAsset.count();
   const findingCount = await prisma.finding.count();
+  const detectorResultCount = await prisma.detectorResult.count();
   console.log("\n═══ DB-Verified Counts ═══");
-  console.log(`Assets: ${assetCount}`);
-  console.log(`Findings: ${findingCount}`);
+  console.log(`Assets:           ${assetCount}`);
+  console.log(`Findings:         ${findingCount}`);
+  console.log(`Detector Results: ${detectorResultCount}`);
 }
 
 main()
