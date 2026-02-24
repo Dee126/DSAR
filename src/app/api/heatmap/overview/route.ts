@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
       process.env.NODE_ENV === "development" && process.env.DEMO_TENANT_ID
         ? process.env.DEMO_TENANT_ID
         : user.tenantId;
+    const tenantId = effectiveTenantId;
 
     if (process.env.NODE_ENV === "development") {
       console.log("[heatmap/overview] GET started", {
@@ -70,12 +71,12 @@ export async function GET(request: NextRequest) {
     let debug: Record<string, unknown> | undefined;
     if (process.env.NODE_ENV === "development") {
       const totalSystemsForTenant = await prisma.system.count({
-        where: { tenantId: effectiveTenantId },
+        where: { tenantId },
       });
       const totalSystemsAllTenants = await prisma.system.count();
       debug = {
         userTenantId: user.tenantId,
-        effectiveTenantId,
+        effectiveTenantId: tenantId,
         totalSystemsForTenant,
         totalSystemsAllTenants,
       };
@@ -83,7 +84,7 @@ export async function GET(request: NextRequest) {
     }
 
     const systemRows = await prisma.system.findMany({
-      where: { tenantId: effectiveTenantId },
+      where: { tenantId },
       include: {
         findings: {
           where: Object.keys(findingsWhere).length > 0 ? findingsWhere : undefined,
