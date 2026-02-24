@@ -5,15 +5,27 @@
  * Usage:
  *   npx tsx scripts/seed_large_findings.ts
  *   FINDINGS_COUNT=2000 npx tsx scripts/seed_large_findings.ts
+ *   TENANT_ID=xxx CASE_ID=yyy npx tsx scripts/seed_large_findings.ts
+ *   TEST_EMAIL=user@example.com npx tsx scripts/seed_large_findings.ts
  *
  * Environment:
  *   DATABASE_URL       — Required (or POSTGRES_PRISMA_URL as fallback)
  *   FINDINGS_COUNT     — Number of findings to create (default: 800)
+ *   TENANT_ID          — Use this tenant (by ID). Takes highest priority.
+ *   TENANT_NAME        — Use this tenant (by name). Second priority.
+ *   TEST_EMAIL         — Find tenant via this user's email (default: daniel.schormann@gmail.com)
+ *   CASE_ID            — Use this specific case. If unset: newest case for tenant, then first case.
+ *
+ * Tenant resolution order:
+ *   1. TENANT_ID env var (exact match by ID)
+ *   2. TENANT_NAME env var (exact match by name)
+ *   3. TEST_EMAIL env var → look up user → use their tenantId
+ *   4. Fallback: "Acme Corp" tenant → first tenant in DB
  *
  * The script:
  *   1. Connects to the DB via PrismaClient
  *   2. Resolves Prisma delegate names (handles naming variations across client versions)
- *   3. Finds the "Acme Corp" tenant and the newest DSAR case
+ *   3. Resolves tenant (see priority above) and DSAR case
  *   4. Reuses (or creates) a CopilotRun + EvidenceItems to satisfy FK constraints
  *   5. Creates FINDINGS_COUNT Findings in batches of 200
  *   6. Creates 1-3 DetectorResults per Finding in batches of 200 (if delegate available)
@@ -53,6 +65,11 @@ if (!process.env.DATABASE_URL) {
 
 const FINDINGS_COUNT = parseInt(process.env.FINDINGS_COUNT || "800", 10);
 const BATCH_SIZE = 200;
+
+const ENV_TENANT_ID = process.env.TENANT_ID || undefined;
+const ENV_TENANT_NAME = process.env.TENANT_NAME || undefined;
+const ENV_TEST_EMAIL = process.env.TEST_EMAIL || "daniel.schormann@gmail.com";
+const ENV_CASE_ID = process.env.CASE_ID || undefined;
 
 const prisma = new PrismaClient();
 
@@ -252,6 +269,7 @@ function makeSummary(cat: string, pii: string): string {
 
 async function main() {
   console.log(`[seed-findings] Starting — target: ${FINDINGS_COUNT} findings`);
+  console.log(`[seed-findings] Config: TENANT_ID=${ENV_TENANT_ID ?? "(unset)"}, TENANT_NAME=${ENV_TENANT_NAME ?? "(unset)"}, TEST_EMAIL=${ENV_TEST_EMAIL}, CASE_ID=${ENV_CASE_ID ?? "(unset)"}`);
 
   // Print resolved delegate names and allowed fields at start
   printDelegateResolution();
@@ -267,44 +285,100 @@ async function main() {
     process.exit(1);
   }
 
-  // 1. Find the default tenant ("Acme Corp"), fallback to first tenant
-  let tenant = await prisma.tenant.findFirst({
-    where: { name: "Acme Corp" },
-  });
-  if (!tenant) {
-    console.warn(
-      '[seed-findings] WARN: Tenant "Acme Corp" not found — falling back to first tenant.'
-    );
-    tenant = await prisma.tenant.findFirst({ orderBy: { createdAt: "asc" } });
-  }
-  if (!tenant) {
-    console.error(
-      "[seed-findings] ERROR: No tenant found at all. Run the main seed first."
-    );
-    process.exit(1);
-  }
-  console.log(`[seed-findings] Tenant: ${tenant.name} (${tenant.id})`);
+  // 1. Resolve tenant — priority: TENANT_ID > TENANT_NAME > TEST_EMAIL user lookup > "Acme Corp" > first tenant
+  let tenant: Awaited<ReturnType<typeof prisma.tenant.findFirst>> = null;
+  let tenantSource = "";
 
-  // 2. Find the newest DSAR case for this tenant, fallback to first case
-  let dsarCase = await prisma.dSARCase.findFirst({
-    where: { tenantId: tenant.id },
-    orderBy: { createdAt: "desc" },
-  });
-  if (!dsarCase) {
-    console.warn(
-      "[seed-findings] WARN: No case for selected tenant — falling back to first case."
-    );
-    dsarCase = await prisma.dSARCase.findFirst({ orderBy: { createdAt: "asc" } });
+  if (ENV_TENANT_ID) {
+    tenant = await prisma.tenant.findUnique({ where: { id: ENV_TENANT_ID } });
+    if (tenant) {
+      tenantSource = "TENANT_ID env";
+    } else {
+      console.warn(`[seed-findings] WARN: TENANT_ID="${ENV_TENANT_ID}" not found — trying next strategy.`);
+    }
   }
-  if (!dsarCase) {
-    console.error(
-      "[seed-findings] ERROR: No DSAR case found at all. Run the main seed first."
-    );
+
+  if (!tenant && ENV_TENANT_NAME) {
+    tenant = await prisma.tenant.findFirst({ where: { name: ENV_TENANT_NAME } });
+    if (tenant) {
+      tenantSource = "TENANT_NAME env";
+    } else {
+      console.warn(`[seed-findings] WARN: TENANT_NAME="${ENV_TENANT_NAME}" not found — trying next strategy.`);
+    }
+  }
+
+  if (!tenant) {
+    // Look up user by TEST_EMAIL to derive tenantId
+    const testUser = await prisma.user.findFirst({ where: { email: ENV_TEST_EMAIL } });
+    if (testUser?.tenantId) {
+      tenant = await prisma.tenant.findUnique({ where: { id: testUser.tenantId } });
+      if (tenant) {
+        tenantSource = `TEST_EMAIL (${ENV_TEST_EMAIL})`;
+      }
+    }
+    if (!tenant) {
+      console.warn(`[seed-findings] WARN: No tenant found via TEST_EMAIL="${ENV_TEST_EMAIL}" — falling back to "Acme Corp".`);
+    }
+  }
+
+  if (!tenant) {
+    tenant = await prisma.tenant.findFirst({ where: { name: "Acme Corp" } });
+    if (tenant) {
+      tenantSource = 'fallback ("Acme Corp")';
+    }
+  }
+
+  if (!tenant) {
+    tenant = await prisma.tenant.findFirst({ orderBy: { createdAt: "asc" } });
+    if (tenant) {
+      tenantSource = "fallback (first tenant)";
+    }
+  }
+
+  if (!tenant) {
+    console.error("[seed-findings] ERROR: No tenant found at all. Run the main seed first.");
     process.exit(1);
   }
-  console.log(
-    `[seed-findings] Case: ${dsarCase.caseNumber} (${dsarCase.id})`
-  );
+
+  console.log(`[seed-findings] Tenant: ${tenant.name} (${tenant.id}) — resolved via ${tenantSource}`);
+
+  // 2. Resolve DSAR case — priority: CASE_ID > newest case for tenant > first case in DB
+  let dsarCase: Awaited<ReturnType<typeof prisma.dSARCase.findFirst>> = null;
+  let caseSource = "";
+
+  if (ENV_CASE_ID) {
+    dsarCase = await prisma.dSARCase.findUnique({ where: { id: ENV_CASE_ID } });
+    if (dsarCase) {
+      caseSource = "CASE_ID env";
+    } else {
+      console.warn(`[seed-findings] WARN: CASE_ID="${ENV_CASE_ID}" not found — falling back to newest case.`);
+    }
+  }
+
+  if (!dsarCase) {
+    dsarCase = await prisma.dSARCase.findFirst({
+      where: { tenantId: tenant.id },
+      orderBy: { createdAt: "desc" },
+    });
+    if (dsarCase) {
+      caseSource = "newest case for tenant";
+    }
+  }
+
+  if (!dsarCase) {
+    console.warn("[seed-findings] WARN: No case for selected tenant — falling back to first case.");
+    dsarCase = await prisma.dSARCase.findFirst({ orderBy: { createdAt: "asc" } });
+    if (dsarCase) {
+      caseSource = "fallback (first case)";
+    }
+  }
+
+  if (!dsarCase) {
+    console.error("[seed-findings] ERROR: No DSAR case found at all. Run the main seed first.");
+    process.exit(1);
+  }
+
+  console.log(`[seed-findings] Case: ${dsarCase.caseNumber} (${dsarCase.id}) — resolved via ${caseSource}`);
 
   // 3. Find any admin user for the tenant (needed for CopilotRun.createdByUserId)
   const adminUser = await prisma.user.findFirst({
