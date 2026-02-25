@@ -9,7 +9,23 @@ export async function getAuthSession() {
   return getServerSession(authOptions);
 }
 
+let devBypassLogged = false;
+
 export async function requireAuth(): Promise<AuthUser & { role: UserRole }> {
+  if (process.env.DEV_AUTH_BYPASS === "true") {
+    if (!devBypassLogged) {
+      console.log("[auth] DEV_AUTH_BYPASS enabled");
+      devBypassLogged = true;
+    }
+    return {
+      id: "demo-user",
+      email: "daniel.schormann@gmail.com",
+      name: "Daniel",
+      role: "TENANT_ADMIN" as UserRole,
+      tenantId: process.env.DEMO_TENANT_ID ?? "83053683-0fff-4dee-8437-c5e90147bc36",
+    };
+  }
+
   if (isTestAuth()) {
     const secret = process.env.AUTH_SECRET;
     if (!secret) throw new ApiError(401, "AUTH_SECRET not configured");
