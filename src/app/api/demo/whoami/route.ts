@@ -21,6 +21,10 @@ export async function GET() {
         role: user.role,
         tenantId: user.tenantId,
       },
+      env: {
+        NODE_ENV: process.env.NODE_ENV ?? null,
+        DEMO_TENANT_ID: process.env.DEMO_TENANT_ID ?? null,
+      },
     });
   } catch (err) {
     return handleApiError(err);

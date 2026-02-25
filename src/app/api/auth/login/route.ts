@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createToken, getTestUser, isTestAuth, COOKIE_NAME } from "@/lib/test-auth";
+import { createToken, getTestUser, isTestAuth, COOKIE_NAME, type AuthUser } from "@/lib/test-auth";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -7,7 +8,8 @@ export const dynamic = "force-dynamic";
  * POST /api/auth/login
  *
  * Test-mode login: validates email/password against env vars,
- * sets a signed httpOnly cookie.
+ * then looks up the real user in the DB to get the correct tenantId.
+ * Sets a signed httpOnly cookie.
  */
 export async function POST(request: NextRequest) {
   if (!isTestAuth()) {
@@ -51,7 +53,34 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
   }
 
-  const user = getTestUser();
+  // Look up the real user from the DB to get the correct tenantId
+  let user: AuthUser;
+  const dbUser = await prisma.user.findFirst({
+    where: { email: { equals: email.trim().toLowerCase(), mode: "insensitive" } },
+    select: { id: true, email: true, name: true, role: true, tenantId: true },
+  });
+
+  if (dbUser) {
+    user = {
+      id: dbUser.id,
+      tenantId: dbUser.tenantId,
+      email: dbUser.email,
+      name: dbUser.name,
+      role: dbUser.role,
+    };
+  } else {
+    // Fallback to env-based test user (e.g. DB not seeded yet)
+    const fallback = getTestUser();
+    if (!fallback.tenantId && process.env.NODE_ENV === "development" && process.env.DEMO_TENANT_ID) {
+      fallback.tenantId = process.env.DEMO_TENANT_ID;
+    }
+    user = fallback;
+    console.warn(
+      "[test-auth/login] User not found in DB, falling back to env-based test user:",
+      { email, tenantId: user.tenantId },
+    );
+  }
+
   const token = await createToken(user, secret);
 
   const res = NextResponse.json({ ok: true, user });

@@ -400,6 +400,10 @@ export async function POST(request: NextRequest) {
     });
   } catch (err: any) {
     console.error("[seed-heatmap] ERROR", err);
+
+    const isPrismaError = err?.constructor?.name === "PrismaClientKnownRequestError"
+      || err?.name === "PrismaClientKnownRequestError";
+
     return NextResponse.json(
       {
         ok: false,
@@ -407,6 +411,13 @@ export async function POST(request: NextRequest) {
         name: err?.name,
         code: err?.code,
         meta: err?.meta,
+        ...(isPrismaError && {
+          hint: err?.code === "P2003"
+            ? `Foreign key constraint failed on field: ${err?.meta?.field_name ?? "unknown"}. `
+              + "This usually means the tenantId in your auth token does not match any row in the tenant table. "
+              + "Re-login to refresh your session."
+            : `Prisma error ${err?.code}. Check that all referenced rows exist.`,
+        }),
       },
       { status: 500 },
     );
