@@ -151,11 +151,9 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth();
 
     console.log("[seed-heatmap] POST started", {
-      NODE_ENV: process.env.NODE_ENV,
-      DEMO_TENANT_ID: process.env.DEMO_TENANT_ID ?? "(not set)",
       userId: user.id,
       userEmail: user.email,
-      userTenantId: user.tenantId,
+      tenantId: user.tenantId,
       userRole: user.role,
     });
 
@@ -164,35 +162,29 @@ export async function POST(request: NextRequest) {
       checkPermission(user.role, "data_inventory", "read");
     }
 
-    // Dev-only: allow DEMO_TENANT_ID to override tenant scoping so seeded
-    // data lands in the correct tenant even when the session user belongs
-    // to a different (auto-created) tenant.
-    const effectiveTenantId =
-      process.env.NODE_ENV === "development" && process.env.DEMO_TENANT_ID
-        ? process.env.DEMO_TENANT_ID
-        : user.tenantId;
+    // Always seed into the authenticated user's tenant — never override
+    // with DEMO_TENANT_ID, which may reference a non-existent row.
+    const tenantId = user.tenantId;
 
-    console.log("[seed-heatmap] userTenantId=%s effectiveTenantId=%s DEMO_TENANT_ID=%s", user.tenantId, effectiveTenantId, process.env.DEMO_TENANT_ID);
+    console.log("[seed-heatmap] tenantId=%s (from session)", tenantId);
 
-    // Guard: verify the effective tenant actually exists in the DB
+    // Guard: verify the tenant actually exists in the DB
     const tenantExists = await prisma.tenant.findUnique({
-      where: { id: effectiveTenantId },
+      where: { id: tenantId },
       select: { id: true },
     });
     if (!tenantExists) {
-      console.error("[seed-heatmap] Tenant not found:", effectiveTenantId);
+      console.error("[seed-heatmap] Tenant not found:", tenantId);
       return NextResponse.json(
         {
           ok: false,
-          error: "DEMO_TENANT_ID not found",
-          effectiveTenantId,
-          detail: `effectiveTenantId "${effectiveTenantId}" does not exist in the tenant table. Check DEMO_TENANT_ID or seed the tenant first.`,
+          error: "Tenant not found",
+          tenantId,
+          detail: `Tenant "${tenantId}" does not exist in the tenant table. Ensure the user's tenant has been created.`,
         },
         { status: 400 },
       );
     }
-
-    const tenantId = effectiveTenantId;
 
     // ── 1. Clean up previous demo data ──────────────────────────────────
     console.log("[seed-heatmap] Step 1: Cleaning up previous demo data");

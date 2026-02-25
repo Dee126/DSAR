@@ -25,14 +25,10 @@ export async function GET(
     checkPermission(user.role, "data_inventory", "read");
 
     const { findingId } = await params;
-
-    const effectiveTenantId =
-      process.env.NODE_ENV === "development" && process.env.DEMO_TENANT_ID
-        ? process.env.DEMO_TENANT_ID
-        : user.tenantId;
+    const tenantId = user.tenantId;
 
     const finding = await prisma.finding.findFirst({
-      where: { id: findingId, tenantId: effectiveTenantId },
+      where: { id: findingId, tenantId },
       select: {
         id: true,
         systemId: true,
@@ -79,11 +75,7 @@ export async function POST(
     checkPermission(user.role, "data_inventory", "manage");
 
     const { findingId } = await params;
-
-    const effectiveTenantId =
-      process.env.NODE_ENV === "development" && process.env.DEMO_TENANT_ID
-        ? process.env.DEMO_TENANT_ID
-        : user.tenantId;
+    const tenantId = user.tenantId;
 
     // ── Parse & validate body ────────────────────────────────────────────
     const body = await request.json();
@@ -107,7 +99,7 @@ export async function POST(
 
     // ── Load finding (tenant-scoped) ─────────────────────────────────────
     const finding = await prisma.finding.findFirst({
-      where: { id: findingId, tenantId: effectiveTenantId },
+      where: { id: findingId, tenantId },
       select: {
         id: true,
         aiSuggestedAction: true,
@@ -146,7 +138,7 @@ export async function POST(
     // ── Audit log ────────────────────────────────────────────────────────
     const { ip, userAgent } = getClientInfo(request);
     await logAudit({
-      tenantId: effectiveTenantId,
+      tenantId,
       actorUserId: user.id,
       action: "FINDING_HUMAN_DECISION",
       entityType: "Finding",

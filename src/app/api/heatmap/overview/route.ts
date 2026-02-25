@@ -22,40 +22,8 @@ export async function GET(request: NextRequest) {
     const user = await requireAuth();
     checkPermission(user.role, "data_inventory", "read");
 
-    // Dev-only: allow DEMO_TENANT_ID to override tenant scoping so the
-    // heatmap reads from the correct tenant even when the session user
-    // belongs to a different (auto-created) tenant.
-    const effectiveTenantId =
-      process.env.NODE_ENV === "development" && process.env.DEMO_TENANT_ID
-        ? process.env.DEMO_TENANT_ID
-        : user.tenantId;
-    const tenantId = effectiveTenantId;
-
-    if (process.env.NODE_ENV === "development") {
-      console.log("[heatmap/overview] GET started", {
-        userTenantId: user.tenantId,
-        effectiveTenantId,
-        DEMO_TENANT_ID: process.env.DEMO_TENANT_ID ?? "(not set)",
-      });
-    }
-
-    // Guard: verify the effective tenant actually exists in the DB
-    const tenantExists = await prisma.tenant.findUnique({
-      where: { id: effectiveTenantId },
-      select: { id: true },
-    });
-    if (!tenantExists) {
-      console.error("[heatmap/overview] Tenant not found:", effectiveTenantId);
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Tenant not found",
-          effectiveTenantId,
-          detail: `effectiveTenantId "${effectiveTenantId}" does not exist in the tenant table. Check DEMO_TENANT_ID or seed the tenant first.`,
-        },
-        { status: 400 },
-      );
-    }
+    // Always use the authenticated user's tenant
+    const tenantId = user.tenantId;
 
     const sp = request.nextUrl.searchParams;
     const caseId = sp.get("caseId") || undefined;
@@ -70,17 +38,12 @@ export async function GET(request: NextRequest) {
     // ── Dev-only debug: confirm tenant scoping ──────────────────────────
     let debug: Record<string, unknown> | undefined;
     if (process.env.NODE_ENV === "development") {
-      const totalSystemsForEffectiveTenant = await prisma.system.count({
+      const totalSystemsForTenant = await prisma.system.count({
         where: { tenantId },
       });
-      const totalSystemsAllTenants = await prisma.system.count();
       debug = {
-        userTenantId: user.tenantId,
-        demoTenantEnv: process.env.DEMO_TENANT_ID ?? null,
-        effectiveTenantId: tenantId,
-        overrideActive: effectiveTenantId !== user.tenantId,
-        totalSystemsForEffectiveTenant,
-        totalSystemsAllTenants,
+        tenantId,
+        totalSystemsForTenant,
       };
       console.log("[heatmap/overview] debug %o", debug);
     }

@@ -30,34 +30,10 @@ export async function POST() {
       checkPermission(user.role, "data_inventory", "read");
     }
 
-    // Dev-only: allow DEMO_TENANT_ID to override tenant scoping
-    const effectiveTenantId =
-      process.env.NODE_ENV === "development" && process.env.DEMO_TENANT_ID
-        ? process.env.DEMO_TENANT_ID
-        : user.tenantId;
+    // Always use the authenticated user's tenant
+    const tenantId = user.tenantId;
 
-    console.log("[reset-heatmap] POST started", {
-      userTenantId: user.tenantId,
-      effectiveTenantId,
-    });
-
-    // Guard: verify the effective tenant actually exists in the DB
-    const tenantExists = await prisma.tenant.findUnique({
-      where: { id: effectiveTenantId },
-      select: { id: true },
-    });
-    if (!tenantExists) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Tenant not found",
-          effectiveTenantId,
-        },
-        { status: 400 },
-      );
-    }
-
-    const tenantId = effectiveTenantId;
+    console.log("[reset-heatmap] POST started", { tenantId });
 
     // ── 1. Find demo systems ──────────────────────────────────────────────
     const demoSystems = await prisma.system.findMany({

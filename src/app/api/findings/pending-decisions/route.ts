@@ -16,14 +16,11 @@ export async function GET() {
     const user = await requireAuth();
     checkPermission(user.role, "data_inventory", "read");
 
-    const effectiveTenantId =
-      process.env.NODE_ENV === "development" && process.env.DEMO_TENANT_ID
-        ? process.env.DEMO_TENANT_ID
-        : user.tenantId;
+    const tenantId = user.tenantId;
 
     const items = await prisma.finding.findMany({
       where: {
-        tenantId: effectiveTenantId,
+        tenantId,
         aiSuggestedAction: { in: ["DELETE", "REVIEW_REQUIRED"] },
         humanDecision: null,
       },
