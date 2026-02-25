@@ -388,15 +388,14 @@ export async function POST(request: NextRequest) {
   } catch (err: unknown) {
     console.error("[seed-heatmap] ERROR", err);
 
-    // Extract Prisma-specific error details when available
     const e = err as { name?: string; code?: string; meta?: unknown; message?: string };
     return NextResponse.json(
       {
         ok: false,
-        error: String(err),
-        name: e.name,
-        code: e.code,
-        meta: e.meta,
+        error: e?.message ?? "Unknown error",
+        name: e?.name,
+        code: e?.code,
+        meta: e?.meta,
       },
       { status: 500 },
     );
