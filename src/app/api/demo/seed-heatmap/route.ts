@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { hasPermission, checkPermission } from "@/lib/rbac";
+import { handleApiError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
 import {
   FindingSeverity,
@@ -392,21 +393,36 @@ export async function POST(request: NextRequest) {
         exampleDataSubjectIds: [dataSubject.id],
       },
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("[seed-heatmap] ERROR", err);
 
+    // Let ApiError (401/403) and ZodError (400) pass through with proper status
+    if (
+      (err instanceof Error && err.name === "ApiError") ||
+      (err instanceof Error && err.name === "ZodError")
+    ) {
+      return handleApiError(err);
+    }
+
+    // Prisma errors: surface code + meta for debugging
+    const prismaErr = err as Record<string, unknown> | undefined;
     const isPrismaError =
-      err?.constructor?.name === "PrismaClientKnownRequestError" ||
-      err?.name === "PrismaClientKnownRequestError";
+      prismaErr?.constructor?.name === "PrismaClientKnownRequestError" ||
+      prismaErr?.name === "PrismaClientKnownRequestError";
+
+    if (isPrismaError) {
+      return NextResponse.json(
+        {
+          error: (prismaErr as { message?: string }).message ?? "Database error",
+          code: (prismaErr as { code?: string }).code ?? null,
+          meta: (prismaErr as { meta?: unknown }).meta ?? null,
+        },
+        { status: 500 },
+      );
+    }
 
     return NextResponse.json(
-      {
-        ok: false,
-        message: err?.message ?? "Internal error",
-        ...(isPrismaError && {
-          prisma: { code: err?.code, meta: err?.meta },
-        }),
-      },
+      { error: err instanceof Error ? err.message : "Internal error" },
       { status: 500 },
     );
   }
