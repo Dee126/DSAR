@@ -70,14 +70,16 @@ export async function GET(request: NextRequest) {
     // ── Dev-only debug: confirm tenant scoping ──────────────────────────
     let debug: Record<string, unknown> | undefined;
     if (process.env.NODE_ENV === "development") {
-      const totalSystemsForTenant = await prisma.system.count({
+      const totalSystemsForEffectiveTenant = await prisma.system.count({
         where: { tenantId },
       });
       const totalSystemsAllTenants = await prisma.system.count();
       debug = {
         userTenantId: user.tenantId,
+        demoTenantEnv: process.env.DEMO_TENANT_ID ?? null,
         effectiveTenantId: tenantId,
-        totalSystemsForTenant,
+        overrideActive: effectiveTenantId !== user.tenantId,
+        totalSystemsForEffectiveTenant,
         totalSystemsAllTenants,
       };
       console.log("[heatmap/overview] debug %o", debug);
