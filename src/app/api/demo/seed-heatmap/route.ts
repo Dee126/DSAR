@@ -172,7 +172,7 @@ export async function POST(request: NextRequest) {
         ? process.env.DEMO_TENANT_ID
         : user.tenantId;
 
-    console.log("[seed-heatmap] effectiveTenantId =", effectiveTenantId);
+    console.log("[seed-heatmap] userTenantId=%s effectiveTenantId=%s DEMO_TENANT_ID=%s", user.tenantId, effectiveTenantId, process.env.DEMO_TENANT_ID);
 
     // Guard: verify the effective tenant actually exists in the DB
     const tenantExists = await prisma.tenant.findUnique({
