@@ -99,7 +99,7 @@ export function getTestUser(): AuthUser {
   const demoTenantId =
     process.env.DEMO_TENANT_ID ??
     process.env.TEST_TENANT_ID ??
-    "00000000-0000-4000-8000-000000000001";
+    "83053683-0fff-4dee-8437-c5e90147bc36";
 
   return {
     id: process.env.TEST_USER_ID || "00000000-0000-4000-8000-000000000010",

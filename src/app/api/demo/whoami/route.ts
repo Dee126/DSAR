@@ -17,9 +17,7 @@ export async function GET() {
     return NextResponse.json({
       ok: true,
       mode: isTestAuth() ? "test-auth" : "nextauth",
-      env: {
-        DEMO_TENANT_ID: process.env.DEMO_TENANT_ID ? "set" : "missing",
-      },
+      demoTenantId: process.env.DEMO_TENANT_ID ?? null,
       user: {
         id: user.id,
         email: user.email,

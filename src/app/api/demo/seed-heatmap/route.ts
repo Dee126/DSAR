@@ -402,7 +402,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error: err?.message ?? "Internal error",
+        message: err?.message ?? "Internal error",
         ...(isPrismaError && {
           prisma: { code: err?.code, meta: err?.meta },
         }),
