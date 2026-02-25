@@ -162,47 +162,30 @@ export async function POST(request: NextRequest) {
       checkPermission(user.role, "data_inventory", "read");
     }
 
-    // Always seed into the authenticated user's tenant — never override
-    // with DEMO_TENANT_ID, which may reference a non-existent row.
-    const tenantId = user.tenantId;
+    // Seed into the authenticated user's tenant
+    const effectiveTenantId = user.tenantId;
 
-    console.log("[seed-heatmap] tenantId=%s (from session)", tenantId);
+    console.log("[seed-heatmap] effectiveTenantId=%s (from session)", effectiveTenantId);
 
-    // DEV ONLY: ensure the Tenant row exists so FK writes don't fail with P2003
-    if (process.env.NODE_ENV === "development") {
-      await prisma.tenant.upsert({
-        where: { id: tenantId },
-        update: {},
-        create: {
-          id: tenantId,
-          name: "Test Tenant",
-        },
-      });
-      console.log("[seed-heatmap] Tenant ensured (dev upsert) for", tenantId);
-    } else {
-      // In production, verify the tenant exists — don't auto-create
-      const tenantExists = await prisma.tenant.findUnique({
-        where: { id: tenantId },
-        select: { id: true },
-      });
-      if (!tenantExists) {
-        console.error("[seed-heatmap] Tenant not found:", tenantId);
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "Tenant not found",
-            tenantId,
-            detail: `Tenant "${tenantId}" does not exist in the tenant table. Ensure the user's tenant has been created.`,
-          },
-          { status: 400 },
-        );
-      }
-    }
+    // Ensure the Tenant row exists so FK writes don't fail with P2003.
+    // This is a demo/seed endpoint, so upsert is always safe.
+    await prisma.tenant.upsert({
+      where: { id: effectiveTenantId },
+      update: {},
+      create: {
+        id: effectiveTenantId,
+        name: "Acme Corp",
+        slaDefaultDays: 30,
+        dueSoonDays: 7,
+        retentionDays: 365,
+      },
+    });
+    console.log("[seed-heatmap] Tenant ensured (upsert) for", effectiveTenantId);
 
     // ── 1. Clean up previous demo data ──────────────────────────────────
     console.log("[seed-heatmap] Step 1: Cleaning up previous demo data");
     const oldDemoSystems = await prisma.system.findMany({
-      where: { tenantId, description: { contains: DEMO_TAG } },
+      where: { tenantId: effectiveTenantId, description: { contains: DEMO_TAG } },
       select: { id: true },
     });
     const oldSystemIds = oldDemoSystems.map((s) => s.id);
@@ -210,14 +193,14 @@ export async function POST(request: NextRequest) {
     if (oldSystemIds.length > 0) {
       console.log("[seed-heatmap] Deleting old findings for", oldSystemIds.length, "demo systems");
       await prisma.finding.deleteMany({
-        where: { tenantId, systemId: { in: oldSystemIds } },
+        where: { tenantId: effectiveTenantId, systemId: { in: oldSystemIds } },
       });
     }
 
     // Delete the demo copilot run + case + data subject (if they exist)
     console.log("[seed-heatmap] Looking for old copilot run to clean up");
     const oldRun = await prisma.copilotRun.findFirst({
-      where: { tenantId, justification: { contains: DEMO_TAG } },
+      where: { tenantId: effectiveTenantId, justification: { contains: DEMO_TAG } },
       select: { id: true, caseId: true },
     });
     if (oldRun) {
@@ -226,7 +209,7 @@ export async function POST(request: NextRequest) {
       const oldCase = await prisma.dSARCase.findFirst({
         where: {
           id: oldRun.caseId,
-          tenantId,
+          tenantId: effectiveTenantId,
           description: { contains: DEMO_TAG },
         },
         select: { id: true, dataSubjectId: true },
@@ -252,7 +235,7 @@ export async function POST(request: NextRequest) {
     console.log("[seed-heatmap] Step 2: Creating DataSubject");
     const dataSubject = await prisma.dataSubject.create({
       data: {
-        tenantId,
+        tenantId: effectiveTenantId,
         fullName: "Demo Heatmap Subject",
         email: "demo-heatmap@example.com",
       },
@@ -266,7 +249,7 @@ export async function POST(request: NextRequest) {
     console.log("[seed-heatmap] Creating DSARCase");
     const dsarCase = await prisma.dSARCase.create({
       data: {
-        tenantId,
+        tenantId: effectiveTenantId,
         caseNumber: `DEMO-HEAT-${Date.now()}`,
         type: "ACCESS",
         status: "DATA_COLLECTION",
@@ -283,7 +266,7 @@ export async function POST(request: NextRequest) {
     console.log("[seed-heatmap] Creating CopilotRun");
     const copilotRun = await prisma.copilotRun.create({
       data: {
-        tenantId,
+        tenantId: effectiveTenantId,
         caseId: dsarCase.id,
         createdByUserId: user.id,
         status: "COMPLETED",
@@ -300,7 +283,7 @@ export async function POST(request: NextRequest) {
     for (const def of DEMO_SYSTEMS) {
       const sys = await prisma.system.create({
         data: {
-          tenantId,
+          tenantId: effectiveTenantId,
           name: def.name,
           connectorType: def.connectorType,
           description: def.description,
@@ -329,7 +312,7 @@ export async function POST(request: NextRequest) {
         const isSpecial = category === "HEALTH" || Math.random() < 0.2;
 
         findings.push({
-          tenantId,
+          tenantId: effectiveTenantId,
           caseId: dsarCase.id,
           runId: copilotRun.id,
           systemId: sys.id,
@@ -353,7 +336,7 @@ export async function POST(request: NextRequest) {
     // ── 5. AI-score every finding ──────────────────────────────────────
     console.log("[seed-heatmap] Step 5: Scoring findings with AI service");
     const allFindings = await prisma.finding.findMany({
-      where: { tenantId, runId: copilotRun.id },
+      where: { tenantId: effectiveTenantId, runId: copilotRun.id },
       select: {
         id: true,
         sensitivityScore: true,
@@ -395,28 +378,33 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      seededSystems: createdSystems.length,
-      seededFindings: totalFindings,
+      tenantId: effectiveTenantId,
+      created: {
+        tenants: 1,
+        users: 0,
+        dataSubjects: 1,
+        systems: createdSystems.length,
+        findings: totalFindings,
+      },
+      ids: {
+        tenantId: effectiveTenantId,
+        exampleSystemIds: createdSystems.map((s) => s.id),
+        exampleDataSubjectIds: [dataSubject.id],
+      },
     });
   } catch (err: any) {
     console.error("[seed-heatmap] ERROR", err);
 
-    const isPrismaError = err?.constructor?.name === "PrismaClientKnownRequestError"
-      || err?.name === "PrismaClientKnownRequestError";
+    const isPrismaError =
+      err?.constructor?.name === "PrismaClientKnownRequestError" ||
+      err?.name === "PrismaClientKnownRequestError";
 
     return NextResponse.json(
       {
         ok: false,
         error: err?.message ?? "Internal error",
-        name: err?.name,
-        code: err?.code,
-        meta: err?.meta,
         ...(isPrismaError && {
-          hint: err?.code === "P2003"
-            ? `Foreign key constraint failed on field: ${err?.meta?.field_name ?? "unknown"}. `
-              + "This usually means the tenantId in your auth token does not match any row in the tenant table. "
-              + "Re-login to refresh your session."
-            : `Prisma error ${err?.code}. Check that all referenced rows exist.`,
+          prisma: { code: err?.code, meta: err?.meta },
         }),
       },
       { status: 500 },

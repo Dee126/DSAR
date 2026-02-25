@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { isTestAuth } from "@/lib/test-auth";
 import { handleApiError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -15,15 +16,15 @@ export async function GET() {
 
     return NextResponse.json({
       ok: true,
+      mode: isTestAuth() ? "test-auth" : "nextauth",
+      env: {
+        DEMO_TENANT_ID: process.env.DEMO_TENANT_ID ? "set" : "missing",
+      },
       user: {
         id: user.id,
         email: user.email,
         role: user.role,
         tenantId: user.tenantId,
-      },
-      env: {
-        NODE_ENV: process.env.NODE_ENV ?? null,
-        DEMO_TENANT_ID: process.env.DEMO_TENANT_ID ?? null,
       },
     });
   } catch (err) {

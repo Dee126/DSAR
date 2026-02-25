@@ -69,12 +69,9 @@ export async function POST(request: NextRequest) {
       role: dbUser.role,
     };
   } else {
-    // Fallback to env-based test user (e.g. DB not seeded yet)
-    const fallback = getTestUser();
-    if (!fallback.tenantId && process.env.NODE_ENV === "development" && process.env.DEMO_TENANT_ID) {
-      fallback.tenantId = process.env.DEMO_TENANT_ID;
-    }
-    user = fallback;
+    // Fallback to env-based test user (e.g. DB not seeded yet).
+    // getTestUser() already resolves DEMO_TENANT_ID → TEST_TENANT_ID → hardcoded default.
+    user = getTestUser();
     console.warn(
       "[test-auth/login] User not found in DB, falling back to env-based test user:",
       { email, tenantId: user.tenantId },

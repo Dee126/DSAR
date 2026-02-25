@@ -96,9 +96,14 @@ export async function verifyToken(token: string, secret: string): Promise<AuthUs
 
 /** Build the test user profile from env vars (with seed-data defaults). */
 export function getTestUser(): AuthUser {
+  const demoTenantId =
+    process.env.DEMO_TENANT_ID ??
+    process.env.TEST_TENANT_ID ??
+    "00000000-0000-4000-8000-000000000001";
+
   return {
     id: process.env.TEST_USER_ID || "00000000-0000-4000-8000-000000000010",
-    tenantId: process.env.TEST_TENANT_ID || "00000000-0000-4000-8000-000000000001",
+    tenantId: demoTenantId,
     email: process.env.TEST_USER_EMAIL || "",
     name: process.env.TEST_USER_NAME || "Test Admin",
     role: process.env.TEST_USER_ROLE || "TENANT_ADMIN",
