@@ -168,22 +168,35 @@ export async function POST(request: NextRequest) {
 
     console.log("[seed-heatmap] tenantId=%s (from session)", tenantId);
 
-    // Guard: verify the tenant actually exists in the DB
-    const tenantExists = await prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: { id: true },
-    });
-    if (!tenantExists) {
-      console.error("[seed-heatmap] Tenant not found:", tenantId);
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Tenant not found",
-          tenantId,
-          detail: `Tenant "${tenantId}" does not exist in the tenant table. Ensure the user's tenant has been created.`,
+    // DEV ONLY: ensure the Tenant row exists so FK writes don't fail with P2003
+    if (process.env.NODE_ENV === "development") {
+      await prisma.tenant.upsert({
+        where: { id: tenantId },
+        update: {},
+        create: {
+          id: tenantId,
+          name: "Test Tenant",
         },
-        { status: 400 },
-      );
+      });
+      console.log("[seed-heatmap] Tenant ensured (dev upsert) for", tenantId);
+    } else {
+      // In production, verify the tenant exists — don't auto-create
+      const tenantExists = await prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { id: true },
+      });
+      if (!tenantExists) {
+        console.error("[seed-heatmap] Tenant not found:", tenantId);
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Tenant not found",
+            tenantId,
+            detail: `Tenant "${tenantId}" does not exist in the tenant table. Ensure the user's tenant has been created.`,
+          },
+          { status: 400 },
+        );
+      }
     }
 
     // ── 1. Clean up previous demo data ──────────────────────────────────
@@ -385,17 +398,15 @@ export async function POST(request: NextRequest) {
       seededSystems: createdSystems.length,
       seededFindings: totalFindings,
     });
-  } catch (err: unknown) {
+  } catch (err: any) {
     console.error("[seed-heatmap] ERROR", err);
-
-    const e = err as { name?: string; code?: string; meta?: unknown; message?: string };
     return NextResponse.json(
       {
         ok: false,
-        error: e?.message ?? "Unknown error",
-        name: e?.name,
-        code: e?.code,
-        meta: e?.meta,
+        error: err?.message ?? "Internal error",
+        name: err?.name,
+        code: err?.code,
+        meta: err?.meta,
       },
       { status: 500 },
     );
