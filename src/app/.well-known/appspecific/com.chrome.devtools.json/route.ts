@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 
-export function GET() {
-  return NextResponse.json({ name: "privacy-pilot", env: "dev" });
+export async function GET() {
+  return NextResponse.json(
+    { ok: true, note: "devtools placeholder" },
+    {
+      headers: { "content-type": "application/json; charset=utf-8" },
+    }
+  );
 }
