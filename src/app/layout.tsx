@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "PrivacyPilot - DSAR Management",
   description:
     "Manage Data Subject Access Requests efficiently and compliantly.",
+  icons: { icon: "/favicon.ico" },
 };
 
 export const viewport: Viewport = {
