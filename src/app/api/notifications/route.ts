@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { getRequestUser } from "@/lib/auth-mode";
 import { enforce } from "@/lib/rbac";
 import { handleApiError, ApiError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
@@ -11,7 +11,7 @@ import { prisma } from "@/lib/prisma";
  */
 export async function GET(request: NextRequest) {
   try {
-    const user = await requireAuth();
+    const user = await getRequestUser();
     enforce(user.role, "NOTIFICATIONS_VIEW");
 
     const { searchParams } = new URL(request.url);
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    const user = await requireAuth();
+    const user = await getRequestUser();
     enforce(user.role, "NOTIFICATIONS_VIEW");
 
     const body = await request.json();

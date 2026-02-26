@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { getRequestUser } from "@/lib/auth-mode";
 import { checkPermission } from "@/lib/rbac";
 import { handleApiError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: NextRequest) {
   try {
-    const user = await requireAuth();
+    const user = await getRequestUser();
     checkPermission(user.role, "data_inventory", "read");
 
     // Always use the authenticated user's tenant

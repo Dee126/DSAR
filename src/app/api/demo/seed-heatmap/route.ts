@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { getRequestUser } from "@/lib/auth-mode";
 import { hasPermission, checkPermission } from "@/lib/rbac";
 import { handleApiError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
@@ -149,7 +149,7 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireAuth();
+    const user = await getRequestUser();
 
     console.log("[seed-heatmap] POST started", {
       userId: user.id,
