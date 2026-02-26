@@ -14,7 +14,23 @@ import { scoreFinding } from "@/lib/ai/aiScoringService";
 
 export const dynamic = "force-dynamic";
 
+// ── Seeded PRNG (mulberry32) ────────────────────────────────────────────────
+// Makes the generated demo data deterministic across runs.
+function mulberry32(seed: number) {
+  let s = seed | 0;
+  return function (): number {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), s | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ── Constants ───────────────────────────────────────────────────────────────
+
 const DEMO_TAG = "[DEMO]";
+const SEED = 42;
+const FINDINGS_PER_SYSTEM = 20;
 
 const DEMO_SYSTEMS: {
   name: string;
@@ -92,27 +108,30 @@ const DATA_CATEGORIES: DataCategory[] = [
   "ONLINE_TECHNICAL",
 ];
 
-function rand(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+// ── Deterministic helpers (all accept an rng function) ──────────────────────
+
+function rand(rng: () => number, min: number, max: number): number {
+  return Math.floor(rng() * (max - min + 1)) + min;
 }
 
-function pick<T>(arr: T[]): T {
-  return arr[rand(0, arr.length - 1)];
+function pick<T>(rng: () => number, arr: T[]): T {
+  return arr[rand(rng, 0, arr.length - 1)];
 }
 
-function randomDate(daysBack: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - rand(0, daysBack));
-  d.setHours(rand(0, 23), rand(0, 59), rand(0, 59));
-  return d;
+function deterministicDate(rng: () => number, baseTime: number, daysBack: number): Date {
+  const ms =
+    baseTime -
+    rand(rng, 0, daysBack) * 86_400_000 -
+    rand(rng, 0, 86_399) * 1000;
+  return new Date(ms);
 }
 
 /** Weighted sensitivity: ~40% low, ~35% medium, ~25% high */
-function weightedSensitivity(): number {
-  const r = Math.random();
-  if (r < 0.4) return rand(5, 39);
-  if (r < 0.75) return rand(40, 69);
-  return rand(70, 95);
+function weightedSensitivity(rng: () => number): number {
+  const r = rng();
+  if (r < 0.4) return rand(rng, 5, 39);
+  if (r < 0.75) return rand(rng, 40, 69);
+  return rand(rng, 70, 95);
 }
 
 function sensitivityToSeverity(score: number): FindingSeverity {
@@ -122,15 +141,19 @@ function sensitivityToSeverity(score: number): FindingSeverity {
 }
 
 /** Weighted status: ~55% OPEN, ~15% ACCEPTED, ~15% MITIGATING, ~15% MITIGATED */
-function weightedStatus(): FindingStatus {
-  const r = Math.random();
+function weightedStatus(rng: () => number): FindingStatus {
+  const r = rng();
   if (r < 0.55) return "OPEN";
   if (r < 0.7) return "ACCEPTED";
   if (r < 0.85) return "MITIGATING";
   return "MITIGATED";
 }
 
-const FINDINGS_PER_SYSTEM = 20;
+// ── Dummy bcrypt hash (not a real password — only used as FK placeholder) ──
+const DUMMY_PASSWORD_HASH =
+  "$2a$12$000000000000000000000uGZFw.vPjQkVrclFu1cXjFuXqFPsxpS";
+
+// ── Routes ──────────────────────────────────────────────────────────────────
 
 /**
  * GET /api/demo/seed-heatmap
@@ -142,8 +165,11 @@ export async function GET() {
 
 /**
  * POST /api/demo/seed-heatmap
- * Seeds 8 demo systems with 20 findings each for the authenticated tenant.
+ *
+ * Seeds 8 demo systems with 20 findings each for the current tenant.
+ * Deterministic (seeded PRNG) and FK-safe (all parent rows upserted first).
  * Idempotent: deletes previous [DEMO]-tagged data before re-creating.
+ * Entire operation runs in a single Prisma interactive transaction.
  *
  * Protection: only allowed in non-production OR for TENANT_ADMIN / SUPER_ADMIN.
  */
@@ -151,252 +177,253 @@ export async function POST(request: NextRequest) {
   try {
     const user = await getRequestUser();
 
-    console.log("[seed-heatmap] POST started", {
-      userId: user.id,
-      userEmail: user.email,
-      tenantId: user.tenantId,
-      userRole: user.role,
-    });
-
     // Prefer data_inventory "manage" (write equivalent); fall back to "read"
     if (!hasPermission(user.role, "data_inventory", "manage")) {
       checkPermission(user.role, "data_inventory", "read");
     }
 
-    // Seed into the authenticated user's tenant
     const effectiveTenantId = user.tenantId;
+    const rng = mulberry32(SEED);
+    const now = Date.now();
 
-    console.log("[seed-heatmap] effectiveTenantId=%s (from session)", effectiveTenantId);
-
-    // Ensure the Tenant row exists so FK writes don't fail with P2003.
-    // This is a demo/seed endpoint, so upsert is always safe.
-    await prisma.tenant.upsert({
-      where: { id: effectiveTenantId },
-      update: {},
-      create: {
-        id: effectiveTenantId,
-        name: "Acme Corp",
-        slaDefaultDays: 30,
-        dueSoonDays: 7,
-        retentionDays: 365,
-      },
-    });
-    console.log("[seed-heatmap] Tenant ensured (upsert) for", effectiveTenantId);
-
-    // ── 1. Clean up previous demo data ──────────────────────────────────
-    console.log("[seed-heatmap] Step 1: Cleaning up previous demo data");
-    const oldDemoSystems = await prisma.system.findMany({
-      where: { tenantId: effectiveTenantId, description: { contains: DEMO_TAG } },
-      select: { id: true },
-    });
-    const oldSystemIds = oldDemoSystems.map((s) => s.id);
-
-    if (oldSystemIds.length > 0) {
-      console.log("[seed-heatmap] Deleting old findings for", oldSystemIds.length, "demo systems");
-      await prisma.finding.deleteMany({
-        where: { tenantId: effectiveTenantId, systemId: { in: oldSystemIds } },
-      });
-    }
-
-    // Delete the demo copilot run + case + data subject (if they exist)
-    console.log("[seed-heatmap] Looking for old copilot run to clean up");
-    const oldRun = await prisma.copilotRun.findFirst({
-      where: { tenantId: effectiveTenantId, justification: { contains: DEMO_TAG } },
-      select: { id: true, caseId: true },
-    });
-    if (oldRun) {
-      console.log("[seed-heatmap] Deleting old copilotRun:", oldRun.id, "caseId:", oldRun.caseId);
-      await prisma.copilotRun.delete({ where: { id: oldRun.id } });
-      const oldCase = await prisma.dSARCase.findFirst({
-        where: {
-          id: oldRun.caseId,
-          tenantId: effectiveTenantId,
-          description: { contains: DEMO_TAG },
-        },
-        select: { id: true, dataSubjectId: true },
-      });
-      if (oldCase) {
-        console.log("[seed-heatmap] Deleting old DSARCase:", oldCase.id, "dataSubjectId:", oldCase.dataSubjectId);
-        await prisma.dSARCase.delete({ where: { id: oldCase.id } });
-        console.log("[seed-heatmap] Deleting old DataSubject:", oldCase.dataSubjectId);
-        await prisma.dataSubject
-          .delete({ where: { id: oldCase.dataSubjectId } })
-          .catch((e: unknown) => { console.warn("[seed-heatmap] DataSubject delete failed (non-fatal):", e); });
-      }
-    }
-
-    if (oldSystemIds.length > 0) {
-      console.log("[seed-heatmap] Deleting", oldSystemIds.length, "old demo systems");
-      await prisma.system.deleteMany({
-        where: { id: { in: oldSystemIds } },
-      });
-    }
-
-    // ── 2. Create scaffolding: DataSubject → DSARCase → CopilotRun ─────
-    console.log("[seed-heatmap] Step 2: Creating DataSubject");
-    const dataSubject = await prisma.dataSubject.create({
-      data: {
-        tenantId: effectiveTenantId,
-        fullName: "Demo Heatmap Subject",
-        email: "demo-heatmap@example.com",
-      },
-    });
-
-    console.log("[seed-heatmap] DataSubject created:", dataSubject.id);
-
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 30);
-
-    console.log("[seed-heatmap] Creating DSARCase");
-    const dsarCase = await prisma.dSARCase.create({
-      data: {
-        tenantId: effectiveTenantId,
-        caseNumber: `DEMO-HEAT-${Date.now()}`,
-        type: "ACCESS",
-        status: "DATA_COLLECTION",
-        priority: "MEDIUM",
-        dueDate,
-        description: `${DEMO_TAG} Heatmap demo case`,
-        dataSubjectId: dataSubject.id,
-        createdByUserId: user.id,
-      },
-    });
-
-    console.log("[seed-heatmap] DSARCase created:", dsarCase.id);
-
-    console.log("[seed-heatmap] Creating CopilotRun");
-    const copilotRun = await prisma.copilotRun.create({
-      data: {
-        tenantId: effectiveTenantId,
-        caseId: dsarCase.id,
-        createdByUserId: user.id,
-        status: "COMPLETED",
-        justification: `${DEMO_TAG} Heatmap demo run`,
-        completedAt: new Date(),
-      },
-    });
-
-    console.log("[seed-heatmap] CopilotRun created:", copilotRun.id);
-
-    // ── 3. Create 8 demo systems ────────────────────────────────────────
-    console.log("[seed-heatmap] Step 3: Creating", DEMO_SYSTEMS.length, "demo systems");
-    const createdSystems: { id: string; name: string }[] = [];
-    for (const def of DEMO_SYSTEMS) {
-      const sys = await prisma.system.create({
-        data: {
-          tenantId: effectiveTenantId,
-          name: def.name,
-          connectorType: def.connectorType,
-          description: def.description,
-          criticality: def.criticality,
-          containsSpecialCategories: def.containsSpecialCategories,
-          inScopeForDsar: true,
-        },
-      });
-      createdSystems.push({ id: sys.id, name: sys.name });
-    }
-
-    console.log("[seed-heatmap] Systems created:", createdSystems.length);
-
-    // ── 4. Create 20 findings for each system ───────────────────────────
-    console.log("[seed-heatmap] Step 4: Creating findings (", FINDINGS_PER_SYSTEM, "per system )");
-    let totalFindings = 0;
-
-    for (const sys of createdSystems) {
-      const findings = [];
-
-      for (let i = 0; i < FINDINGS_PER_SYSTEM; i++) {
-        const sensitivityScore = weightedSensitivity();
-        const severity = sensitivityToSeverity(sensitivityScore);
-        const status = weightedStatus();
-        const category = pick(DATA_CATEGORIES);
-        const isSpecial = category === "HEALTH" || Math.random() < 0.2;
-
-        findings.push({
-          tenantId: effectiveTenantId,
-          caseId: dsarCase.id,
-          runId: copilotRun.id,
-          systemId: sys.id,
-          dataCategory: category,
-          sensitivityScore,
-          riskScore: sensitivityScore,
-          severity,
-          status,
-          confidence: +(Math.random() * 0.4 + 0.6).toFixed(2),
-          containsSpecialCategory: isSpecial,
-          summary: `${severity} finding in ${sys.name} — ${category} data (score ${sensitivityScore})`,
-          createdAt: randomDate(30),
-        });
-      }
-
-      console.log("[seed-heatmap] Creating", findings.length, "findings for system:", sys.name);
-      await prisma.finding.createMany({ data: findings });
-      totalFindings += findings.length;
-    }
-
-    // ── 5. AI-score every finding ──────────────────────────────────────
-    console.log("[seed-heatmap] Step 5: Scoring findings with AI service");
-    const allFindings = await prisma.finding.findMany({
-      where: { tenantId: effectiveTenantId, runId: copilotRun.id },
-      select: {
-        id: true,
-        sensitivityScore: true,
-        containsSpecialCategory: true,
-        dataCategory: true,
-      },
-    });
-
-    const aiUpdates = allFindings.map((f) => {
-      const result = scoreFinding({
-        sensitivityScore: f.sensitivityScore,
-        containsSpecialCategory: f.containsSpecialCategory,
-        dataCategory: f.dataCategory,
-      });
-      return prisma.finding.update({
-        where: { id: f.id },
-        data: {
-          aiRiskScore: result.aiRiskScore,
-          aiConfidence: result.aiConfidence,
-          aiSuggestedAction: result.aiSuggestedAction,
-          aiLegalReference: result.aiLegalReference,
-          aiRationale: result.aiRationale,
-          aiReviewStatus: "ANALYZED",
-        },
-      });
-    });
-
-    await Promise.all(aiUpdates);
-    console.log("[seed-heatmap] AI scoring complete for", allFindings.length, "findings");
-
-    // Update run totals
-    console.log("[seed-heatmap] Updating CopilotRun totalFindings:", totalFindings);
-    await prisma.copilotRun.update({
-      where: { id: copilotRun.id },
-      data: { totalFindings },
-    });
-
-    console.log("[seed-heatmap] SUCCESS — seeded", createdSystems.length, "systems,", totalFindings, "findings");
-
-    return NextResponse.json({
-      ok: true,
+    console.log("[seed-heatmap] POST started", {
       tenantId: effectiveTenantId,
-      created: {
-        tenants: 1,
-        users: 0,
-        dataSubjects: 1,
-        systems: createdSystems.length,
-        findings: totalFindings,
-      },
-      ids: {
-        tenantId: effectiveTenantId,
-        exampleSystemIds: createdSystems.map((s) => s.id),
-        exampleDataSubjectIds: [dataSubject.id],
-      },
+      userEmail: user.email,
+      seed: SEED,
     });
+
+    const result = await prisma.$transaction(
+      async (tx) => {
+        // ── 0a. Ensure Tenant row exists ──────────────────────────────────
+        await tx.tenant.upsert({
+          where: { id: effectiveTenantId },
+          update: {},
+          create: {
+            id: effectiveTenantId,
+            name: "Acme Corp",
+            slaDefaultDays: 30,
+            dueSoonDays: 7,
+            retentionDays: 365,
+          },
+        });
+
+        // ── 0b. Ensure a User row exists (FK for DSARCase / CopilotRun) ──
+        const seedUser = await tx.user.upsert({
+          where: {
+            tenantId_email: {
+              tenantId: effectiveTenantId,
+              email: user.email,
+            },
+          },
+          update: {},
+          create: {
+            tenantId: effectiveTenantId,
+            email: user.email,
+            name: user.name,
+            passwordHash: DUMMY_PASSWORD_HASH,
+            role: user.role,
+          },
+        });
+        const seedUserId = seedUser.id;
+
+        // ── 1. Clean up previous demo data (FK-safe deletion order) ───────
+        // Findings → CopilotRun → DSARCase → DataSubject → Systems
+        const oldSystems = await tx.system.findMany({
+          where: {
+            tenantId: effectiveTenantId,
+            description: { contains: DEMO_TAG },
+          },
+          select: { id: true },
+        });
+        const oldSystemIds = oldSystems.map((s: { id: string }) => s.id);
+
+        if (oldSystemIds.length > 0) {
+          await tx.finding.deleteMany({
+            where: {
+              tenantId: effectiveTenantId,
+              systemId: { in: oldSystemIds },
+            },
+          });
+        }
+
+        const oldRun = await tx.copilotRun.findFirst({
+          where: {
+            tenantId: effectiveTenantId,
+            justification: { contains: DEMO_TAG },
+          },
+          select: { id: true, caseId: true },
+        });
+
+        if (oldRun) {
+          // Delete any remaining findings for this run (systemId may be null)
+          await tx.finding.deleteMany({
+            where: { tenantId: effectiveTenantId, runId: oldRun.id },
+          });
+          await tx.copilotRun.delete({ where: { id: oldRun.id } });
+
+          const oldCase = await tx.dSARCase.findFirst({
+            where: {
+              id: oldRun.caseId,
+              tenantId: effectiveTenantId,
+              description: { contains: DEMO_TAG },
+            },
+            select: { id: true, dataSubjectId: true },
+          });
+          if (oldCase) {
+            await tx.dSARCase.delete({ where: { id: oldCase.id } });
+            await tx.dataSubject
+              .delete({ where: { id: oldCase.dataSubjectId } })
+              .catch(() => {});
+          }
+        }
+
+        if (oldSystemIds.length > 0) {
+          await tx.system.deleteMany({
+            where: { id: { in: oldSystemIds } },
+          });
+        }
+
+        // ── 2. Create scaffolding: DataSubject → DSARCase → CopilotRun ───
+        const dataSubject = await tx.dataSubject.create({
+          data: {
+            tenantId: effectiveTenantId,
+            fullName: "Demo Heatmap Subject",
+            email: "demo-heatmap@example.com",
+          },
+        });
+
+        const dueDate = new Date(now);
+        dueDate.setDate(dueDate.getDate() + 30);
+
+        const dsarCase = await tx.dSARCase.create({
+          data: {
+            tenantId: effectiveTenantId,
+            caseNumber: `DEMO-HEAT-${now}`,
+            type: "ACCESS",
+            status: "DATA_COLLECTION",
+            priority: "MEDIUM",
+            dueDate,
+            description: `${DEMO_TAG} Heatmap demo case`,
+            dataSubjectId: dataSubject.id,
+            createdByUserId: seedUserId,
+          },
+        });
+
+        const copilotRun = await tx.copilotRun.create({
+          data: {
+            tenantId: effectiveTenantId,
+            caseId: dsarCase.id,
+            createdByUserId: seedUserId,
+            status: "COMPLETED",
+            justification: `${DEMO_TAG} Heatmap demo run`,
+            completedAt: new Date(now),
+          },
+        });
+
+        // ── 3. Create 8 demo systems ─────────────────────────────────────
+        const createdSystems: { id: string; name: string }[] = [];
+        for (const def of DEMO_SYSTEMS) {
+          const sys = await tx.system.create({
+            data: {
+              tenantId: effectiveTenantId,
+              name: def.name,
+              connectorType: def.connectorType,
+              description: def.description,
+              criticality: def.criticality,
+              containsSpecialCategories: def.containsSpecialCategories,
+              inScopeForDsar: true,
+            },
+          });
+          createdSystems.push({ id: sys.id, name: sys.name });
+        }
+
+        // ── 4. Create findings with inline AI scores ─────────────────────
+        let totalFindings = 0;
+
+        for (const sys of createdSystems) {
+          const findings = [];
+
+          for (let i = 0; i < FINDINGS_PER_SYSTEM; i++) {
+            const sensitivityScore = weightedSensitivity(rng);
+            const severity = sensitivityToSeverity(sensitivityScore);
+            const status = weightedStatus(rng);
+            const category = pick(rng, DATA_CATEGORIES);
+            const isSpecial = category === "HEALTH" || rng() < 0.2;
+
+            const ai = scoreFinding({
+              sensitivityScore,
+              containsSpecialCategory: isSpecial,
+              dataCategory: category,
+            });
+
+            findings.push({
+              tenantId: effectiveTenantId,
+              caseId: dsarCase.id,
+              runId: copilotRun.id,
+              systemId: sys.id,
+              dataCategory: category,
+              sensitivityScore,
+              riskScore: sensitivityScore,
+              severity,
+              status,
+              confidence: +(rng() * 0.4 + 0.6).toFixed(2),
+              containsSpecialCategory: isSpecial,
+              summary: `${severity} finding in ${sys.name} — ${category} data (score ${sensitivityScore})`,
+              createdAt: deterministicDate(rng, now, 30),
+              aiRiskScore: ai.aiRiskScore,
+              aiConfidence: ai.aiConfidence,
+              aiSuggestedAction: ai.aiSuggestedAction,
+              aiLegalReference: ai.aiLegalReference,
+              aiRationale: ai.aiRationale,
+              aiReviewStatus: "ANALYZED" as const,
+            });
+          }
+
+          await tx.finding.createMany({ data: findings });
+          totalFindings += findings.length;
+        }
+
+        // ── 5. Update CopilotRun totals ──────────────────────────────────
+        await tx.copilotRun.update({
+          where: { id: copilotRun.id },
+          data: { totalFindings },
+        });
+
+        console.log(
+          "[seed-heatmap] SUCCESS — %d systems, %d findings",
+          createdSystems.length,
+          totalFindings,
+        );
+
+        return {
+          ok: true as const,
+          tenantId: effectiveTenantId,
+          created: {
+            tenants: 1,
+            users: 1,
+            dataSubjects: 1,
+            cases: 1,
+            copilotRuns: 1,
+            systems: createdSystems.length,
+            findings: totalFindings,
+          },
+          ids: {
+            tenantId: effectiveTenantId,
+            seedUserId,
+            caseId: dsarCase.id,
+            copilotRunId: copilotRun.id,
+            systemIds: createdSystems.map((s) => s.id),
+            dataSubjectId: dataSubject.id,
+          },
+        };
+      },
+      { timeout: 30_000 },
+    );
+
+    return NextResponse.json(result);
   } catch (err: unknown) {
     console.error("[seed-heatmap] ERROR", err);
 
-    // Let ApiError (401/403) and ZodError (400) pass through with proper status
     if (
       (err instanceof Error && err.name === "ApiError") ||
       (err instanceof Error && err.name === "ZodError")
@@ -404,7 +431,6 @@ export async function POST(request: NextRequest) {
       return handleApiError(err);
     }
 
-    // Prisma errors: surface code + meta for debugging
     const prismaErr = err as Record<string, unknown> | undefined;
     const isPrismaError =
       prismaErr?.constructor?.name === "PrismaClientKnownRequestError" ||
